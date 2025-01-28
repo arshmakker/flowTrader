@@ -1,0 +1,707 @@
+2025-01-28 09:34:44,979 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:34:44,979 - root - INFO - [main.py:112] - === Trading System Starting ===
+2025-01-28 09:34:44,979 - root - INFO - [main.py:113] - Start Time: 2025-01-28 09:34:44.979007
+2025-01-28 09:34:44,979 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:34:44,979 - root - INFO - [main.py:54] - CPU Usage: 24.6%
+2025-01-28 09:34:44,979 - root - INFO - [main.py:55] - Memory Usage: 86.1% (Used: 3145.5MB, Available: 1139.3MB)
+2025-01-28 09:34:44,979 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:34:44,979 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:34:44,979 - root - INFO - [main.py:119] - Initializing API connection...
+2025-01-28 09:34:44,979 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:34:44,980 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:34:44,980 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:34:44,980 - root - ERROR - [main.py:101] - Error initializing API: 'user_id'
+2025-01-28 09:34:44,980 - root - ERROR - [main.py:183] - Critical error in main: 'user_id'
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 120, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 85, in initialize_api
+    userid=creds['user_id'],
+           ~~~~~^^^^^^^^^^^
+KeyError: 'user_id'
+2025-01-28 09:34:44,981 - root - INFO - [main.py:190] - === Trading System Stopped ===
+2025-01-28 09:34:44,981 - root - INFO - [main.py:191] - End Time: 2025-01-28 09:34:44.981035
+2025-01-28 09:34:44,981 - root - INFO - [main.py:192] - Total Runtime: 0:00:00.002028
+2025-01-28 09:35:24,472 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:35:24,472 - root - INFO - [main.py:112] - === Trading System Starting ===
+2025-01-28 09:35:24,472 - root - INFO - [main.py:113] - Start Time: 2025-01-28 09:35:24.471962
+2025-01-28 09:35:24,472 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:35:24,472 - root - INFO - [main.py:54] - CPU Usage: 26.0%
+2025-01-28 09:35:24,472 - root - INFO - [main.py:55] - Memory Usage: 85.5% (Used: 3164.9MB, Available: 1185.9MB)
+2025-01-28 09:35:24,472 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:35:24,472 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:35:24,472 - root - INFO - [main.py:119] - Initializing API connection...
+2025-01-28 09:35:24,472 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:35:24,474 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:35:24,474 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:35:24,474 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:35:24,474 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ff7bd97b1a7789ddd2775122fd6817f3173672da9f802ceec57f284325bf589f", "factor2": "35524", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:35:24,484 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:35:27,765 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 110
+2025-01-28 09:35:27,766 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:35:27 28-01-2025","stat":"Not_Ok","emsg":"Invalid Input : Wrong Password","uid":"FA50394"}
+2025-01-28 09:35:27,766 - root - ERROR - [main.py:97] - Login failed - API returned False
+2025-01-28 09:35:27,766 - root - ERROR - [main.py:101] - Error initializing API: Login failed
+2025-01-28 09:35:27,766 - root - ERROR - [main.py:183] - Critical error in main: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 120, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 98, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:35:27,768 - root - INFO - [main.py:190] - === Trading System Stopped ===
+2025-01-28 09:35:27,768 - root - INFO - [main.py:191] - End Time: 2025-01-28 09:35:27.768556
+2025-01-28 09:35:27,768 - root - INFO - [main.py:192] - Total Runtime: 0:00:03.296594
+2025-01-28 09:37:51,717 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:37:51,717 - root - INFO - [main.py:112] - === Trading System Starting ===
+2025-01-28 09:37:51,717 - root - INFO - [main.py:113] - Start Time: 2025-01-28 09:37:51.716941
+2025-01-28 09:37:51,717 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:37:51,717 - root - INFO - [main.py:54] - CPU Usage: 25.2%
+2025-01-28 09:37:51,717 - root - INFO - [main.py:55] - Memory Usage: 86.7% (Used: 3298.5MB, Available: 1089.8MB)
+2025-01-28 09:37:51,717 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:37:51,717 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:37:51,717 - root - INFO - [main.py:119] - Initializing API connection...
+2025-01-28 09:37:51,717 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:37:51,717 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:37:51,717 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:37:51,718 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:37:51,718 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "35524", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:37:51,737 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:37:55,139 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 1518
+2025-01-28 09:37:55,141 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:37:55 28-01-2025","actid":"FA50394","access_type":["WEB","TT","MOB","API"],"uname":"Arshdeep Singh Makker","prarr":[{"prd":"C","s_prdt_ali":"CNC","exch":["NSE","BSE","NIPO","BSTAR"]},{"prd":"M","s_prdt_ali":"NRML","exch":["NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"I","s_prdt_ali":"MIS","exch":["NSE","BSE","NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"H","s_prdt_ali":"CO","exch":["NSE","NFO","CDS","MCX","BSE"]},{"prd":"B","s_prdt_ali":"BO","exch":["NSE","NFO","CDS","MCX","BSE"]}],"exch_prd":[{"exch":"NSE","prds":["C","I","H","B"]},{"exch":"NIPO","prds":["C"]},{"exch":"BSE","prds":["C","I","H","B"]},{"exch":"NFO","prds":["M","I","H","B"]},{"exch":"CDS","prds":["M","I","H","B"]},{"exch":"MCX","prds":["M","I","H","B"]},{"exch":"BCD","prds":["M","I"]},{"exch":"NCX","prds":["M","I"]},{"exch":"BSTAR","prds":["C"]},{"exch":"BFO","prds":["M","I"]}],"stat":"Ok","susertoken":"fb8c84f91afbed2cd1b8f78cf9975bce3232e97ebaa1dd0f4b80ce8158d5de61","susertokenspl":"fe04c747a592cf5cc4501b4573088c27ea149b7fa01a66f00181cf2b66bf2299","email":"arsh_makker@yahoo.com","uid":"FA50394","brnchid":"HO","totp_set":"1","m_num":"9910248922","orarr":["MKT","LMT","SL-LMT","SL-MKT"],"exarr":["NSE","NIPO","BSE","NFO","CDS","MCX","BCD","NCX","BSTAR","BFO"],"values":["Options"],"mws":{"Options":[{"exch":"NSE","token":"2885","tsym":"RELIANCE-EQ","cname":"RELIANCE INDUSTRIES LTD","instname":"EQ","pp":"2","ls":"1","ti":"0.05"}]},"brkname":"FINV","dmsg":"","lastaccesstime":"1738037275","lastpwdtime":"1737977419"}
+2025-01-28 09:37:55,142 - root - INFO - [main.py:94] - Successfully logged in to Shoonya API
+2025-01-28 09:37:55,142 - root - INFO - [main.py:123] - Initializing symbol manager...
+2025-01-28 09:37:55,143 - SymbolManager - INFO - [symbol_manager.py:21] - Created master files directory: market_data_20250128/master_files
+2025-01-28 09:37:55,167 - SymbolManager - INFO - [symbol_manager.py:30] - Loaded NSE Cash symbols from file
+2025-01-28 09:37:55,292 - SymbolManager - INFO - [symbol_manager.py:36] - Loaded NFO symbols from file
+2025-01-28 09:37:55,292 - root - INFO - [main.py:128] - Fetching active NFO symbols...
+2025-01-28 09:37:55,308 - SymbolManager - ERROR - [symbol_manager.py:133] - Error getting active symbols: 'symbol'
+2025-01-28 09:37:55,312 - root - WARNING - [main.py:138] - No NFO symbols found
+2025-01-28 09:37:55,312 - root - INFO - [main.py:141] - Initializing data collector...
+2025-01-28 09:37:55,312 - root - WARNING - [main.py:150] - No symbols available for data collection
+2025-01-28 09:37:55,312 - root - INFO - [main.py:153] - Initializing paper trader with capital: 100000
+2025-01-28 09:37:55,312 - root - INFO - [main.py:157] - === System Running ===
+2025-01-28 09:37:55,312 - root - INFO - [main.py:171] - Runtime: 0:00:03.595889 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:38:00,314 - root - INFO - [main.py:171] - Runtime: 0:00:08.597132 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:38:05,320 - root - INFO - [main.py:171] - Runtime: 0:00:13.603299 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:38:10,325 - root - INFO - [main.py:171] - Runtime: 0:00:18.608386 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:38:15,332 - root - INFO - [main.py:171] - Runtime: 0:00:23.614512 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:38:17,805 - root - INFO - [main.py:176] - 
+=== Graceful Shutdown Initiated ===
+2025-01-28 09:38:17,805 - root - INFO - [main.py:178] - Stopping data collection...
+2025-01-28 09:38:17,806 - DataCollector - INFO - [data_collector.py:44] - Stopped data collection
+2025-01-28 09:38:17,806 - root - INFO - [main.py:180] - Total Runtime: 0:00:26.089313
+2025-01-28 09:38:17,806 - root - INFO - [main.py:190] - === Trading System Stopped ===
+2025-01-28 09:38:17,806 - root - INFO - [main.py:191] - End Time: 2025-01-28 09:38:17.806327
+2025-01-28 09:38:17,806 - root - INFO - [main.py:192] - Total Runtime: 0:00:26.089386
+2025-01-28 09:40:01,760 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:40:01,760 - root - INFO - [main.py:112] - === Trading System Starting ===
+2025-01-28 09:40:01,760 - root - INFO - [main.py:113] - Start Time: 2025-01-28 09:40:01.759984
+2025-01-28 09:40:01,760 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:40:01,760 - root - INFO - [main.py:54] - CPU Usage: 31.6%
+2025-01-28 09:40:01,760 - root - INFO - [main.py:55] - Memory Usage: 86.6% (Used: 3312.6MB, Available: 1100.8MB)
+2025-01-28 09:40:01,760 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:40:01,761 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:40:01,761 - root - INFO - [main.py:119] - Initializing API connection...
+2025-01-28 09:40:01,761 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:40:01,761 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:40:01,761 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:40:01,761 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:40:01,761 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "35524", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:40:01,770 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:40:05,043 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 107
+2025-01-28 09:40:05,045 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:40:05 28-01-2025","stat":"Not_Ok","emsg":"Invalid Input : Invalid OTP","uid":"FA50394"}
+2025-01-28 09:40:05,045 - root - ERROR - [main.py:97] - Login failed - API returned False
+2025-01-28 09:40:05,046 - root - ERROR - [main.py:101] - Error initializing API: Login failed
+2025-01-28 09:40:05,046 - root - ERROR - [main.py:183] - Critical error in main: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 120, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 98, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:40:05,048 - root - INFO - [main.py:190] - === Trading System Stopped ===
+2025-01-28 09:40:05,048 - root - INFO - [main.py:191] - End Time: 2025-01-28 09:40:05.048845
+2025-01-28 09:40:05,049 - root - INFO - [main.py:192] - Total Runtime: 0:00:03.288861
+2025-01-28 09:40:34,011 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:40:34,011 - root - INFO - [main.py:118] - === Trading System Starting ===
+2025-01-28 09:40:34,011 - root - INFO - [main.py:119] - Start Time: 2025-01-28 09:40:34.011072
+2025-01-28 09:40:34,012 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:40:34,012 - root - INFO - [main.py:54] - CPU Usage: 27.6%
+2025-01-28 09:40:34,012 - root - INFO - [main.py:55] - Memory Usage: 86.8% (Used: 3333.4MB, Available: 1081.1MB)
+2025-01-28 09:40:34,012 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:40:34,012 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:40:34,012 - root - INFO - [main.py:125] - Initializing API connection...
+2025-01-28 09:40:34,012 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:40:34,014 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:40:34,014 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:40:34,014 - root - ERROR - [main.py:106] - Error initializing API: 'ShoonyaApiPy' object has no attribute 'host'
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 83, in initialize_api
+    logging.debug(f"API Host: {api.host}")
+                               ^^^^^^^^
+AttributeError: 'ShoonyaApiPy' object has no attribute 'host'
+2025-01-28 09:40:34,014 - root - DEBUG - [main.py:107] - Check if the API service is available and credentials are correct
+2025-01-28 09:40:34,014 - root - ERROR - [main.py:189] - Critical error in main: 'ShoonyaApiPy' object has no attribute 'host'
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 126, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 83, in initialize_api
+    logging.debug(f"API Host: {api.host}")
+                               ^^^^^^^^
+AttributeError: 'ShoonyaApiPy' object has no attribute 'host'
+2025-01-28 09:40:34,014 - root - INFO - [main.py:196] - === Trading System Stopped ===
+2025-01-28 09:40:34,014 - root - INFO - [main.py:197] - End Time: 2025-01-28 09:40:34.014943
+2025-01-28 09:40:34,014 - root - INFO - [main.py:198] - Total Runtime: 0:00:00.003871
+2025-01-28 09:40:53,752 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:40:53,753 - root - INFO - [main.py:117] - === Trading System Starting ===
+2025-01-28 09:40:53,753 - root - INFO - [main.py:118] - Start Time: 2025-01-28 09:40:53.752478
+2025-01-28 09:40:53,753 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:40:53,753 - root - INFO - [main.py:54] - CPU Usage: 41.7%
+2025-01-28 09:40:53,753 - root - INFO - [main.py:55] - Memory Usage: 85.7% (Used: 3320.2MB, Available: 1171.9MB)
+2025-01-28 09:40:53,753 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:40:53,753 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:40:53,753 - root - INFO - [main.py:124] - Initializing API connection...
+2025-01-28 09:40:53,753 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:40:53,756 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:40:53,756 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:40:53,756 - root - DEBUG - [main.py:83] - Using credentials - User: FA50394, Vendor: FA50394_U
+2025-01-28 09:40:53,756 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:40:53,756 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "35524", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:40:53,767 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:40:53,870 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 107
+2025-01-28 09:40:53,871 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:40:53 28-01-2025","stat":"Not_Ok","emsg":"Invalid Input : Invalid OTP","uid":"FA50394"}
+2025-01-28 09:40:53,871 - root - ERROR - [main.py:100] - Login failed - API returned False
+2025-01-28 09:40:53,871 - root - DEBUG - [main.py:101] - Please verify your credentials and API connectivity
+2025-01-28 09:40:53,871 - root - ERROR - [main.py:105] - Error initializing API: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 102, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:40:53,871 - root - DEBUG - [main.py:106] - Check if the API service is available and credentials are correct
+2025-01-28 09:40:53,871 - root - ERROR - [main.py:188] - Critical error in main: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 125, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 102, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:40:53,872 - root - INFO - [main.py:195] - === Trading System Stopped ===
+2025-01-28 09:40:53,872 - root - INFO - [main.py:196] - End Time: 2025-01-28 09:40:53.872363
+2025-01-28 09:40:53,872 - root - INFO - [main.py:197] - Total Runtime: 0:00:00.119885
+2025-01-28 09:41:05,969 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:41:05,969 - root - INFO - [main.py:117] - === Trading System Starting ===
+2025-01-28 09:41:05,969 - root - INFO - [main.py:118] - Start Time: 2025-01-28 09:41:05.969611
+2025-01-28 09:41:05,970 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:41:05,970 - root - INFO - [main.py:54] - CPU Usage: 56.0%
+2025-01-28 09:41:05,970 - root - INFO - [main.py:55] - Memory Usage: 86.5% (Used: 3287.3MB, Available: 1106.4MB)
+2025-01-28 09:41:05,970 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:41:05,970 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:41:05,970 - root - INFO - [main.py:124] - Initializing API connection...
+2025-01-28 09:41:05,970 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:41:05,972 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:41:05,972 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:41:05,972 - root - DEBUG - [main.py:83] - Using credentials - User: FA50394, Vendor: FA50394_U
+2025-01-28 09:41:05,972 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:41:05,972 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "35524", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:41:05,978 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:06,154 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 107
+2025-01-28 09:41:06,154 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:41:06 28-01-2025","stat":"Not_Ok","emsg":"Invalid Input : Invalid OTP","uid":"FA50394"}
+2025-01-28 09:41:06,154 - root - ERROR - [main.py:100] - Login failed - API returned False
+2025-01-28 09:41:06,154 - root - DEBUG - [main.py:101] - Please verify your credentials and API connectivity
+2025-01-28 09:41:06,154 - root - ERROR - [main.py:105] - Error initializing API: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 102, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:41:06,155 - root - DEBUG - [main.py:106] - Check if the API service is available and credentials are correct
+2025-01-28 09:41:06,155 - root - ERROR - [main.py:188] - Critical error in main: Login failed
+Traceback (most recent call last):
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 125, in main
+    api = initialize_api()
+  File "/Users/arshdeepmakker/git/shoonyapythonmod/main.py", line 102, in initialize_api
+    raise ValueError("Login failed")
+ValueError: Login failed
+2025-01-28 09:41:06,156 - root - INFO - [main.py:195] - === Trading System Stopped ===
+2025-01-28 09:41:06,156 - root - INFO - [main.py:196] - End Time: 2025-01-28 09:41:06.156054
+2025-01-28 09:41:06,156 - root - INFO - [main.py:197] - Total Runtime: 0:00:00.186443
+2025-01-28 09:41:38,094 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:41:38,094 - root - INFO - [main.py:117] - === Trading System Starting ===
+2025-01-28 09:41:38,094 - root - INFO - [main.py:118] - Start Time: 2025-01-28 09:41:38.094002
+2025-01-28 09:41:38,094 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:41:38,094 - root - INFO - [main.py:54] - CPU Usage: 32.0%
+2025-01-28 09:41:38,094 - root - INFO - [main.py:55] - Memory Usage: 86.4% (Used: 3249.9MB, Available: 1112.7MB)
+2025-01-28 09:41:38,094 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:41:38,094 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:41:38,094 - root - INFO - [main.py:124] - Initializing API connection...
+2025-01-28 09:41:38,094 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:41:38,096 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:41:38,096 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:41:38,096 - root - DEBUG - [main.py:83] - Using credentials - User: FA50394, Vendor: FA50394_U
+2025-01-28 09:41:38,096 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:41:38,096 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "19027", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:41:38,104 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:38,201 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 1518
+2025-01-28 09:41:38,202 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:41:38 28-01-2025","actid":"FA50394","access_type":["WEB","TT","MOB","API"],"uname":"Arshdeep Singh Makker","prarr":[{"prd":"C","s_prdt_ali":"CNC","exch":["NSE","BSE","NIPO","BSTAR"]},{"prd":"M","s_prdt_ali":"NRML","exch":["NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"I","s_prdt_ali":"MIS","exch":["NSE","BSE","NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"H","s_prdt_ali":"CO","exch":["NSE","NFO","CDS","MCX","BSE"]},{"prd":"B","s_prdt_ali":"BO","exch":["NSE","NFO","CDS","MCX","BSE"]}],"exch_prd":[{"exch":"NSE","prds":["C","I","H","B"]},{"exch":"NIPO","prds":["C"]},{"exch":"BSE","prds":["C","I","H","B"]},{"exch":"NFO","prds":["M","I","H","B"]},{"exch":"CDS","prds":["M","I","H","B"]},{"exch":"MCX","prds":["M","I","H","B"]},{"exch":"BCD","prds":["M","I"]},{"exch":"NCX","prds":["M","I"]},{"exch":"BSTAR","prds":["C"]},{"exch":"BFO","prds":["M","I"]}],"stat":"Ok","susertoken":"39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d","susertokenspl":"d38603a5d927552b9486adb1f27227e6353b3ca2231ba7b3eb8ffdc3c9343c9e","email":"arsh_makker@yahoo.com","uid":"FA50394","brnchid":"HO","totp_set":"1","m_num":"9910248922","orarr":["MKT","LMT","SL-LMT","SL-MKT"],"exarr":["NSE","NIPO","BSE","NFO","CDS","MCX","BCD","NCX","BSTAR","BFO"],"values":["Options"],"mws":{"Options":[{"exch":"NSE","token":"2885","tsym":"RELIANCE-EQ","cname":"RELIANCE INDUSTRIES LTD","instname":"EQ","pp":"2","ls":"1","ti":"0.05"}]},"brkname":"FINV","dmsg":"","lastaccesstime":"1738037498","lastpwdtime":"1737977419"}
+2025-01-28 09:41:38,202 - root - INFO - [main.py:96] - Successfully logged in to Shoonya API
+2025-01-28 09:41:38,202 - root - DEBUG - [main.py:97] - Login response: {'request_time': '09:41:38 28-01-2025', 'actid': 'FA50394', 'access_type': ['WEB', 'TT', 'MOB', 'API'], 'uname': 'Arshdeep Singh Makker', 'prarr': [{'prd': 'C', 's_prdt_ali': 'CNC', 'exch': ['NSE', 'BSE', 'NIPO', 'BSTAR']}, {'prd': 'M', 's_prdt_ali': 'NRML', 'exch': ['NFO', 'BFO', 'CDS', 'BCD', 'MCX', 'NCX']}, {'prd': 'I', 's_prdt_ali': 'MIS', 'exch': ['NSE', 'BSE', 'NFO', 'BFO', 'CDS', 'BCD', 'MCX', 'NCX']}, {'prd': 'H', 's_prdt_ali': 'CO', 'exch': ['NSE', 'NFO', 'CDS', 'MCX', 'BSE']}, {'prd': 'B', 's_prdt_ali': 'BO', 'exch': ['NSE', 'NFO', 'CDS', 'MCX', 'BSE']}], 'exch_prd': [{'exch': 'NSE', 'prds': ['C', 'I', 'H', 'B']}, {'exch': 'NIPO', 'prds': ['C']}, {'exch': 'BSE', 'prds': ['C', 'I', 'H', 'B']}, {'exch': 'NFO', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'CDS', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'MCX', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'BCD', 'prds': ['M', 'I']}, {'exch': 'NCX', 'prds': ['M', 'I']}, {'exch': 'BSTAR', 'prds': ['C']}, {'exch': 'BFO', 'prds': ['M', 'I']}], 'stat': 'Ok', 'susertoken': '39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d', 'susertokenspl': 'd38603a5d927552b9486adb1f27227e6353b3ca2231ba7b3eb8ffdc3c9343c9e', 'email': 'arsh_makker@yahoo.com', 'uid': 'FA50394', 'brnchid': 'HO', 'totp_set': '1', 'm_num': '9910248922', 'orarr': ['MKT', 'LMT', 'SL-LMT', 'SL-MKT'], 'exarr': ['NSE', 'NIPO', 'BSE', 'NFO', 'CDS', 'MCX', 'BCD', 'NCX', 'BSTAR', 'BFO'], 'values': ['Options'], 'mws': {'Options': [{'exch': 'NSE', 'token': '2885', 'tsym': 'RELIANCE-EQ', 'cname': 'RELIANCE INDUSTRIES LTD', 'instname': 'EQ', 'pp': '2', 'ls': '1', 'ti': '0.05'}]}, 'brkname': 'FINV', 'dmsg': '', 'lastaccesstime': '1738037498', 'lastpwdtime': '1737977419'}
+2025-01-28 09:41:38,202 - root - INFO - [main.py:128] - Initializing symbol manager...
+2025-01-28 09:41:38,202 - SymbolManager - DEBUG - [symbol_manager.py:29] - Loading NSE symbols from symbols/NSE.csv
+2025-01-28 09:41:38,221 - SymbolManager - INFO - [symbol_manager.py:33] - Loaded NSE Cash symbols: 7567 symbols
+2025-01-28 09:41:38,222 - SymbolManager - DEBUG - [symbol_manager.py:34] - NSE columns: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'instrument', 'ticksize', 'unnamed: 7']
+2025-01-28 09:41:38,222 - SymbolManager - DEBUG - [symbol_manager.py:41] - Loading NFO symbols from symbols/NFO.csv
+2025-01-28 09:41:38,312 - SymbolManager - INFO - [symbol_manager.py:45] - Loaded NFO symbols: 92072 symbols
+2025-01-28 09:41:38,312 - SymbolManager - DEBUG - [symbol_manager.py:46] - NFO columns: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'expiry', 'instrument', 'optiontype', 'strikeprice', 'ticksize', 'unnamed: 10']
+2025-01-28 09:41:38,312 - root - INFO - [main.py:133] - Fetching active NFO symbols...
+2025-01-28 09:41:38,312 - SymbolManager - DEBUG - [symbol_manager.py:132] - Available columns for filtering: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'expiry', 'instrument', 'optiontype', 'strikeprice', 'ticksize', 'unnamed: 10']
+2025-01-28 09:41:38,314 - SymbolManager - WARNING - [symbol_manager.py:142] - Column instrument_type not found in symbol file
+2025-01-28 09:41:39,622 - SymbolManager - INFO - [symbol_manager.py:156] - Found 92072 symbols matching criteria in NFO
+2025-01-28 09:41:39,622 - SymbolManager - DEBUG - [symbol_manager.py:158] - Sample symbol: {'symbol': 'ZYDUSLIFE', 'token': '153235', 'exchange': 'NFO', 'lotsize': 900, 'tick_size': 0.05}
+2025-01-28 09:41:39,626 - root - INFO - [main.py:140] - Found 92072 NFO symbols
+2025-01-28 09:41:39,626 - root - DEBUG - [main.py:141] - Symbols: ['ZYDUSLIFE', 'ZYDUSLIFE']
+2025-01-28 09:41:39,626 - root - INFO - [main.py:146] - Initializing data collector...
+2025-01-28 09:41:39,626 - root - INFO - [main.py:152] - Starting data collection for symbols: ['ZYDUSLIFE', 'ZYDUSLIFE']
+2025-01-28 09:41:39,627 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:39,627 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:39,628 - DataCollector - INFO - [data_collector.py:37] - Started data collection for 2 symbols
+2025-01-28 09:41:39,628 - root - INFO - [main.py:158] - Initializing paper trader with capital: 100000
+2025-01-28 09:41:39,628 - root - INFO - [main.py:162] - === System Running ===
+2025-01-28 09:41:39,628 - root - INFO - [main.py:176] - Runtime: 0:00:01.534340 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:41:39,629 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:39,724 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:39,725 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:39 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:39,728 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:39,728 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:39,728 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:39,728 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:39,728 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:39,837 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:39,837 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:39 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:39,838 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:39,838 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:40,844 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:40,844 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:40,846 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:40,950 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:40,951 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:41 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:40,952 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:40,953 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:40,953 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:40,953 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:40,954 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:41,073 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:41,074 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:41 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:41,076 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:41,077 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:42,080 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:42,080 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:42,082 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:42,173 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:42,173 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:42 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:42,174 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:42,174 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:42,175 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:42,175 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:42,176 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:42,276 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:42,276 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:42 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:42,277 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:42,277 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:43,281 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:43,281 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:43,285 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:43,376 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:43,376 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:43 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:43,383 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:43,383 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:43,384 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:43,384 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:43,385 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:43,490 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:43,491 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:43 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:43,493 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:43,494 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:44,499 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:44,499 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:44,501 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:44,606 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:44,607 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:44 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:44,609 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:44,609 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:44,610 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:44,610 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:44,611 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:44,633 - root - INFO - [main.py:176] - Runtime: 0:00:06.539198 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:41:44,717 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:44,717 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:44 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:44,719 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:44,719 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:45,721 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:45,722 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:45,724 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:45,826 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:45,827 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:45 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:45,830 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:45,830 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:45,830 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:45,831 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:45,832 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:45,936 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:45,936 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:45 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:45,938 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:45,938 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:46,943 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:46,943 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:46,944 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:47,030 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:47,030 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:47 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:47,031 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:47,032 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:47,032 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:47,032 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:47,033 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:47,129 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:47,129 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:47 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:47,130 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:47,130 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:48,136 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:48,137 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:48,141 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:48,263 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:48,263 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:48 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:48,268 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:48,268 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:48,268 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:48,268 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:48,269 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:48,364 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:48,364 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:48 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:48,365 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:48,365 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:49,370 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:49,370 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:49,372 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:49,496 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:49,497 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:49 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:49,498 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:49,498 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:49,498 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:49,498 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:49,499 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:49,580 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:49,580 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:49 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:49,581 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:49,581 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:49,638 - root - INFO - [main.py:176] - Runtime: 0:00:11.543977 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:41:50,587 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:50,587 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:50,588 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:50,695 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:50,695 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:50 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:50,696 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:50,697 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:50,697 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:50,697 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:50,698 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:50,805 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:50,806 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:50 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:50,807 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:50,807 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:51,812 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:51,812 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:51,813 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:51,937 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:41:51,937 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:51 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:51,939 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:51,939 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:41:51,939 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:41:51,939 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=39aca6b60796a80f7b9277581325b51ea783a6c8a56a56e3dbe06e367c9de16d
+2025-01-28 09:41:51,941 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:41:52,008 - root - INFO - [main.py:181] - 
+=== Graceful Shutdown Initiated ===
+2025-01-28 09:41:52,008 - root - INFO - [main.py:183] - Stopping data collection...
+2025-01-28 09:41:52,061 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:41:52,061 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:41:52 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:41:52,063 - DataCollector - ERROR - [data_collector.py:103] - Error saving raw data: Cannot save file into a non-existent directory: 'market_data_20250128/raw_data'
+2025-01-28 09:41:52,063 - DataCollector - DEBUG - [data_collector.py:74] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:41:52,791 - root - INFO - [main.py:195] - === Trading System Stopped ===
+2025-01-28 09:41:52,791 - root - INFO - [main.py:196] - End Time: 2025-01-28 09:41:52.791397
+2025-01-28 09:41:52,791 - root - INFO - [main.py:197] - Total Runtime: 0:00:14.697395
+2025-01-28 09:43:46,264 - root - INFO - [main.py:45] - Logging system initialized
+2025-01-28 09:43:46,264 - root - INFO - [main.py:117] - === Trading System Starting ===
+2025-01-28 09:43:46,264 - root - INFO - [main.py:118] - Start Time: 2025-01-28 09:43:46.264437
+2025-01-28 09:43:46,264 - root - INFO - [main.py:53] - === System Information ===
+2025-01-28 09:43:46,264 - root - INFO - [main.py:54] - CPU Usage: 20.3%
+2025-01-28 09:43:46,264 - root - INFO - [main.py:55] - Memory Usage: 86.0% (Used: 3107.5MB, Available: 1150.6MB)
+2025-01-28 09:43:46,264 - root - INFO - [main.py:56] - Disk Usage: 42.9% (Used: 19.0GB, Free: 25.3GB)
+2025-01-28 09:43:46,264 - root - INFO - [main.py:57] - ========================
+2025-01-28 09:43:46,264 - root - INFO - [main.py:124] - Initializing API connection...
+2025-01-28 09:43:46,265 - root - DEBUG - [main.py:62] - Attempting to load credentials from cred.yml
+2025-01-28 09:43:46,265 - root - INFO - [main.py:65] - Credentials loaded successfully
+2025-01-28 09:43:46,265 - root - INFO - [main.py:82] - Attempting to login to Shoonya API...
+2025-01-28 09:43:46,265 - root - DEBUG - [main.py:83] - Using credentials - User: FA50394, Vendor: FA50394_U
+2025-01-28 09:43:46,265 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//QuickAuth
+2025-01-28 09:43:46,265 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Req:jData={"source": "API", "apkversion": "1.0.0", "uid": "FA50394", "pwd": "ad22819ca036c79fc3f682de40aef9ad686a730afc027d70c0a693fe3257ce52", "factor2": "25754", "vc": "FA50394_U", "appkey": "3716bccde81099592dd356b0d326d10e2a238ba12d1eae65b8612906c9eb782b", "imei": "xyz12345"}
+2025-01-28 09:43:46,273 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:46,551 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//QuickAuth HTTP/1.1" 200 1518
+2025-01-28 09:43:46,551 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - Reply:{"request_time":"09:43:46 28-01-2025","actid":"FA50394","access_type":["WEB","TT","MOB","API"],"uname":"Arshdeep Singh Makker","prarr":[{"prd":"C","s_prdt_ali":"CNC","exch":["NSE","BSE","NIPO","BSTAR"]},{"prd":"M","s_prdt_ali":"NRML","exch":["NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"I","s_prdt_ali":"MIS","exch":["NSE","BSE","NFO","BFO","CDS","BCD","MCX","NCX"]},{"prd":"H","s_prdt_ali":"CO","exch":["NSE","NFO","CDS","MCX","BSE"]},{"prd":"B","s_prdt_ali":"BO","exch":["NSE","NFO","CDS","MCX","BSE"]}],"exch_prd":[{"exch":"NSE","prds":["C","I","H","B"]},{"exch":"NIPO","prds":["C"]},{"exch":"BSE","prds":["C","I","H","B"]},{"exch":"NFO","prds":["M","I","H","B"]},{"exch":"CDS","prds":["M","I","H","B"]},{"exch":"MCX","prds":["M","I","H","B"]},{"exch":"BCD","prds":["M","I"]},{"exch":"NCX","prds":["M","I"]},{"exch":"BSTAR","prds":["C"]},{"exch":"BFO","prds":["M","I"]}],"stat":"Ok","susertoken":"d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9","susertokenspl":"1ac5fd17a7536f3a8e7fe799b998970d229191325d9dd7f7d3dcf48d0c3c6dd9","email":"arsh_makker@yahoo.com","uid":"FA50394","brnchid":"HO","totp_set":"1","m_num":"9910248922","orarr":["MKT","LMT","SL-LMT","SL-MKT"],"exarr":["NSE","NIPO","BSE","NFO","CDS","MCX","BCD","NCX","BSTAR","BFO"],"values":["Options"],"mws":{"Options":[{"exch":"NSE","token":"2885","tsym":"RELIANCE-EQ","cname":"RELIANCE INDUSTRIES LTD","instname":"EQ","pp":"2","ls":"1","ti":"0.05"}]},"brkname":"FINV","dmsg":"","lastaccesstime":"1738037626","lastpwdtime":"1737977419"}
+2025-01-28 09:43:46,551 - root - INFO - [main.py:96] - Successfully logged in to Shoonya API
+2025-01-28 09:43:46,551 - root - DEBUG - [main.py:97] - Login response: {'request_time': '09:43:46 28-01-2025', 'actid': 'FA50394', 'access_type': ['WEB', 'TT', 'MOB', 'API'], 'uname': 'Arshdeep Singh Makker', 'prarr': [{'prd': 'C', 's_prdt_ali': 'CNC', 'exch': ['NSE', 'BSE', 'NIPO', 'BSTAR']}, {'prd': 'M', 's_prdt_ali': 'NRML', 'exch': ['NFO', 'BFO', 'CDS', 'BCD', 'MCX', 'NCX']}, {'prd': 'I', 's_prdt_ali': 'MIS', 'exch': ['NSE', 'BSE', 'NFO', 'BFO', 'CDS', 'BCD', 'MCX', 'NCX']}, {'prd': 'H', 's_prdt_ali': 'CO', 'exch': ['NSE', 'NFO', 'CDS', 'MCX', 'BSE']}, {'prd': 'B', 's_prdt_ali': 'BO', 'exch': ['NSE', 'NFO', 'CDS', 'MCX', 'BSE']}], 'exch_prd': [{'exch': 'NSE', 'prds': ['C', 'I', 'H', 'B']}, {'exch': 'NIPO', 'prds': ['C']}, {'exch': 'BSE', 'prds': ['C', 'I', 'H', 'B']}, {'exch': 'NFO', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'CDS', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'MCX', 'prds': ['M', 'I', 'H', 'B']}, {'exch': 'BCD', 'prds': ['M', 'I']}, {'exch': 'NCX', 'prds': ['M', 'I']}, {'exch': 'BSTAR', 'prds': ['C']}, {'exch': 'BFO', 'prds': ['M', 'I']}], 'stat': 'Ok', 'susertoken': 'd5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9', 'susertokenspl': '1ac5fd17a7536f3a8e7fe799b998970d229191325d9dd7f7d3dcf48d0c3c6dd9', 'email': 'arsh_makker@yahoo.com', 'uid': 'FA50394', 'brnchid': 'HO', 'totp_set': '1', 'm_num': '9910248922', 'orarr': ['MKT', 'LMT', 'SL-LMT', 'SL-MKT'], 'exarr': ['NSE', 'NIPO', 'BSE', 'NFO', 'CDS', 'MCX', 'BCD', 'NCX', 'BSTAR', 'BFO'], 'values': ['Options'], 'mws': {'Options': [{'exch': 'NSE', 'token': '2885', 'tsym': 'RELIANCE-EQ', 'cname': 'RELIANCE INDUSTRIES LTD', 'instname': 'EQ', 'pp': '2', 'ls': '1', 'ti': '0.05'}]}, 'brkname': 'FINV', 'dmsg': '', 'lastaccesstime': '1738037626', 'lastpwdtime': '1737977419'}
+2025-01-28 09:43:46,551 - root - INFO - [main.py:128] - Initializing symbol manager...
+2025-01-28 09:43:46,551 - SymbolManager - DEBUG - [symbol_manager.py:45] - Loading NSE symbols from symbols/NSE.csv
+2025-01-28 09:43:46,565 - SymbolManager - INFO - [symbol_manager.py:49] - Loaded NSE Cash symbols: 7567 symbols
+2025-01-28 09:43:46,565 - SymbolManager - DEBUG - [symbol_manager.py:50] - NSE columns: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'instrument', 'ticksize', 'unnamed: 7']
+2025-01-28 09:43:46,565 - SymbolManager - DEBUG - [symbol_manager.py:57] - Loading NFO symbols from symbols/NFO.csv
+2025-01-28 09:43:46,657 - SymbolManager - INFO - [symbol_manager.py:61] - Loaded NFO symbols: 92072 symbols
+2025-01-28 09:43:46,657 - SymbolManager - DEBUG - [symbol_manager.py:62] - NFO columns: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'expiry', 'instrument', 'optiontype', 'strikeprice', 'ticksize', 'unnamed: 10']
+2025-01-28 09:43:46,657 - root - INFO - [main.py:133] - Fetching active NFO symbols...
+2025-01-28 09:43:46,657 - SymbolManager - DEBUG - [symbol_manager.py:148] - Available columns for filtering: ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 'expiry', 'instrument', 'optiontype', 'strikeprice', 'ticksize', 'unnamed: 10']
+2025-01-28 09:43:46,658 - SymbolManager - WARNING - [symbol_manager.py:158] - Column instrument_type not found in symbol file
+2025-01-28 09:43:47,937 - SymbolManager - INFO - [symbol_manager.py:172] - Found 92072 symbols matching criteria in NFO
+2025-01-28 09:43:47,938 - SymbolManager - DEBUG - [symbol_manager.py:174] - Sample symbol: {'symbol': 'ZYDUSLIFE', 'token': '153235', 'exchange': 'NFO', 'lotsize': 900, 'tick_size': 0.05}
+2025-01-28 09:43:47,955 - root - INFO - [main.py:140] - Found 92072 NFO symbols
+2025-01-28 09:43:47,955 - root - DEBUG - [main.py:141] - Symbols: ['ZYDUSLIFE', 'ZYDUSLIFE']
+2025-01-28 09:43:47,956 - root - INFO - [main.py:146] - Initializing data collector...
+2025-01-28 09:43:47,956 - DataCollector - INFO - [data_collector.py:33] - Created raw data directory: market_data_20250128/raw_data
+2025-01-28 09:43:47,956 - DataCollector - INFO - [data_collector.py:39] - Created processed data directory: market_data_20250128/processed_data
+2025-01-28 09:43:47,956 - root - INFO - [main.py:152] - Starting data collection for symbols: ['ZYDUSLIFE', 'ZYDUSLIFE']
+2025-01-28 09:43:47,956 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:47,956 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:47,956 - DataCollector - INFO - [data_collector.py:53] - Started data collection for 2 symbols
+2025-01-28 09:43:47,956 - root - INFO - [main.py:158] - Initializing paper trader with capital: 100000
+2025-01-28 09:43:47,957 - root - INFO - [main.py:162] - === System Running ===
+2025-01-28 09:43:47,957 - root - INFO - [main.py:176] - Runtime: 0:00:01.692606 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:43:47,957 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:48,081 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:48,082 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:48 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:48,086 - DataCollector - INFO - [data_collector.py:120] - Created new data file: market_data_20250128/raw_data/ZYDUSLIFE_20250128.csv
+2025-01-28 09:43:48,086 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:48,086 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:48,086 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:48,087 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:48,176 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:48,176 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:48 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:48,178 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:49,183 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:49,183 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:49,185 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:49,319 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:49,320 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:49 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:49,324 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:49,325 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:49,325 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:49,327 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:49,436 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:49,437 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:49 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:49,440 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:50,444 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:50,444 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:50,449 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:50,556 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:50,558 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:50 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:50,560 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:50,560 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:50,560 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:50,564 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:50,789 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:50,790 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:50 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:50,794 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:51,798 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:51,799 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:51,802 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:51,901 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:51,902 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:51 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:51,906 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:51,906 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:51,906 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:51,908 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:52,068 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:52,069 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:52 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:52,072 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:52,962 - root - INFO - [main.py:176] - Runtime: 0:00:06.697831 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:43:53,077 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:53,077 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:53,080 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:53,188 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:53,189 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:53 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:53,193 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:53,193 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:53,193 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:53,195 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:53,344 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:53,345 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:53 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:53,349 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:54,354 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:54,354 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:54,357 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:54,458 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:54,459 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:54 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:54,461 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:54,461 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:54,461 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:54,462 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:54,567 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:54,568 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:54 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:54,571 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:55,576 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:55,576 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:55,579 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:55,785 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:55,787 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:55 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:55,791 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:55,791 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:55,792 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:55,793 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:57,023 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:57,025 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:57 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:57,030 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:57,968 - root - INFO - [main.py:176] - Runtime: 0:00:11.703559 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:43:58,031 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:58,032 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:58,050 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:58,188 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:58,189 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:58 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:58,192 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:58,192 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:58,192 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:58,193 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:58,311 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:58,312 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:58 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:58,315 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:43:59,316 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:59,316 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:59,318 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:59,523 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:43:59,523 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:59 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:59,527 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:43:59,527 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:43:59,527 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:43:59,529 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:43:59,625 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:43:59,626 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:43:59 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:43:59,629 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:00,629 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:00,630 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:00,632 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:00,737 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:00,738 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:00 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:00,744 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:00,744 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:00,744 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:00,746 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:00,834 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:00,835 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:00 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:00,840 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:01,840 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:01,841 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:01,844 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:01,999 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:02,000 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:02 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:02,003 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:02,003 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:02,003 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:02,005 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:02,096 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:02,098 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:02 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:02,102 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:02,971 - root - INFO - [main.py:176] - Runtime: 0:00:16.706897 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:44:03,106 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:03,106 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:03,108 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:03,248 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:03,249 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:03 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:03,253 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:03,254 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:03,254 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:03,255 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:03,349 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:03,350 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:03 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:03,354 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:04,359 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:04,359 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:04,360 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:04,491 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:04,492 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:04 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:04,493 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:04,493 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:04,493 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:04,494 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:04,588 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:04,588 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:04 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:04,590 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:05,595 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:05,596 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:05,598 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:05,693 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:05,694 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:05 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:05,696 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:05,696 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:05,696 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:05,699 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:05,953 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:05,953 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:06 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:05,958 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:06,962 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:06,962 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:06,963 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:07,058 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:07,059 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:07 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:07,060 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:07,061 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:07,061 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:07,061 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:07,174 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:07,176 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:07 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:07,209 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:07,977 - root - INFO - [main.py:176] - Runtime: 0:00:21.712543 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:44:08,211 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:08,211 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:08,215 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:08,324 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:08,324 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:08 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:08,337 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:08,337 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:08,337 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:08,339 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:08,433 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:08,442 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:08 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:08,444 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:09,446 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:09,447 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:09,449 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:09,550 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:09,551 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:09 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:09,554 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:09,554 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:09,554 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:09,556 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:09,646 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:09,646 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:09 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:09,651 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:10,652 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:10,653 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:10,656 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:10,746 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:10,747 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:10 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:10,751 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:10,751 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:10,751 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:10,753 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:10,855 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:10,856 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:10 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:10,860 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:11,863 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:11,863 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:11,864 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:11,965 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 432
+2025-01-28 09:44:11,966 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:12 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25P1440","cname":"ZYDUSLIFE MAR 1440 PE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"PE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"546.35","lc":"454.75","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153235","lp":"500.55","c":"500.55","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:11,969 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=500.55
+2025-01-28 09:44:11,969 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:11,969 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153234"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:11,970 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443
+2025-01-28 09:44:12,070 - urllib3.connectionpool - DEBUG - [connectionpool.py:544] - https://api.shoonya.com:443 "POST /NorenWClientTP//GetQuotes HTTP/1.1" 200 425
+2025-01-28 09:44:12,071 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - {"request_time":"09:44:12 28-01-2025","stat":"Ok","exch":"NFO","tsym":"ZYDUSLIFE27MAR25C1440","cname":"ZYDUSLIFE MAR 1440 CE ","symname":"ZYDUSLIFE","seg":"DER","exd":"27-MAR-2025","instname":"OPTSTK","optt":"CE","pp":"2","ls":"900","ti":"0.05","mult":"1","uc":"20.05","lc":"0.05","cutof_all":"false","strprc":"1440.00","prcftr_d":"(1 / 1 ) * (1 / 1)","token":"153234","lp":"0.05","c":"0.05","und_exch":"NSE","und_tk":"7929"}
+2025-01-28 09:44:12,074 - DataCollector - DEBUG - [data_collector.py:90] - Collected data for ZYDUSLIFE: LTP=0.05
+2025-01-28 09:44:12,979 - root - INFO - [main.py:176] - Runtime: 0:00:26.714904 - Position Summary: {'total_pnl': 0, 'available_margin': 100000, 'positions': []}
+2025-01-28 09:44:13,079 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - https://api.shoonya.com/NorenWClientTP//GetQuotes
+2025-01-28 09:44:13,080 - NorenRestApiPy.NorenApi - DEBUG - [NorenApi.py:52] - jData={"uid": "FA50394", "exch": "NFO", "token": "153235"}&jKey=d5fd1c544837e07777150dec7e120981ab602df22d140e1bfe03e3be8c157bb9
+2025-01-28 09:44:13,083 - urllib3.connectionpool - DEBUG - [connectionpool.py:1049] - Starting new HTTPS connection (1): api.shoonya.com:443

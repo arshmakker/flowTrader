@@ -1,0 +1,9 @@
+# Shoonya API Credentials
+# Rename this file to cred.yml and fill in your credentials
+
+user: "YOUR_USER_ID"      # Your Shoonya user ID
+pwd: "YOUR_PASSWORD"      # Your Shoonya password
+factor2: "YOUR_2FA_PIN"   # Your date of birth in YYYYMMDD format
+vc: "YOUR_VENDOR_CODE"    # Your vendor code
+apikey: "YOUR_API_KEY"    # Your API key
+imei: "YOUR_IMEI"        # Can be any unique identifier 

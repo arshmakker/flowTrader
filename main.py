@@ -1,0 +1,200 @@
+import os
+import logging
+import yaml
+import time
+import psutil
+from datetime import datetime
+from api_helper import ShoonyaApiPy
+from symbol_manager import SymbolManager
+from data_collector import DataCollector
+from paper_trader import PaperTrader
+from strategy_tester import StrategyTester
+
+def setup_logging():
+    """Setup logging configuration"""
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    
+    # Create formatters
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    )
+    console_formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
+    # File handler for detailed logging
+    file_handler = logging.FileHandler(
+        os.path.join(log_dir, f'trading_system_{datetime.now().strftime("%Y%m%d")}.log')
+    )
+    file_handler.setFormatter(detailed_formatter)
+    file_handler.setLevel(logging.DEBUG)
+    
+    # Console handler for important messages
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(console_formatter)
+    console_handler.setLevel(logging.INFO)
+    
+    # Root logger configuration
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+    
+    logging.info("Logging system initialized")
+
+def log_system_info():
+    """Log system information"""
+    cpu_percent = psutil.cpu_percent()
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
+    
+    logging.info("=== System Information ===")
+    logging.info(f"CPU Usage: {cpu_percent}%")
+    logging.info(f"Memory Usage: {memory.percent}% (Used: {memory.used/1024/1024:.1f}MB, Available: {memory.available/1024/1024:.1f}MB)")
+    logging.info(f"Disk Usage: {disk.percent}% (Used: {disk.used/1024/1024/1024:.1f}GB, Free: {disk.free/1024/1024/1024:.1f}GB)")
+    logging.info("========================")
+
+def load_credentials():
+    """Load API credentials from cred.yml"""
+    try:
+        logging.debug("Attempting to load credentials from cred.yml")
+        with open('cred.yml', 'r') as file:
+            creds = yaml.safe_load(file)
+            logging.info("Credentials loaded successfully")
+            return creds
+    except FileNotFoundError:
+        logging.error("cred.yml file not found. Please create it from the template.")
+        return None
+    except Exception as e:
+        logging.error(f"Error loading credentials: {str(e)}")
+        return None
+
+def initialize_api():
+    """Initialize and connect to Shoonya API"""
+    creds = load_credentials()
+    if not creds:
+        raise ValueError("Failed to load credentials")
+    
+    api = ShoonyaApiPy()
+    try:
+        logging.info("Attempting to login to Shoonya API...")
+        logging.debug(f"Using credentials - User: {creds['user']}, Vendor: {creds['vc']}")
+        
+        # Login to API
+        login_status = api.login(
+            userid=creds['user'],
+            password=creds['pwd'],
+            twoFA=creds['factor2'],
+            vendor_code=creds['vc'],
+            api_secret=creds['apikey'],
+            imei=creds['imei']
+        )
+        
+        if login_status:
+            logging.info("Successfully logged in to Shoonya API")
+            logging.debug(f"Login response: {login_status}")
+            return api
+        else:
+            logging.error("Login failed - API returned False")
+            logging.debug("Please verify your credentials and API connectivity")
+            raise ValueError("Login failed")
+            
+    except Exception as e:
+        logging.error(f"Error initializing API: {str(e)}", exc_info=True)
+        logging.debug("Check if the API service is available and credentials are correct")
+        raise
+
+def main():
+    """Main function to run the trading system"""
+    collector = None
+    start_time = datetime.now()
+    
+    try:
+        # Setup logging
+        setup_logging()
+        logging.info("=== Trading System Starting ===")
+        logging.info(f"Start Time: {start_time}")
+        
+        # Log system information
+        log_system_info()
+        
+        # Initialize API
+        logging.info("Initializing API connection...")
+        api = initialize_api()
+        
+        # Initialize components
+        logging.info("Initializing symbol manager...")
+        symbol_manager = SymbolManager(api)
+        symbol_manager.load_symbol_files()
+        
+        # Get test symbols
+        logging.info("Fetching active NFO symbols...")
+        nfo_symbols = symbol_manager.get_active_symbols(
+            exchange='NFO',
+            criteria={'instrument_type': 'FUTIDX'}
+        )
+        
+        if nfo_symbols:
+            logging.info(f"Found {len(nfo_symbols)} NFO symbols")
+            logging.debug(f"Symbols: {[s['symbol'] for s in nfo_symbols[:2]]}")
+        else:
+            logging.warning("No NFO symbols found")
+        
+        # Initialize data collector
+        logging.info("Initializing data collector...")
+        collector = DataCollector(api)
+        
+        # Start collecting data
+        if nfo_symbols:
+            test_symbols = nfo_symbols[:2]
+            logging.info(f"Starting data collection for symbols: {[s['symbol'] for s in test_symbols]}")
+            collector.start_collection(test_symbols)
+        else:
+            logging.warning("No symbols available for data collection")
+        
+        # Initialize paper trader
+        logging.info("Initializing paper trader with capital: 100000")
+        trader = PaperTrader(capital=100000)
+        
+        # Run until interrupted
+        logging.info("=== System Running ===")
+        last_system_info = datetime.now()
+        
+        try:
+            while True:
+                current_time = datetime.now()
+                runtime = current_time - start_time
+                
+                # Log system info every 5 minutes
+                if (current_time - last_system_info).total_seconds() >= 300:
+                    log_system_info()
+                    last_system_info = current_time
+                
+                summary = trader.get_position_summary()
+                logging.info(f"Runtime: {runtime} - Position Summary: {summary}")
+                
+                time.sleep(5)
+                
+        except KeyboardInterrupt:
+            logging.info("\n=== Graceful Shutdown Initiated ===")
+            if collector:
+                logging.info("Stopping data collection...")
+                collector.stop_collection()
+            logging.info(f"Total Runtime: {datetime.now() - start_time}")
+            
+    except Exception as e:
+        logging.error(f"Critical error in main: {str(e)}", exc_info=True)
+        if collector:
+            logging.info("Stopping data collection due to error...")
+            collector.stop_collection()
+    
+    finally:
+        end_time = datetime.now()
+        logging.info("=== Trading System Stopped ===")
+        logging.info(f"End Time: {end_time}")
+        logging.info(f"Total Runtime: {end_time - start_time}")
+
+if __name__ == "__main__":
+    main() 
