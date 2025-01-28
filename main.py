@@ -10,6 +10,13 @@ from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
 
+try:
+    from colorama import init, Fore, Style
+    init(autoreset=True)
+except ImportError:
+    print("colorama module not found. Please install it using 'pip install colorama'")
+    exit(1)
+
 def setup_logging():
     """Setup logging configuration"""
     log_dir = 'logs'
@@ -50,11 +57,11 @@ def log_system_info():
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage('/')
     
-    logging.info("=== System Information ===")
-    logging.info(f"CPU Usage: {cpu_percent}%")
-    logging.info(f"Memory Usage: {memory.percent}% (Used: {memory.used/1024/1024:.1f}MB, Available: {memory.available/1024/1024:.1f}MB)")
-    logging.info(f"Disk Usage: {disk.percent}% (Used: {disk.used/1024/1024/1024:.1f}GB, Free: {disk.free/1024/1024/1024:.1f}GB)")
-    logging.info("========================")
+    logging.info(Fore.YELLOW + "=== System Information ===")
+    logging.info(Fore.YELLOW + f"CPU Usage: {cpu_percent}%")
+    logging.info(Fore.YELLOW + f"Memory Usage: {memory.percent}% (Used: {memory.used/1024/1024:.1f}MB, Available: {memory.available/1024/1024:.1f}MB)")
+    logging.info(Fore.YELLOW + f"Disk Usage: {disk.percent}% (Used: {disk.used/1024/1024/1024:.1f}GB, Free: {disk.free/1024/1024/1024:.1f}GB)")
+    logging.info(Fore.YELLOW + "========================")
 
 def load_credentials():
     """Load API credentials from cred.yml"""
@@ -62,13 +69,13 @@ def load_credentials():
         logging.debug("Attempting to load credentials from cred.yml")
         with open('cred.yml', 'r') as file:
             creds = yaml.safe_load(file)
-            logging.info("Credentials loaded successfully")
+            logging.info(Fore.GREEN + "Credentials loaded successfully")
             return creds
     except FileNotFoundError:
-        logging.error("cred.yml file not found. Please create it from the template.")
+        logging.error(Fore.RED + "cred.yml file not found. Please create it from the template.")
         return None
     except Exception as e:
-        logging.error(f"Error loading credentials: {str(e)}")
+        logging.error(Fore.RED + f"Error loading credentials: {str(e)}")
         return None
 
 def initialize_api():
@@ -83,9 +90,9 @@ def initialize_api():
         logging.debug(f"Using credentials - User: {creds['user']}, Vendor: {creds['vc']}")
         
         # Prompt for 2FA code
-        factor2 = input("Enter your 2FA code: ")
+        factor2 = input(Fore.CYAN + "Enter your 2FA code: ")
         if not factor2:
-            logging.error("2FA code is required")
+            logging.error(Fore.RED + "2FA code is required")
             raise ValueError("2FA code is required")
             
         # Login to API
@@ -99,16 +106,16 @@ def initialize_api():
         )
         
         if login_status:
-            logging.info("Successfully logged in to Shoonya API")
+            logging.info(Fore.GREEN + "Successfully logged in to Shoonya API")
             logging.debug(f"Login response: {login_status}")
             return api
         else:
-            logging.error("Login failed - API returned False")
+            logging.error(Fore.RED + "Login failed - API returned False")
             logging.debug("Please verify your credentials and API connectivity")
             raise ValueError("Login failed")
             
     except Exception as e:
-        logging.error(f"Error initializing API: {str(e)}", exc_info=True)
+        logging.error(Fore.RED + f"Error initializing API: {str(e)}", exc_info=True)
         logging.debug("Check if the API service is available and credentials are correct")
         raise
 
@@ -120,8 +127,8 @@ def main():
     try:
         # Setup logging
         setup_logging()
-        logging.info("=== Trading System Starting ===")
-        logging.info(f"Start Time: {start_time}")
+        logging.info(Fore.CYAN + "=== Trading System Starting ===")
+        logging.info(Fore.CYAN + f"Start Time: {start_time}")
         
         # Log system information
         log_system_info()
@@ -148,7 +155,7 @@ def main():
         trader = PaperTrader(data_collector=collector, initial_capital=900000)
         
         # Run until interrupted
-        logging.info("=== System Running ===")
+        logging.info(Fore.CYAN + "=== System Running ===")
         last_system_info = datetime.now()
         
         try:
@@ -162,19 +169,19 @@ def main():
                     last_system_info = current_time
                 
                 summary = trader.get_position_summary()
-                logging.info(f"Runtime: {runtime} - Position Summary: {summary}")
+                logging.info(Fore.GREEN + f"Runtime: {runtime} - Position Summary: {summary}")
                 
                 time.sleep(5)
                 
         except KeyboardInterrupt:
-            logging.info("\n=== Graceful Shutdown Initiated ===")
+            logging.info(Fore.RED + "\n=== Graceful Shutdown Initiated ===")
             if collector:
                 logging.info("Stopping data collection...")
                 collector.stop_collection()
-            logging.info(f"Total Runtime: {datetime.now() - start_time}")
+            logging.info(Fore.CYAN + f"Total Runtime: {datetime.now() - start_time}")
             
     except Exception as e:
-        logging.error(f"Critical error in main: {str(e)}", exc_info=True)
+        logging.error(Fore.RED + f"Critical error in main: {str(e)}", exc_info=True)
         if collector:
             logging.info("Stopping data collection due to error...")
             collector.stop_collection()
@@ -186,9 +193,9 @@ def main():
             except:
                 pass
                 
-        logging.info("=== Trading System Stopped ===")
-        logging.info(f"End Time: {datetime.now()}")
-        logging.info(f"Total Runtime: {datetime.now() - start_time}")
+        logging.info(Fore.CYAN + "=== Trading System Stopped ===")
+        logging.info(Fore.CYAN + f"End Time: {datetime.now()}")
+        logging.info(Fore.CYAN + f"Total Runtime: {datetime.now() - start_time}")
 
 if __name__ == "__main__":
-    main() 
+    main()
