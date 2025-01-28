@@ -129,34 +129,17 @@ def main():
         symbol_manager = SymbolManager(api)
         symbol_manager.load_symbol_files()
         
-        # Get test symbols
-        logging.info("Fetching active NFO symbols...")
-        nfo_symbols = symbol_manager.get_active_symbols(
-            exchange='NFO',
-            criteria={'instrument_type': 'FUTIDX'}
-        )
-        
-        if nfo_symbols:
-            logging.info(f"Found {len(nfo_symbols)} NFO symbols")
-            logging.debug(f"Symbols: {[s['symbol'] for s in nfo_symbols[:2]]}")
-        else:
-            logging.warning("No NFO symbols found")
-        
         # Initialize data collector
         logging.info("Initializing data collector...")
         collector = DataCollector(api)
         
-        # Start collecting data
-        if nfo_symbols:
-            test_symbols = nfo_symbols[:2]
-            logging.info(f"Starting data collection for symbols: {[s['symbol'] for s in test_symbols]}")
-            collector.start_collection(test_symbols)
-        else:
-            logging.warning("No symbols available for data collection")
+        # Start collecting data for index futures
+        logging.info("Starting data collection for index futures...")
+        collector.start_collection()  # Will automatically get current month index futures
         
         # Initialize paper trader
         logging.info("Initializing paper trader with capital: 100000")
-        trader = PaperTrader(capital=100000)
+        trader = PaperTrader(capital=100000, data_collector=collector)
         
         # Run until interrupted
         logging.info("=== System Running ===")
@@ -189,12 +172,17 @@ def main():
         if collector:
             logging.info("Stopping data collection due to error...")
             collector.stop_collection()
-    
+            
     finally:
-        end_time = datetime.now()
+        if collector:
+            try:
+                collector.stop_collection()
+            except:
+                pass
+                
         logging.info("=== Trading System Stopped ===")
-        logging.info(f"End Time: {end_time}")
-        logging.info(f"Total Runtime: {end_time - start_time}")
+        logging.info(f"End Time: {datetime.now()}")
+        logging.info(f"Total Runtime: {datetime.now() - start_time}")
 
 if __name__ == "__main__":
     main() 
