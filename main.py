@@ -82,11 +82,17 @@ def initialize_api():
         logging.info("Attempting to login to Shoonya API...")
         logging.debug(f"Using credentials - User: {creds['user']}, Vendor: {creds['vc']}")
         
+        # Prompt for 2FA code
+        factor2 = input("Enter your 2FA code: ")
+        if not factor2:
+            logging.error("2FA code is required")
+            raise ValueError("2FA code is required")
+            
         # Login to API
         login_status = api.login(
             userid=creds['user'],
             password=creds['pwd'],
-            twoFA=creds['factor2'],
+            twoFA=factor2,  # Use the prompted 2FA code
             vendor_code=creds['vc'],
             api_secret=creds['apikey'],
             imei=creds['imei']
@@ -138,8 +144,8 @@ def main():
         collector.start_collection()  # Will automatically get current month index futures
         
         # Initialize paper trader
-        logging.info("Initializing paper trader with capital: 100000")
-        trader = PaperTrader(capital=100000, data_collector=collector)
+        logging.info("Initializing paper trader with capital: 900000")
+        trader = PaperTrader(data_collector=collector, initial_capital=900000)
         
         # Run until interrupted
         logging.info("=== System Running ===")

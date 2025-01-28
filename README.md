@@ -1,155 +1,149 @@
-# Shoonya Trading System
+# Index Futures Trading System
 
-A Python-based trading system for algorithmic trading using the Shoonya API. This system provides functionality for market data collection, paper trading, and strategy testing.
+A Python-based automated trading system for index futures (NIFTY, BANKNIFTY, FINNIFTY) using the Shoonya API.
 
 ## Features
 
-- Real-time market data collection
-- Paper trading with simulated orders
-- Symbol management for NSE Cash and F&O markets
-- Strategy testing framework
-- Comprehensive logging and data storage
+- Real-time data collection for index futures
+- Paper trading with realistic slippage and margin requirements
+- Momentum-based trading strategy with volume confirmation
+- Risk management with trailing stops and partial profit booking
+- Proper position sizing based on available capital
+- Trading time restrictions (9:30-11:30 and 13:30-15:15)
 
-## Prerequisites
+## System Requirements
 
-- Python 3.7+
-- Shoonya API credentials
-- Required Python packages (install using `pip install -r requirements.txt`):
+- Python 3.8+
+- Required Python packages (install via pip):
   - pandas
   - numpy
-  - api_helper (Shoonya API Python wrapper)
+  - requests
+  - pyyaml
+  - psutil
 
-## Directory Structure
+## Installation
 
-```
-├── symbols/
-│   ├── NSE.csv       # NSE Cash market symbols
-│   └── NFO.csv       # NSE F&O market symbols
-├── market_data_YYYYMMDD/
-│   ├── raw_data/     # Raw market data
-│   ├── processed_data/  # Processed market data
-│   └── master_files/    # Daily master files
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd shoonyapythonmod
 ```
 
-## Setup
-
-1. Install required packages:
+2. Install required packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Place your NSE and NFO symbol files in the `symbols` directory:
-   - `symbols/NSE.csv`: NSE Cash market symbols
-   - `symbols/NFO.csv`: NSE F&O market symbols
-
-3. Configure your Shoonya API credentials:
-```python
-from api_helper import ShoonyaApiPy
-
-api = ShoonyaApiPy()
-api.set_session('YOUR_SESSION_TOKEN')  # Or use login credentials
+3. Create a `cred.yml` file with your Shoonya API credentials:
+```yaml
+user: "YOUR_USER_ID"
+pwd: "YOUR_PASSWORD"
+factor2: "YOUR_2FA"
+vc: "YOUR_VENDOR_CODE"
+apikey: "YOUR_API_KEY"
+imei: "YOUR_IMEI"
 ```
+
+## Trading Parameters
+
+### NIFTY
+- Lot Size: 50
+- Minimum Movement: 5 points
+- Initial Stop: 8 points
+- Target 1: 8 points (Exit 40%)
+- Target 2: 12 points (Exit 30%)
+- Trailing Stop: 3 points
+- Margin per Lot: ₹23,000
+- Maximum Lots: 3
+
+### BANKNIFTY
+- Lot Size: 15
+- Minimum Movement: 12 points
+- Initial Stop: 15 points
+- Target 1: 20 points (Exit 40%)
+- Target 2: 30 points (Exit 30%)
+- Trailing Stop: 6 points
+- Margin per Lot: ₹49,000
+- Maximum Lots: 2
+
+### FINNIFTY
+- Lot Size: 40
+- Minimum Movement: 8 points
+- Initial Stop: 12 points
+- Target 1: 15 points (Exit 40%)
+- Target 2: 22 points (Exit 30%)
+- Trailing Stop: 4 points
+- Margin per Lot: ₹23,000
+- Maximum Lots: 3
 
 ## Usage
 
-### Basic Usage
-
-```python
-from api_helper import ShoonyaApiPy
-from strategy_tester import StrategyTester
-
-# Initialize API
-api = ShoonyaApiPy()
-api.set_session('YOUR_SESSION_TOKEN')
-
-# Create and run strategy
-strategy = StrategyTester(api)
-strategy.run_strategy()
+1. Start the trading system:
+```bash
+python main.py
 ```
 
-### Data Collection
+2. Monitor the logs:
+- Trading logs: `logs/trading_system_YYYYMMDD.log`
+- Paper trade logs: `paper_trades_YYYYMMDD.csv`
 
-```python
-from data_collector import DataCollector
+## Directory Structure
 
-# Initialize data collector
-collector = DataCollector(api)
-
-# Start collecting data for specific symbols
-symbols = [
-    {'symbol': 'NIFTY-I', 'token': '26000', 'exchange': 'NFO'},
-    {'symbol': 'BANKNIFTY-I', 'token': '26009', 'exchange': 'NFO'}
-]
-collector.start_collection(symbols)
-
-# Stop data collection
-collector.stop_collection()
+```
+shoonyapythonmod/
+├── main.py                 # Main entry point
+├── data_collector.py       # Market data collection
+├── paper_trader.py         # Paper trading implementation
+├── symbol_manager.py       # Symbol and contract management
+├── api_helper.py           # Shoonya API wrapper
+├── cred.yml               # API credentials (create this)
+├── requirements.txt       # Python dependencies
+├── logs/                  # Log files
+└── market_data_YYYYMMDD/  # Collected market data
+    ├── raw_data/         # Raw tick data
+    └── processed_data/   # Processed data
 ```
 
-### Paper Trading
+## Risk Management
 
-```python
-from paper_trader import PaperTrader
+1. Capital Protection:
+   - Maximum 2% daily loss limit
+   - Maximum 3 trades per day
+   - No new trades after 2 consecutive losses
 
-# Initialize paper trader with capital
-trader = PaperTrader(capital=100000)
+2. Position Management:
+   - Initial entry with 60% of intended position size
+   - First target exits 40% of position
+   - Second target exits 30% of position
+   - Trailing stop on remaining 30%
 
-# Place orders
-order_id = trader.place_order(
-    symbol='NIFTY-I',
-    quantity=50,
-    side='BUY',
-    order_type='MARKET'
-)
+3. Margin Requirements:
+   - Maximum 30% capital per trade
+   - Proper lot size calculation based on available margin
 
-# Close position
-trader.close_position(order_id)
+## Data Collection
 
-# Get position summary
-summary = trader.get_position_summary()
-print(summary)
-```
-
-## Data Files
-
-### Symbol Files Format (NSE.csv/NFO.csv)
-Required columns:
-- symbol: Trading symbol
-- token: Exchange token
-- lotsize: Lot size (for F&O)
-- tick_size: Minimum price movement
-
-### Market Data Storage
-- Raw market data is stored in CSV format in the `raw_data` directory
-- Each symbol has its own file named `SYMBOL_YYYYMMDD.csv`
-- Data includes: timestamp, ltp, volume, bid, ask, and open interest
+The system collects real-time market data for:
+- Current month index futures
+- Tick-by-tick data including LTP, volume, and bid-ask
+- Data saved in CSV format for analysis
 
 ## Logging
 
-The system maintains comprehensive logs for:
-- Market data collection
-- Paper trading activities
-- Symbol management
-- Strategy execution
+1. System Logs:
+   - Trading decisions and executions
+   - Position management actions
+   - Error and warning messages
+   - System performance metrics
 
-Logs are stored with appropriate timestamps and log levels for easy debugging.
+2. Trade Logs:
+   - Entry and exit prices
+   - Position sizes and partial exits
+   - PnL calculations
+   - Reason for exits
 
-## Error Handling
+## Note
 
-The system includes robust error handling for:
-- API connection issues
-- Data collection errors
-- Trading errors
-- File I/O operations
-
-All errors are logged with appropriate context for troubleshooting.
-
-## Contributing
-
-Feel free to submit issues and enhancement requests!
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+This is a paper trading system. Always test thoroughly before using with real money. Past performance does not guarantee future results.
 
 
