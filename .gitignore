@@ -2,5 +2,5 @@ __pycache__
 venv
 cred.yml
 market_data_20250128/
-log/
+logs/
 
