@@ -1,10 +1,13 @@
 import pandas as pd
 import numpy as np
-from datetime import datetime, time
+from datetime import datetime, time, date
 import logging
 import os
 from typing import Dict, List, Tuple
 from data_collector import DataCollector
+import json
+import csv
+from colorama import Fore, Style
 
 class PaperTrader:
     def __init__(self, data_collector: DataCollector, initial_capital: float = 900000):
@@ -26,7 +29,10 @@ class PaperTrader:
                 'trail_points': 3,
                 'lot_size': 50,
                 'margin_per_lot': 23000,
-                'max_lots': 3
+                'max_lots': 3,
+                'tick_size': 0.05,
+                'slippage_std': 0.0002,
+                'min_movement_multiplier': 1.5
             },
             'BANKNIFTY': {
                 'min_movement': 12,
@@ -34,9 +40,12 @@ class PaperTrader:
                 'target1': 20,
                 'target2': 30,
                 'trail_points': 6,
-                'lot_size': 15,  # Updated based on actual lot size
+                'lot_size': 15,
                 'margin_per_lot': 49000,
-                'max_lots': 2
+                'max_lots': 2,
+                'tick_size': 0.1,
+                'slippage_std': 0.0003,
+                'min_movement_multiplier': 2
             },
             'FINNIFTY': {
                 'min_movement': 8,
@@ -46,15 +55,83 @@ class PaperTrader:
                 'trail_points': 4,
                 'lot_size': 40,
                 'margin_per_lot': 23000,
-                'max_lots': 3
+                'max_lots': 3,
+                'tick_size': 0.05,
+                'slippage_std': 0.0002,
+                'min_movement_multiplier': 1.8
             }
         }
         
         self.setup_logging()
+        self.setup_trade_logging()
 
     def setup_logging(self):
         """Setup logging configuration"""
         self.logger = logging.getLogger('PaperTrader')
+        
+        # Create a trade log directory if it doesn't exist
+        self.trade_log_dir = 'logs/paper_trades'
+        if not os.path.exists(self.trade_log_dir):
+            os.makedirs(self.trade_log_dir)
+
+    def setup_trade_logging(self):
+        """Setup trade logging files"""
+        today = datetime.now().strftime('%Y%m%d')
+        self.trade_log_file = os.path.join(self.trade_log_dir, f'paper_trades_{today}.csv')
+        self.position_log_file = os.path.join(self.trade_log_dir, f'positions_{today}.csv')
+        
+        # Create trade log if it doesn't exist
+        if not os.path.exists(self.trade_log_file):
+            with open(self.trade_log_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['timestamp', 'symbol', 'action', 'direction', 'price', 
+                               'quantity', 'pnl', 'remaining_capital', 'reason'])
+
+        # Create position log if it doesn't exist
+        if not os.path.exists(self.position_log_file):
+            with open(self.position_log_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['timestamp', 'symbol', 'direction', 'entry_price', 
+                               'current_price', 'quantity', 'unrealized_pnl', 'stop_loss', 'targets'])
+
+    def log_trade(self, symbol: str, action: str, direction: str, price: float, 
+                  quantity: int, pnl: float, reason: str):
+        """Log trade details to CSV"""
+        with open(self.trade_log_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                symbol,
+                action,
+                direction,
+                price,
+                quantity,
+                pnl,
+                self.current_capital,
+                reason
+            ])
+        
+        self.logger.info(
+            f"{Fore.CYAN}TRADE: {symbol} {action} {direction} | "
+            f"Price: {price:.2f} | Qty: {quantity} | "
+            f"PnL: {pnl:.2f} | Reason: {reason}{Style.RESET_ALL}"
+        )
+
+    def log_position(self, symbol: str, position: dict):
+        """Log current position details"""
+        with open(self.position_log_file, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                symbol,
+                position['direction'],
+                position['entry_price'],
+                position['current_price'],
+                position['quantity'],
+                position['unrealized_pnl'],
+                position['stop_loss'],
+                json.dumps(position['targets'])
+            ])
 
     def is_trading_time(self) -> bool:
         """Check if current time is within trading hours"""
@@ -70,7 +147,6 @@ class PaperTrader:
     def get_latest_data(self, symbol: str, lookback: int = 20) -> pd.DataFrame:
         """Get latest market data for a symbol"""
         try:
-            # Construct the data file path
             date_str = datetime.now().strftime('%Y%m%d')
             file_path = os.path.join(
                 self.data_collector.data_directory,
@@ -82,353 +158,241 @@ class PaperTrader:
                 self.logger.warning(f"No data file found for {symbol}")
                 return None
                 
-            # Read the latest data
             df = pd.read_csv(file_path)
             if len(df) == 0:
                 return None
                 
-            # Convert timestamp to datetime
             df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('timestamp').tail(lookback)
             
-            # Get only new data since last processing
-            if symbol in self.last_processed_time:
-                df = df[df['timestamp'] > self.last_processed_time[symbol]]
-                
-            if len(df) == 0:
-                return None
-                
-            # Update last processed time
-            self.last_processed_time[symbol] = df['timestamp'].max()
-            
-            # Return the latest records
-            return df.tail(lookback)
+            return df
             
         except Exception as e:
             self.logger.error(f"Error reading data for {symbol}: {str(e)}")
             return None
 
-    def check_entry_conditions(self, data: pd.DataFrame, index: str) -> Tuple[bool, str, float]:
-        """Check if entry conditions are met"""
-        if data is None or len(data) < 20:
-            return False, "", 0
-            
-        params = self.index_params[index]
-        
-        # Get latest data points
-        recent_data = data.tail(20)
-        current_price = recent_data['ltp'].iloc[-1]
-        
-        # Calculate price movement
-        price_change = recent_data['ltp'].diff()
-        volume = recent_data['volume']
-        avg_volume = volume.mean()
-        
-        # Check volume conditions
-        volume_confirmed = (volume.iloc[-1] > avg_volume * 1.2)  # 20% above average
-        
-        # Check price movement conditions
-        if price_change.iloc[-1] >= params['min_movement'] and volume_confirmed:
-            return True, "BUY", current_price
-        elif price_change.iloc[-1] <= -params['min_movement'] and volume_confirmed:
-            return True, "SELL", current_price
-            
-        return False, "", 0
+    def calculate_position_size(self, symbol: str) -> int:
+        """Calculate position size based on risk parameters"""
+        params = self.index_params[symbol]
+        available_margin = self.current_capital * 0.3  # Max 30% capital per trade
+        max_lots = min(
+            params['max_lots'],
+            int(available_margin / params['margin_per_lot'])
+        )
+        return max_lots * params['lot_size']
 
-    def process_market_data(self):
-        """Process latest market data and execute strategy"""
-        if not self.is_trading_time():
-            return
-            
-        # Get active symbols from data collector
-        symbols = self.data_collector.get_index_symbols()
-        if not symbols:
-            return
-            
-        # Process each symbol
-        for symbol_info in symbols:
-            symbol = symbol_info['symbol']
-            index = symbol_info['index_name']
-            
-            # Get latest data
-            latest_data = self.get_latest_data(symbol)
-            if latest_data is None:
-                continue
-                
-            # Check for new entries if no position exists
-            if index not in self.active_positions:
-                entry_allowed, direction, entry_price = self.check_entry_conditions(latest_data, index)
-                if entry_allowed:
-                    self.execute_trade(index, direction, entry_price, symbol_info)
-            
-            # Manage existing position
-            if index in self.active_positions:
-                self.manage_position(index, latest_data)
-
-    def execute_trade(self, index: str, direction: str, entry_price: float, symbol_info: dict):
-        """Execute new trade with position sizing"""
-        if not self.can_take_new_trade():
-            return
-            
-        params = self.index_params[index]
-        lots = self.calculate_lots(index)
+    def can_take_new_trade(self) -> bool:
+        """Check if new trades are allowed based on risk parameters"""
+        today = date.today()
         
-        # Calculate initial position size (60% of total intended size)
-        initial_lots = max(1, int(lots * 0.6))
-        
-        stop_loss = (entry_price - params['initial_stop']) if direction == "BUY" else (entry_price + params['initial_stop'])
-        target1 = (entry_price + params['target1']) if direction == "BUY" else (entry_price - params['target1'])
-        target2 = (entry_price + params['target2']) if direction == "BUY" else (entry_price - params['target2'])
-        
-        trade = {
-            'index': index,
-            'symbol': symbol_info['symbol'],
-            'direction': direction,
-            'entry_price': entry_price,
-            'lots': initial_lots,
-            'stop_loss': stop_loss,
-            'target1': target1,
-            'target2': target2,
-            'remaining_lots': initial_lots,
-            'entry_time': datetime.now(),
-            'trail_stop': None
-        }
-        
-        self.active_positions[index] = trade
-        self.logger.info(f"Executed {direction} trade in {index}: {trade}")
-
-    def manage_position(self, index: str, current_data: pd.DataFrame):
-        """Manage existing position"""
-        if current_data is None or len(current_data) == 0:
-            return
-            
-        position = self.active_positions[index]
-        current_price = current_data['ltp'].iloc[-1]
-        
-        self.check_exits(index, position, current_price)
-        self.update_trailing_stop(index, position, current_price)
-
-    def get_position_summary(self) -> dict:
-        """Get summary of current positions and PnL"""
-        summary = {
-            'active_positions': len(self.active_positions),
-            'daily_pnl': self.daily_pnl,
-            'current_capital': self.current_capital,
-            'positions': []
-        }
-        
-        for index, position in self.active_positions.items():
-            pos_summary = {
-                'index': index,
-                'symbol': position['symbol'],
-                'direction': position['direction'],
-                'entry_price': position['entry_price'],
-                'remaining_lots': position['remaining_lots'],
-                'stop_loss': position['stop_loss'],
-                'trail_stop': position['trail_stop']
-            }
-            summary['positions'].append(pos_summary)
-            
-        return summary
-
-    # Include all other methods from IndexTrader (calculate_lots, check_exits, update_trailing_stop, etc.)
-    # Just ensure they use the correct lot sizes and other parameters from our actual data
-
-    def place_order(self, symbol, quantity, side, order_type, price=None):
-        """Simulate order placement"""
-        # Validate symbol
-        symbol_base = self._get_symbol_base(symbol)
-        if symbol_base not in self.index_params:
-            self.logger.warning(f"Invalid symbol {symbol}. Only NIFTY, BANKNIFTY, and FINNIFTY are supported.")
-            return None
-            
-        # Validate lot size
-        lot_size = self.index_params[symbol_base]['lot_size']
-        if quantity % lot_size != 0:
-            self.logger.warning(f"Quantity must be multiple of lot size {lot_size} for {symbol_base}")
-            return None
-            
-        order_id = f"PAPER_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-        
-        execution_price = self._get_execution_price(side, symbol, price, symbol_base)
-        if execution_price is None:
-            self.logger.warning(f"Could not get execution price for {symbol}")
-            return None
-            
-        margin_required = self._calculate_margin(execution_price, quantity, symbol_base)
-        
-        if margin_required > self.current_capital:
-            self.logger.warning(f"Insufficient margin for trade. Required: {margin_required}, Available: {self.current_capital}")
-            return None
-        
-        trade = {
-            'order_id': order_id,
-            'symbol': symbol,
-            'symbol_base': symbol_base,
-            'quantity': quantity,
-            'lots': quantity // lot_size,
-            'side': side,
-            'entry_price': execution_price,
-            'entry_time': datetime.now(),
-            'status': 'OPEN',
-            'pnl': 0
-        }
-        
-        self.active_positions[symbol_base] = trade
-        self.current_capital -= margin_required
-        self._log_trade(trade)
-        
-        self.logger.info(f"Paper trade placed: {trade}")
-        return order_id
-
-    def _get_symbol_base(self, symbol):
-        """Extract base symbol from full symbol name"""
-        if 'NIFTY' in symbol.upper():
-            if 'FINNIFTY' in symbol.upper():
-                return 'FINNIFTY'
-            elif 'BANKNIFTY' in symbol.upper():
-                return 'BANKNIFTY'
-            else:
-                return 'NIFTY'
-        return None
-
-    def _get_execution_price(self, side, symbol, requested_price=None, symbol_base=None):
-        """Get execution price with realistic slippage and spread consideration"""
-        try:
-            # If we have a data collector, try to get real market data
-            if self.data_collector:
-                market_data = None
-                while not self.data_collector.data_queue.empty():
-                    data = self.data_collector.data_queue.get()
-                    if data['symbol'] == symbol:
-                        market_data = data
-                        break
-                
-                if market_data:
-                    # Use bid/ask prices based on side
-                    base_price = market_data['ask'] if side == 'BUY' else market_data['bid']
-                    
-                    # If no bid/ask available, use LTP
-                    if base_price == 0:
-                        base_price = market_data['ltp']
-                        
-                    # If we still don't have a valid price, use requested price
-                    if base_price == 0 and requested_price:
-                        base_price = requested_price
-                        
-                    if base_price > 0:
-                        # Use symbol-specific slippage if available
-                        slippage_std = self.index_params.get(symbol_base, {}).get('slippage_std', 0.0002)
-                        
-                        # Apply random slippage using normal distribution
-                        slippage_factor = np.random.normal(0, slippage_std)
-                        # For buys, slippage increases price, for sells it decreases
-                        slippage_direction = 1 if side == 'BUY' else -1
-                        execution_price = base_price * (1 + slippage_factor * slippage_direction)
-                        
-                        # Round to tick size if specified
-                        if symbol_base and 'tick_size' in self.index_params[symbol_base]:
-                            tick_size = self.index_params[symbol_base]['tick_size']
-                            execution_price = round(execution_price / tick_size) * tick_size
-                        
-                        # Log the slippage details
-                        self.logger.debug(f"Price execution details for {symbol}: Base Price={base_price:.2f}, " +
-                                        f"Slippage={slippage_factor*100:.4f}%, Final Price={execution_price:.2f}")
-                        
-                        return execution_price
-            
-            # Fallback to requested price if available
-            if requested_price:
-                return requested_price
-                
-            # Final fallback to dummy price
-            self.logger.warning(f"Using fallback price for {symbol} due to no market data")
-            return 100.0
-            
-        except Exception as e:
-            self.logger.error(f"Error getting execution price: {str(e)}")
-            return None
-
-    def _calculate_margin(self, price, quantity, symbol_base):
-        """Calculate required margin based on symbol specifications"""
-        if symbol_base in self.index_params:
-            margin_per_lot = self.index_params[symbol_base]['margin_per_lot']
-            return price * quantity * margin_per_lot
-        return price * quantity * 0.2  # Default 20% margin requirement
-
-    def close_position(self, order_id, price=None):
-        """Simulate closing a position"""
-        if order_id not in self.active_positions:
-            self.logger.warning(f"Position {order_id} not found")
+        # Check daily loss limit (2%)
+        if abs(self.daily_pnl) > self.initial_capital * 0.02:
+            self.logger.warning(f"{Fore.YELLOW}Daily loss limit reached. No new trades.{Style.RESET_ALL}")
             return False
+            
+        # Check maximum trades per day (3)
+        today_trades = [t for t in self.trades if t['date'].date() == today]
+        if len(today_trades) >= 3:
+            self.logger.warning(f"{Fore.YELLOW}Maximum daily trades reached.{Style.RESET_ALL}")
+            return False
+            
+        # Check consecutive losses
+        if len(self.trades) >= 2:
+            last_two_trades = self.trades[-2:]
+            if all(t['pnl'] < 0 for t in last_two_trades):
+                self.logger.warning(f"{Fore.YELLOW}Two consecutive losses. No new trades.{Style.RESET_ALL}")
+                return False
         
-        position = self.active_positions[order_id]
-        if price is None:
-            price = self._get_execution_price('SELL' if position['side'] == 'BUY' else 'BUY', position['symbol'])
-        
-        # Calculate P&L
-        if position['side'] == 'BUY':
-            pnl = (price - position['entry_price']) * position['quantity']
-        else:
-            pnl = (position['entry_price'] - price) * position['quantity']
-        
-        position['exit_price'] = price
-        position['exit_time'] = datetime.now()
-        position['status'] = 'CLOSED'
-        position['pnl'] = pnl
-        
-        # Release margin
-        margin_used = self._calculate_margin(position['entry_price'], position['quantity'], position['symbol_base'])
-        self.current_capital += margin_used
-        
-        # Move to history
-        self.trades.append(position)
-        del self.active_positions[order_id]
-        
-        self._log_trade(position)
-        self.logger.info(f"Position closed: {position}")
         return True
 
-    def _log_trade(self, trade):
-        """Log trade to CSV file"""
-        try:
-            df = pd.DataFrame([trade])
-            if not os.path.exists(self.trade_log_file):
-                df.to_csv(self.trade_log_file, index=False)
-                self.logger.info(f"Created trade log file: {self.trade_log_file}")
-            else:
-                df.to_csv(self.trade_log_file, mode='a', header=False, index=False)
-                
-        except Exception as e:
-            self.logger.error(f"Error logging trade: {str(e)}")
+    def check_entry_conditions(self, data: pd.DataFrame, symbol: str) -> Tuple[bool, str, float]:
+        """Check entry conditions for a new trade"""
+        if data is None or len(data) < 20:
+            return False, None, None
+            
+        # Calculate basic indicators
+        data['sma_20'] = data['ltp'].rolling(window=20).mean()
+        data['volume_sma'] = data['volume'].rolling(window=20).mean()
+        
+        latest = data.iloc[-1]
+        prev = data.iloc[-2]
+        
+        # Momentum conditions
+        price_above_sma = latest['ltp'] > latest['sma_20']
+        volume_confirmation = latest['volume'] > latest['volume_sma'] * 1.5
+        min_movement = self.index_params[symbol]['min_movement']
+        
+        # Long entry
+        if (price_above_sma and 
+            volume_confirmation and 
+            latest['ltp'] - prev['ltp'] >= min_movement):
+            return True, 'BUY', latest['ltp']
+            
+        # Short entry
+        elif (not price_above_sma and 
+              volume_confirmation and 
+              prev['ltp'] - latest['ltp'] >= min_movement):
+            return True, 'SELL', latest['ltp']
+            
+        return False, None, None
 
-    def get_position_summary(self):
-        """Get summary of current positions"""
-        total_pnl = 0
-        position_summary = []
+    def execute_trade(self, symbol: str, direction: str, price: float, params: dict):
+        """Execute a new trade"""
+        quantity = self.calculate_position_size(symbol)
         
-        for pos in self.active_positions.values():
-            current_price = self._get_execution_price(
-                'SELL' if pos['side'] == 'BUY' else 'BUY',
-                pos['symbol']
-            )
+        # Apply simulated slippage
+        slippage = np.random.normal(0, params['slippage_std'])
+        executed_price = price * (1 + slippage)
+        
+        position = {
+            'symbol': symbol,
+            'direction': direction,
+            'entry_price': executed_price,
+            'current_price': executed_price,
+            'quantity': quantity,
+            'entry_time': datetime.now(),
+            'unrealized_pnl': 0,
+            'stop_loss': executed_price * (0.99 if direction == 'BUY' else 1.01),
+            'targets': {
+                'target1': executed_price * (1.004 if direction == 'BUY' else 0.996),
+                'target2': executed_price * (1.006 if direction == 'BUY' else 0.994)
+            },
+            'exits_done': set()
+        }
+        
+        self.active_positions[symbol] = position
+        self.log_trade(symbol, 'ENTRY', direction, executed_price, quantity, 0, 'New position')
+        self.log_position(symbol, position)
+
+    def manage_position(self, symbol: str, data: pd.DataFrame):
+        """Manage existing position"""
+        if data is None or len(data) == 0:
+            return
             
-            if pos['side'] == 'BUY':
-                unrealized_pnl = (current_price - pos['entry_price']) * pos['quantity']
+        position = self.active_positions[symbol]
+        current_price = data.iloc[-1]['ltp']
+        position['current_price'] = current_price
+        
+        # Calculate unrealized P&L
+        price_diff = current_price - position['entry_price']
+        if position['direction'] == 'SELL':
+            price_diff = -price_diff
+        position['unrealized_pnl'] = price_diff * position['quantity']
+        
+        # Check stop loss
+        if ((position['direction'] == 'BUY' and current_price <= position['stop_loss']) or
+            (position['direction'] == 'SELL' and current_price >= position['stop_loss'])):
+            self.exit_position(symbol, current_price, 'Stop loss hit')
+            return
+            
+        # Check targets
+        remaining_qty = position['quantity']
+        for target_name, target_price in position['targets'].items():
+            if target_name not in position['exits_done']:
+                if ((position['direction'] == 'BUY' and current_price >= target_price) or
+                    (position['direction'] == 'SELL' and current_price <= target_price)):
+                    # Exit 40% at first target, 30% at second target
+                    exit_portion = 0.4 if target_name == 'target1' else 0.3
+                    exit_qty = int(position['quantity'] * exit_portion)
+                    if exit_qty > 0:
+                        self.partial_exit(symbol, current_price, exit_qty, f'{target_name} reached')
+                        position['exits_done'].add(target_name)
+                        remaining_qty -= exit_qty
+        
+        # Update trailing stop for remaining position
+        if remaining_qty > 0 and len(position['exits_done']) > 0:
+            trail_points = self.index_params[symbol]['trail_points']
+            if position['direction'] == 'BUY':
+                new_stop = current_price - trail_points
+                if new_stop > position['stop_loss']:
+                    position['stop_loss'] = new_stop
             else:
-                unrealized_pnl = (pos['entry_price'] - current_price) * pos['quantity']
-            
-            total_pnl += unrealized_pnl
-            position_summary.append({
-                'symbol': pos['symbol'],
-                'side': pos['side'],
-                'quantity': pos['quantity'],
-                'entry_price': pos['entry_price'],
-                'current_price': current_price,
-                'unrealized_pnl': unrealized_pnl
-            })
+                new_stop = current_price + trail_points
+                if new_stop < position['stop_loss']:
+                    position['stop_loss'] = new_stop
         
-        return {
-            'total_pnl': total_pnl,
-            'current_capital': self.current_capital,
-            'positions': position_summary
-        } 
+        self.log_position(symbol, position)
+
+    def partial_exit(self, symbol: str, price: float, quantity: int, reason: str):
+        """Execute a partial exit of a position"""
+        position = self.active_positions[symbol]
+        
+        # Calculate P&L for partial exit
+        price_diff = price - position['entry_price']
+        if position['direction'] == 'SELL':
+            price_diff = -price_diff
+        pnl = price_diff * quantity
+        
+        # Update position
+        position['quantity'] -= quantity
+        self.daily_pnl += pnl
+        self.current_capital += pnl
+        
+        self.log_trade(symbol, 'PARTIAL_EXIT', position['direction'], 
+                      price, quantity, pnl, reason)
+
+    def exit_position(self, symbol: str, price: float, reason: str):
+        """Exit entire position"""
+        position = self.active_positions[symbol]
+        
+        # Calculate final P&L
+        price_diff = price - position['entry_price']
+        if position['direction'] == 'SELL':
+            price_diff = -price_diff
+        pnl = price_diff * position['quantity']
+        
+        # Update account
+        self.daily_pnl += pnl
+        self.current_capital += pnl
+        
+        # Log the exit
+        self.log_trade(symbol, 'EXIT', position['direction'], 
+                      price, position['quantity'], pnl, reason)
+        
+        # Add to trades history
+        self.trades.append({
+            'date': datetime.now(),
+            'symbol': symbol,
+            'direction': position['direction'],
+            'entry_price': position['entry_price'],
+            'exit_price': price,
+            'quantity': position['quantity'],
+            'pnl': pnl
+        })
+        
+        # Remove position
+        del self.active_positions[symbol]
+
+    def process_market_data(self):
+        """Process latest market data and execute trading logic"""
+        for symbol in self.index_params.keys():
+            data = self.get_latest_data(symbol)
+            if data is None:
+                continue
+                
+            # Manage existing position
+            if symbol in self.active_positions:
+                self.manage_position(symbol, data)
+                continue
+                
+            # Check for new entry if no position exists
+            if self.can_take_new_trade():
+                entry_signal, direction, price = self.check_entry_conditions(data, symbol)
+                if entry_signal:
+                    self.execute_trade(symbol, direction, price, self.index_params[symbol])
+
+    def get_position_summary(self) -> str:
+        """Get current positions and P&L summary"""
+        summary = []
+        for symbol, pos in self.active_positions.items():
+            summary.append(
+                f"{symbol}: {pos['direction']} {pos['quantity']} @ {pos['entry_price']:.2f} "
+                f"Current: {pos['current_price']:.2f} PnL: {pos['unrealized_pnl']:.2f}"
+            )
+        
+        if not summary:
+            summary = ["No active positions"]
+            
+        summary.append(f"Daily P&L: {self.daily_pnl:.2f}")
+        summary.append(f"Current Capital: {self.current_capital:.2f}")
+        return " | ".join(summary) 

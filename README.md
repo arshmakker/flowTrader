@@ -1,27 +1,55 @@
 # Index Futures Trading System
 
-A Python-based automated trading system for index futures (NIFTY, BANKNIFTY, FINNIFTY) using the Shoonya API.
+A Python-based automated trading system for index futures (NIFTY, BANKNIFTY, FINNIFTY) using the Shoonya API. The system implements paper trading with real-time data collection and automated trading strategies.
 
-## Features
+## System Architecture
 
-- Real-time data collection for index futures
-- Paper trading with realistic slippage and margin requirements
-- Momentum-based trading strategy with volume confirmation
-- Risk management with trailing stops and partial profit booking
-- Proper position sizing based on available capital
-- Trading time restrictions (9:30-11:30 and 13:30-15:15)
+### Core Components
+
+1. **API Integration** (`api_helper.py`)
+   - Wrapper for Shoonya API
+   - Handles authentication and API communication
+   - Manages market data subscriptions
+
+2. **Symbol Management** (`symbol_manager.py`)
+   - Manages trading symbols and contracts
+   - Handles expiry calculations
+   - Maintains symbol mappings for NFO and NSE
+
+3. **Data Collection** (`data_collector.py`)
+   - Real-time market data collection
+   - Tick-by-tick data processing
+   - Data storage in structured format
+   - Automatic directory management
+
+4. **Paper Trading** (`paper_trader.py`)
+   - Simulated trading environment
+   - Position management
+   - Risk management
+   - PnL tracking
+
+5. **Strategy Testing** (`strategy_tester.py`)
+   - Backtesting framework
+   - Strategy performance analysis
+   - Parameter optimization
 
 ## System Requirements
 
 - Python 3.8+
 - Required Python packages (install via pip):
-  - pandas
-  - numpy
-  - requests
-  - pyyaml
-  - psutil
+  ```bash
+  pandas>=1.3.0
+  numpy>=1.21.0
+  python-dateutil>=2.8.2
+  pytz>=2021.1
+  requests>=2.26.0
+  PyYAML>=5.4.1
+  psutil>=5.8.0
+  colorama>=0.4.4
+  NorenRestApi-0.0.30
+  ```
 
-## Installation
+## Installation & Setup
 
 1. Clone the repository:
 ```bash
@@ -34,7 +62,12 @@ cd shoonyapythonmod
 pip install -r requirements.txt
 ```
 
-3. Create a `cred.yml` file with your Shoonya API credentials:
+3. Create `cred.yml` from template:
+```bash
+cp cred.yml.template cred.yml
+```
+
+4. Edit `cred.yml` with your credentials:
 ```yaml
 user: "YOUR_USER_ID"
 pwd: "YOUR_PASSWORD"
@@ -43,6 +76,58 @@ vc: "YOUR_VENDOR_CODE"
 apikey: "YOUR_API_KEY"
 imei: "YOUR_IMEI"
 ```
+
+## System Workflow
+
+1. **Initialization**
+   - System loads credentials and connects to Shoonya API
+   - Initializes logging system
+   - Sets up data directories
+   - Loads symbol information
+
+2. **Data Collection**
+   - Creates date-specific directories for market data
+   - Collects real-time tick data for index futures
+   - Processes and stores data in raw and processed formats
+   - Maintains separate directories for different data types
+
+3. **Trading Operations**
+   - Monitors market data in real-time
+   - Applies trading strategies
+   - Manages paper trading positions
+   - Implements risk management rules
+
+4. **Monitoring & Logging**
+   - Detailed logging of all system operations
+   - Regular system health checks
+   - Performance monitoring
+   - Position and PnL tracking
+
+## Directory Structure
+
+```
+shoonyapythonmod/
+├── main.py                 # Main entry point
+├── api_helper.py           # Shoonya API wrapper
+├── symbol_manager.py       # Symbol management
+├── data_collector.py       # Market data collection
+├── paper_trader.py         # Paper trading system
+├── strategy_tester.py      # Strategy testing framework
+├── example_orders.py       # Order examples
+├── example_market.py       # Market data examples
+├── tests/                  # Test suite
+│   └── test_api.py        # API tests
+├── market_data_YYYYMMDD/   # Daily market data
+│   ├── raw_data/          # Raw tick data
+│   └── processed_data/    # Processed market data
+├── logs/                   # System logs
+├── data/                   # Additional data files
+├── symbols/               # Symbol information
+│   ├── NFO.csv           # NFO symbols
+│   └── NSE.csv           # NSE symbols
+├── cred.yml              # API credentials
+├── cred.yml.template     # Credentials template
+└── requirements.txt      # Dependencies
 
 ## Trading Parameters
 
@@ -76,34 +161,6 @@ imei: "YOUR_IMEI"
 - Margin per Lot: ₹23,000
 - Maximum Lots: 3
 
-## Usage
-
-1. Start the trading system:
-```bash
-python main.py
-```
-
-2. Monitor the logs:
-- Trading logs: `logs/trading_system_YYYYMMDD.log`
-- Paper trade logs: `paper_trades_YYYYMMDD.csv`
-
-## Directory Structure
-
-```
-shoonyapythonmod/
-├── main.py                 # Main entry point
-├── data_collector.py       # Market data collection
-├── paper_trader.py         # Paper trading implementation
-├── symbol_manager.py       # Symbol and contract management
-├── api_helper.py           # Shoonya API wrapper
-├── cred.yml               # API credentials (create this)
-├── requirements.txt       # Python dependencies
-├── logs/                  # Log files
-└── market_data_YYYYMMDD/  # Collected market data
-    ├── raw_data/         # Raw tick data
-    └── processed_data/   # Processed data
-```
-
 ## Risk Management
 
 1. Capital Protection:
@@ -121,29 +178,43 @@ shoonyapythonmod/
    - Maximum 30% capital per trade
    - Proper lot size calculation based on available margin
 
-## Data Collection
+## Testing
 
-The system collects real-time market data for:
-- Current month index futures
-- Tick-by-tick data including LTP, volume, and bid-ask
-- Data saved in CSV format for analysis
+The system includes a comprehensive testing framework:
+- Unit tests for API functionality
+- Strategy backtesting capabilities
+- Paper trading simulation
+- Performance analysis tools
 
-## Logging
+## Logging System
 
-1. System Logs:
-   - Trading decisions and executions
-   - Position management actions
+1. **System Logs** (`logs/trading_system_YYYYMMDD.log`)
+   - Detailed operation logging
    - Error and warning messages
    - System performance metrics
+   - API communication logs
 
-2. Trade Logs:
-   - Entry and exit prices
-   - Position sizes and partial exits
-   - PnL calculations
-   - Reason for exits
+2. **Trading Logs**
+   - Trade execution details
+   - Position management
+   - PnL tracking
+   - Risk metrics
+
+3. **Market Data**
+   - Raw tick data
+   - Processed market data
+   - Daily data organization
+   - Backup and archival
+
+## Development
+
+- Use the test suite for validating changes
+- Follow the example files for implementation references
+- Monitor logs for system behavior
+- Use strategy tester for algorithm validation
 
 ## Note
 
-This is a paper trading system. Always test thoroughly before using with real money. Past performance does not guarantee future results.
+This is a paper trading system designed for testing and development. Always validate strategies thoroughly before live trading. Past performance does not guarantee future results.
 
 

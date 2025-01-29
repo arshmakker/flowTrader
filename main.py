@@ -9,9 +9,9 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
+from colorama import init, Fore, Style
 
 try:
-    from colorama import init, Fore, Style
     init(autoreset=True)
 except ImportError:
     print("colorama module not found. Please install it using 'pip install colorama'")
@@ -99,7 +99,7 @@ def initialize_api():
         login_status = api.login(
             userid=creds['user'],
             password=creds['pwd'],
-            twoFA=factor2,  # Use the prompted 2FA code
+            twoFA=factor2,
             vendor_code=creds['vc'],
             api_secret=creds['apikey'],
             imei=creds['imei']
@@ -122,6 +122,7 @@ def initialize_api():
 def main():
     """Main function to run the trading system"""
     collector = None
+    trader = None
     start_time = datetime.now()
     
     try:
@@ -148,10 +149,10 @@ def main():
         
         # Start collecting data for index futures
         logging.info("Starting data collection for index futures...")
-        collector.start_collection()  # Will automatically get current month index futures
+        collector.start_collection()
         
-        # Initialize paper trader
-        logging.info("Initializing paper trader with capital: 900000")
+        # Initialize paper trader with ₹9,00,000 capital
+        logging.info(Fore.GREEN + "Initializing paper trader with capital: ₹9,00,000")
         trader = PaperTrader(data_collector=collector, initial_capital=900000)
         
         # Run until interrupted
@@ -163,11 +164,16 @@ def main():
                 current_time = datetime.now()
                 runtime = current_time - start_time
                 
+                # Process market data and check positions
+                if trader.is_trading_time():
+                    trader.process_market_data()
+                
                 # Log system info every 5 minutes
                 if (current_time - last_system_info).total_seconds() >= 300:
                     log_system_info()
                     last_system_info = current_time
                 
+                # Get and log position summary
                 summary = trader.get_position_summary()
                 logging.info(Fore.GREEN + f"Runtime: {runtime} - Position Summary: {summary}")
                 
@@ -178,6 +184,11 @@ def main():
             if collector:
                 logging.info("Stopping data collection...")
                 collector.stop_collection()
+            
+            if trader:
+                final_summary = trader.get_position_summary()
+                logging.info(Fore.YELLOW + f"Final Position Summary: {final_summary}")
+            
             logging.info(Fore.CYAN + f"Total Runtime: {datetime.now() - start_time}")
             
     except Exception as e:
@@ -190,6 +201,13 @@ def main():
         if collector:
             try:
                 collector.stop_collection()
+            except:
+                pass
+        
+        if trader:
+            try:
+                final_summary = trader.get_position_summary()
+                logging.info(Fore.YELLOW + f"Final Trading Summary: {final_summary}")
             except:
                 pass
                 
