@@ -206,33 +206,23 @@ class PaperTrader:
         return True
 
     def check_entry_conditions(self, data: pd.DataFrame, symbol: str) -> Tuple[bool, str, float]:
-        """Check entry conditions for a new trade"""
-        if data is None or len(data) < 20:
+        """Check entry conditions for a new trade using simpler approach from backtesting"""
+        if data is None or len(data) < 5:  # Changed from 20 to 5 to match main1.py
             return False, None, None
             
-        # Calculate basic indicators
-        data['sma_20'] = data['ltp'].rolling(window=20).mean()
-        data['volume_sma'] = data['volume'].rolling(window=20).mean()
+        # Calculate price and volume changes over 5 periods
+        lookback = 5
+        price_change = data['ltp'].iloc[-1] - data['ltp'].iloc[-lookback]
+        volume_change = data['volume'].iloc[-1] - data['volume'].iloc[-lookback]
+        avg_volume = data['volume'].diff().mean()
         
-        latest = data.iloc[-1]
-        prev = data.iloc[-2]
-        
-        # Momentum conditions
-        price_above_sma = latest['ltp'] > latest['sma_20']
-        volume_confirmation = latest['volume'] > latest['volume_sma'] * 1.5
         min_movement = self.index_params[symbol]['min_movement']
         
-        # Long entry
-        if (price_above_sma and 
-            volume_confirmation and 
-            latest['ltp'] - prev['ltp'] >= min_movement):
-            return True, 'BUY', latest['ltp']
-            
-        # Short entry
-        elif (not price_above_sma and 
-              volume_confirmation and 
-              prev['ltp'] - latest['ltp'] >= min_movement):
-            return True, 'SELL', latest['ltp']
+        # Check if absolute price change exceeds minimum movement and volume is increasing
+        if abs(price_change) >= min_movement and volume_change > avg_volume:
+            # Determine direction based on price change
+            direction = 'BUY' if price_change > 0 else 'SELL'
+            return True, direction, data['ltp'].iloc[-1]
             
         return False, None, None
 
