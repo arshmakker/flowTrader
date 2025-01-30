@@ -10,14 +10,16 @@ import json
 from symbol_manager import SymbolManager
 
 class DataCollector:
-    def __init__(self, api):
+    def __init__(self, api, symbol_manager=None):
         self.api = api
+        self.symbol_manager = symbol_manager
         self.logger = logging.getLogger('DataCollector')
-        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
-        self.ensure_directory()
         self.collection_active = False
         self.collection_thread = None
         self.data_queue = queue.Queue()
+        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
+        self.raw_data_directory = os.path.join(self.data_directory, 'raw_data')
+        self.ensure_directory()
         
         # Define index specifications
         self.index_specs = {
@@ -73,44 +75,14 @@ class DataCollector:
         return last_thursday.strftime('%d%b%y').upper()
 
     def get_index_symbols(self):
-        """Get list of current month futures for indices"""
-        expiry = self.get_current_month_expiry()
-        symbols = []
-        
-        # Get the list of available futures from symbol manager
-        symbol_manager = SymbolManager(self.api)
-        symbol_manager.load_symbol_files()
-        available_futures = symbol_manager.get_index_futures()
-        
-        if not available_futures:
-            self.logger.error("No index futures found in symbol files")
-            return []
-            
-        for future in available_futures:
-            try:
-                # Get the token for the symbol using the trading symbol from NFO file
-                token_info = self.api.get_security_info(
-                    exchange='NFO',
-                    token=future['token']
-                )
-                
-                if token_info:
-                    symbols.append({
-                        'symbol': future['symbol'],  # This is the trading symbol from NFO
-                        'token': future['token'],
-                        'exchange': 'NFO',
-                        'index_name': future['index_name'],
-                        'lot_size': future['lot_size']
-                    })
-                    self.logger.info(f"Added {future['symbol']} for data collection")
-                else:
-                    self.logger.warning(f"Could not get token info for {future['symbol']}")
-                    
-            except Exception as e:
-                self.logger.error(f"Error getting token for {future['symbol']}: {str(e)}")
-                continue
-                
-        return symbols
+        """Get list of index futures symbols"""
+        if self.symbol_manager:
+            return self.symbol_manager.get_index_futures()
+        else:
+            self.logger.warning("No symbol manager provided, creating temporary one")
+            temp_manager = SymbolManager(self.api)
+            temp_manager.load_symbol_files()
+            return temp_manager.get_index_futures()
 
     def start_collection(self, symbols=None):
         """Start collecting data for index futures"""

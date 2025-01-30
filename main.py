@@ -141,11 +141,11 @@ def main():
         # Initialize components
         logging.info("Initializing symbol manager...")
         symbol_manager = SymbolManager(api)
-        symbol_manager.load_symbol_files()
+        symbol_manager.load_symbol_files()  # Load symbols only once during initialization
         
-        # Initialize data collector
+        # Initialize data collector with symbol manager
         logging.info("Initializing data collector...")
-        collector = DataCollector(api)
+        collector = DataCollector(api, symbol_manager)  # Pass symbol_manager to collector
         
         # Start collecting data for index futures
         logging.info("Starting data collection for index futures...")

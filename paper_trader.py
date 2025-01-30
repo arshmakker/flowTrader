@@ -19,6 +19,10 @@ class PaperTrader:
         self.active_positions = {}
         self.last_processed_time = {}
         
+        # Cache for symbol information
+        self._symbol_cache = {}
+        self._update_symbol_cache()
+        
         # Index-specific parameters
         self.index_params = {
             'NIFTY': {
@@ -144,31 +148,58 @@ class PaperTrader:
         return ((morning_start <= current_time <= morning_end) or 
                 (afternoon_start <= current_time <= afternoon_end))
 
+    def _update_symbol_cache(self):
+        """Update the cache of symbol information"""
+        symbols = self.data_collector.get_index_symbols()
+        self._symbol_cache = {
+            s['index_name']: {
+                'symbol': s['symbol'],
+                'token': s['token']
+            } for s in symbols
+        }
+        
     def get_latest_data(self, symbol: str, lookback: int = 20) -> pd.DataFrame:
         """Get latest market data for a symbol"""
         try:
-            date_str = datetime.now().strftime('%Y%m%d')
-            file_path = os.path.join(
-                self.data_collector.data_directory,
-                'raw_data',
-                f'{symbol}_{date_str}.csv'
+            # Use cached symbol information
+            if symbol not in self._symbol_cache:
+                self.logger.warning(f"No futures symbol found for {symbol}")
+                return None
+            
+            symbol_info = self._symbol_cache[symbol]
+            
+            # Get live quote from API
+            quote = self.data_collector.api.get_quotes(
+                exchange='NFO',
+                token=symbol_info['token']
             )
             
-            if not os.path.exists(file_path):
-                self.logger.warning(f"No data file found for {symbol}")
+            if not quote:
+                self.logger.warning(f"No live quote available for {symbol}")
                 return None
-                
-            df = pd.read_csv(file_path)
-            if len(df) == 0:
-                return None
-                
+            
+            # Create a DataFrame with the live quote
+            data_point = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f'),
+                'symbol': symbol_info['symbol'],
+                'index_name': symbol,
+                'ltp': float(quote.get('lp', 0)),
+                'volume': int(quote.get('v', 0)),
+                'bid': float(quote.get('bp1', 0)),
+                'ask': float(quote.get('sp1', 0)),
+                'oi': int(quote.get('oi', 0)),
+                'bid_qty': int(quote.get('bq1', 0)),
+                'ask_qty': int(quote.get('sq1', 0))
+            }
+            
+            # Create DataFrame with live data
+            df = pd.DataFrame([data_point])
             df['timestamp'] = pd.to_datetime(df['timestamp'])
-            df = df.sort_values('timestamp').tail(lookback)
             
             return df
             
         except Exception as e:
-            self.logger.error(f"Error reading data for {symbol}: {str(e)}")
+            self.logger.error(f"Error getting live data for {symbol}: {str(e)}")
             return None
 
     def calculate_position_size(self, symbol: str) -> int:
@@ -206,23 +237,62 @@ class PaperTrader:
         return True
 
     def check_entry_conditions(self, data: pd.DataFrame, symbol: str) -> Tuple[bool, str, float]:
-        """Check entry conditions for a new trade using simpler approach from backtesting"""
-        if data is None or len(data) < 5:  # Changed from 20 to 5 to match main1.py
+        """Check entry conditions for a new trade using live data"""
+        if data is None or len(data) == 0:
             return False, None, None
             
-        # Calculate price and volume changes over 5 periods
-        lookback = 5
-        price_change = data['ltp'].iloc[-1] - data['ltp'].iloc[-lookback]
-        volume_change = data['volume'].iloc[-1] - data['volume'].iloc[-lookback]
-        avg_volume = data['volume'].diff().mean()
+        # Get current price and parameters
+        current_price = data['ltp'].iloc[-1]
+        bid = data['bid'].iloc[-1]
+        ask = data['ask'].iloc[-1]
+        volume = data['volume'].iloc[-1]
+        oi = data['oi'].iloc[-1]
+        
+        # Store last processed values for comparison
+        if symbol not in self.last_processed_time:
+            self.last_processed_time[symbol] = {
+                'price': current_price,
+                'volume': volume,
+                'oi': oi,
+                'time': datetime.now()
+            }
+            return False, None, None
+            
+        last_data = self.last_processed_time[symbol]
+        time_diff = (datetime.now() - last_data['time']).total_seconds()
+        
+        # Only process if at least 5 seconds have passed
+        if time_diff < 5:
+            return False, None, None
+            
+        # Calculate changes
+        price_change = current_price - last_data['price']
+        volume_change = volume - last_data['volume']
+        oi_change = oi - last_data['oi']
         
         min_movement = self.index_params[symbol]['min_movement']
         
-        # Check if absolute price change exceeds minimum movement and volume is increasing
-        if abs(price_change) >= min_movement and volume_change > avg_volume:
+        # Update last processed values
+        self.last_processed_time[symbol] = {
+            'price': current_price,
+            'volume': volume,
+            'oi': oi,
+            'time': datetime.now()
+        }
+        
+        # Entry conditions:
+        # 1. Price movement exceeds minimum movement
+        # 2. Volume is increasing
+        # 3. Open Interest is increasing (showing new positions)
+        # 4. Bid-Ask spread is reasonable
+        if (abs(price_change) >= min_movement and 
+            volume_change > 0 and 
+            oi_change > 0 and 
+            (ask - bid) <= min_movement):
+            
             # Determine direction based on price change
             direction = 'BUY' if price_change > 0 else 'SELL'
-            return True, direction, data['ltp'].iloc[-1]
+            return True, direction, current_price
             
         return False, None, None
 
