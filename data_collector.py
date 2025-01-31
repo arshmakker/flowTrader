@@ -75,14 +75,14 @@ class DataCollector:
         return last_thursday.strftime('%d%b%y').upper()
 
     def get_index_symbols(self):
-        """Get list of index futures symbols"""
+        """Get list of index derivatives (futures and options)"""
         if self.symbol_manager:
-            return self.symbol_manager.get_index_futures()
+            return self.symbol_manager.get_all_index_derivatives()
         else:
             self.logger.warning("No symbol manager provided, creating temporary one")
             temp_manager = SymbolManager(self.api)
             temp_manager.load_symbol_files()
-            return temp_manager.get_index_futures()
+            return temp_manager.get_all_index_derivatives()
 
     def start_collection(self, symbols=None):
         """Start collecting data for index futures"""
@@ -107,6 +107,9 @@ class DataCollector:
         while self.collection_active:
             try:
                 timestamp = datetime.now()
+                futures_count = 0
+                options_count = 0
+                
                 for symbol in symbols:
                     try:
                         quote = self.api.get_quotes(
@@ -119,6 +122,7 @@ class DataCollector:
                                 'timestamp': timestamp.strftime('%Y-%m-%d %H:%M:%S.%f'),
                                 'symbol': symbol['symbol'],
                                 'index_name': symbol['index_name'],
+                                'instrument': symbol.get('instrument', 'FUTIDX'),
                                 'ltp': float(quote.get('lp', 0)),
                                 'volume': int(quote.get('v', 0)),
                                 'bid': float(quote.get('bp1', 0)),
@@ -128,17 +132,37 @@ class DataCollector:
                                 'ask_qty': int(quote.get('sq1', 0))
                             }
                             
+                            # Add option-specific fields
+                            if symbol.get('instrument') == 'OPTIDX':
+                                data_point.update({
+                                    'strike': symbol['strike'],
+                                    'option_type': symbol['option_type'],
+                                    'expiry': symbol['expiry']
+                                })
+                                options_count += 1
+                            else:
+                                futures_count += 1
+                            
                             # Save raw data
                             self._save_raw_data(data_point)
                             # Put in queue for processing
                             self.data_queue.put(data_point)
                             
-                            self.logger.debug(f"Collected data for {symbol['symbol']}: LTP={data_point['ltp']}, OI={data_point['oi']}")
+                            log_level = logging.DEBUG if data_point['instrument'] == 'FUTIDX' else logging.INFO
+                            self.logger.log(
+                                log_level,
+                                f"Collected {data_point['instrument']} data for {symbol['symbol']}: "
+                                f"LTP={data_point['ltp']:.2f}, OI={data_point['oi']}"
+                            )
                             
                     except Exception as e:
                         self.logger.error(f"Error collecting data for {symbol['symbol']}: {str(e)}")
                         continue
                 
+                self.logger.info(
+                    f"Collection cycle complete - "
+                    f"Futures: {futures_count}, Options: {options_count}"
+                )
                 time.sleep(1)  # 1-second interval
                 
             except Exception as e:
@@ -159,8 +183,26 @@ class DataCollector:
             if not os.path.exists(raw_data_dir):
                 os.makedirs(raw_data_dir)
 
+            # Create subdirectories for futures and options
+            instrument_type = 'futures' if data_point.get('instrument', 'FUTIDX') == 'FUTIDX' else 'options'
+            instrument_dir = os.path.join(raw_data_dir, instrument_type)
+            if not os.path.exists(instrument_dir):
+                os.makedirs(instrument_dir)
+                
+            # For options, create subdirectories by index and option type
+            if instrument_type == 'options':
+                index_dir = os.path.join(instrument_dir, data_point['index_name'])
+                if not os.path.exists(index_dir):
+                    os.makedirs(index_dir)
+                option_type_dir = os.path.join(index_dir, data_point['option_type'].lower())
+                if not os.path.exists(option_type_dir):
+                    os.makedirs(option_type_dir)
+                final_dir = option_type_dir
+            else:
+                final_dir = instrument_dir
+
             filename = os.path.join(
-                raw_data_dir,
+                final_dir,
                 f"{data_point['symbol']}_{datetime.now().strftime('%Y%m%d')}.csv"
             )
             

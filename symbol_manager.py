@@ -233,6 +233,173 @@ class SymbolManager:
             
         return symbols
 
+    def get_index_options(self, index_name=None, expiry=None, strike_range=5):
+        """Get list of index options
+        Args:
+            index_name: Specific index to get options for (NIFTY, BANKNIFTY, FINNIFTY)
+            expiry: Specific expiry date (format: DD-MMM-YYYY)
+            strike_range: Number of strikes above and below current price
+        """
+        if self.nse_fo is None:
+            self.logger.error("NFO symbols not loaded. Call load_symbol_files() first.")
+            return []
+            
+        symbols = []
+        try:
+            # Filter for index options
+            options_df = self.nse_fo[
+                (self.nse_fo['instrument'] == 'OPTIDX') &  # Index options
+                (self.nse_fo['optiontype'].isin(['CE', 'PE']))  # Call and Put options
+            ].copy()
+            
+            if options_df.empty:
+                self.logger.error("No index options found in NFO file")
+                return []
+            
+            self.logger.info(f"Found {len(options_df)} total index options")
+                
+            # Convert expiry to datetime for sorting
+            options_df['expiry_date'] = pd.to_datetime(options_df['expiry'], format='%d-%b-%Y')
+            options_df = options_df.sort_values(['expiry_date', 'strikeprice'])
+            
+            # Filter by index if specified
+            if index_name:
+                options_df = options_df[options_df['symbol'] == index_name]
+                self.logger.info(f"Found {len(options_df)} options for {index_name}")
+            
+            # Filter by expiry if specified
+            if expiry:
+                options_df = options_df[options_df['expiry'] == expiry]
+            else:
+                # Get nearest expiry
+                min_expiry = options_df['expiry_date'].min()
+                options_df = options_df[options_df['expiry_date'] == min_expiry]
+                self.logger.info(f"Filtered to nearest expiry: {min_expiry.strftime('%d-%b-%Y')}")
+            
+            # Get current market price for ATM strike selection
+            if index_name:
+                indices = [index_name]
+            else:
+                indices = ['NIFTY', 'BANKNIFTY', 'FINNIFTY']
+                
+            for index in indices:
+                try:
+                    # Get current future price as reference
+                    futures = self.get_index_futures()
+                    current_future = next((f for f in futures if f['index_name'] == index), None)
+                    
+                    if not current_future:
+                        self.logger.warning(f"No future found for {index}, skipping options")
+                        continue
+                        
+                    # Get quote for current price
+                    quote = self.api.get_quotes('NFO', current_future['token'])
+                    if not quote:
+                        self.logger.warning(f"No quote available for {index} future, skipping options")
+                        continue
+                        
+                    current_price = float(quote.get('lp', 0))
+                    if current_price <= 0:
+                        self.logger.warning(f"Invalid price for {index} future, skipping options")
+                        continue
+                    
+                    # Filter options for this index
+                    index_options = options_df[options_df['symbol'] == index].copy()
+                    
+                    if index_options.empty:
+                        self.logger.warning(f"No options found for {index}")
+                        continue
+                    
+                    # Find ATM strike
+                    index_options['strike_diff'] = abs(index_options['strikeprice'] - current_price)
+                    atm_strike = index_options.loc[index_options['strike_diff'].idxmin(), 'strikeprice']
+                    
+                    self.logger.info(
+                        f"{index}: Future price = {current_price:.2f}, "
+                        f"ATM strike = {atm_strike:.2f}"
+                    )
+                    
+                    # Get strikes within range
+                    strike_interval = index_options['strikeprice'].diff().mode().iloc[0]
+                    min_strike = atm_strike - (strike_range * strike_interval)
+                    max_strike = atm_strike + (strike_range * strike_interval)
+                    
+                    selected_options = index_options[
+                        (index_options['strikeprice'] >= min_strike) &
+                        (index_options['strikeprice'] <= max_strike)
+                    ]
+                    
+                    self.logger.info(
+                        f"Selected strikes for {index}: "
+                        f"{min_strike:.2f} to {max_strike:.2f} "
+                        f"(interval: {strike_interval:.2f})"
+                    )
+                    
+                    # Add to symbols list
+                    for _, option in selected_options.iterrows():
+                        symbols.append({
+                            'symbol': option['tradingsymbol'],
+                            'token': str(option['token']),
+                            'exchange': 'NFO',
+                            'lot_size': int(option['lotsize']),
+                            'index_name': index,
+                            'expiry': option['expiry'],
+                            'strike': float(option['strikeprice']),
+                            'option_type': option['optiontype'],
+                            'instrument': 'OPTIDX'
+                        })
+                        
+                        self.logger.debug(
+                            f"Added {index} {option['optiontype']} "
+                            f"@ {option['strikeprice']} "
+                            f"(Token: {option['token']})"
+                        )
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing {index} options: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            self.logger.error(f"Error getting index options: {str(e)}")
+            return []
+            
+        if not symbols:
+            self.logger.error("No valid index options found")
+        else:
+            self.logger.info(f"Successfully selected {len(symbols)} options")
+            
+        return symbols
+
+    def get_all_index_derivatives(self):
+        """Get both futures and options for indices"""
+        derivatives = []
+        
+        # Get futures
+        self.logger.info("Fetching index futures...")
+        futures = self.get_index_futures()
+        if futures:
+            derivatives.extend(futures)
+            self.logger.info(f"Added {len(futures)} futures contracts")
+            
+        # Get options (5 strikes above and below ATM for each index)
+        self.logger.info("Fetching index options...")
+        for index in ['NIFTY', 'BANKNIFTY', 'FINNIFTY']:
+            options = self.get_index_options(index_name=index, strike_range=5)
+            if options:
+                derivatives.extend(options)
+                ce_count = len([opt for opt in options if opt['option_type'] == 'CE'])
+                pe_count = len([opt for opt in options if opt['option_type'] == 'PE'])
+                self.logger.info(
+                    f"Added {ce_count} calls and {pe_count} puts for {index}"
+                )
+        
+        self.logger.info(
+            f"Total derivatives selected: {len(derivatives)} "
+            f"(Futures: {len(futures)}, "
+            f"Options: {len(derivatives) - len(futures)})"
+        )
+        return derivatives
+
     def get_active_symbols(self, exchange=None, criteria=None):
         """Get list of active symbols based on criteria"""
         try:
