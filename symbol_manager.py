@@ -30,6 +30,21 @@ class SymbolManager:
             }
         }
         
+        # Define stock symbols to monitor
+        self.stock_symbols = [
+            'TRENT', 'ITCHOTELS', 'MARUTI', 'TATACONSUM', 'EICHERMOT',
+            'BAJAJ-AUTO', 'ITC', 'M&M', 'TITAN', 'ASIANPAINT',
+            'INDUSINDBK', 'BAJAJFINSV', 'BAJFINANCE', 'HINDUNILVR', 'BRITANNIA',
+            'HEROMOTOCO', 'AXISBANK', 'NESTLEIND', 'KOTAKBANK', 'APOLLOHOSP',
+            'SUNPHARMA', 'ICICIBANK', 'BHARTIARTL', 'RELIANCE', 'HDFCBANK',
+            'DRREDDY', 'ADANIENT', 'SBIN', 'INFY', 'TCS',
+            'JSWSTEEL', 'TATASTEEL', 'HINDALCO', 'TATAMOTORS', 'ULTRACEMCO',
+            'ADANIPORTS', 'TECHM', 'HCLTECH', 'NTPC', 'BPCL',
+            'ONGC', 'WIPRO', 'HDFCLIFE', 'SHRIRAMFIN', 'SBILIFE',
+            'COALINDIA', 'GRASIM', 'CIPLA', 'LT', 'POWERGRID',
+            'BEL'
+        ]
+        
     def ensure_directory(self):
         """Create master files directory if it doesn't exist"""
         try:
@@ -433,4 +448,234 @@ class SymbolManager:
             
         except Exception as e:
             self.logger.error(f"Error getting active symbols: {str(e)}")
-            return [] 
+            return []
+
+    def get_stock_symbols(self):
+        """Get list of specified stock symbols from NSE Cash segment"""
+        if self.nse_cash is None:
+            self.logger.error("NSE Cash symbols not loaded. Call load_symbol_files() first.")
+            return []
+            
+        symbols = []
+        try:
+            for stock in self.stock_symbols:
+                stock_data = self.nse_cash[
+                    self.nse_cash['symbol'].str.upper() == stock.upper()
+                ]
+                
+                if not stock_data.empty:
+                    symbol_info = stock_data.iloc[0]
+                    symbols.append({
+                        'symbol': symbol_info['symbol'],
+                        'token': str(symbol_info['token']),
+                        'exchange': 'NSE',
+                        'instrument': 'EQ',
+                        'lotsize': 1,
+                        'tick_size': float(symbol_info.get('ticksize', 0.05))
+                    })
+                    self.logger.debug(f"Added NSE Cash symbol: {symbol_info['symbol']}")
+                else:
+                    self.logger.warning(f"Symbol not found in NSE Cash: {stock}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error getting stock symbols: {str(e)}")
+            
+        self.logger.info(f"Found {len(symbols)} NSE Cash symbols")
+        return symbols
+
+    def get_stock_futures(self):
+        """Get list of stock futures for specified symbols"""
+        if self.nse_fo is None:
+            self.logger.error("NFO symbols not loaded. Call load_symbol_files() first.")
+            return []
+            
+        symbols = []
+        try:
+            # Filter for stock futures
+            futures_df = self.nse_fo[
+                (self.nse_fo['instrument'] == 'FUTSTK') &  # Stock futures
+                (self.nse_fo['optiontype'] == 'XX')        # Futures have XX as option type
+            ].copy()
+            
+            if futures_df.empty:
+                self.logger.error("No stock futures found in NFO file")
+                return []
+                
+            # Convert expiry to datetime for sorting
+            futures_df['expiry_date'] = pd.to_datetime(futures_df['expiry'], format='%d-%b-%Y')
+            futures_df = futures_df.sort_values('expiry_date')
+            
+            for stock in self.stock_symbols:
+                try:
+                    # Filter for the specific stock
+                    stock_futures = futures_df[futures_df['symbol'] == stock]
+                    
+                    if stock_futures.empty:
+                        self.logger.warning(f"No futures found for {stock}")
+                        continue
+                    
+                    # Get the nearest expiry contract
+                    current_future = stock_futures.iloc[0]
+                    
+                    symbols.append({
+                        'symbol': current_future['tradingsymbol'],
+                        'token': str(current_future['token']),
+                        'exchange': 'NFO',
+                        'lot_size': int(current_future['lotsize']),
+                        'stock_name': stock,
+                        'expiry': current_future['expiry'],
+                        'instrument': 'FUTSTK'
+                    })
+                    
+                    self.logger.debug(
+                        f"Added {stock} future: {current_future['tradingsymbol']} "
+                        f"(Expiry: {current_future['expiry']})"
+                    )
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing {stock} futures: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            self.logger.error(f"Error getting stock futures: {str(e)}")
+            return []
+            
+        self.logger.info(f"Found {len(symbols)} stock futures")
+        return symbols
+
+    def get_stock_options(self, strike_range=5):
+        """Get list of stock options for specified symbols"""
+        if self.nse_fo is None:
+            self.logger.error("NFO symbols not loaded. Call load_symbol_files() first.")
+            return []
+            
+        symbols = []
+        try:
+            # Filter for stock options
+            options_df = self.nse_fo[
+                (self.nse_fo['instrument'] == 'OPTSTK') &  # Stock options
+                (self.nse_fo['optiontype'].isin(['CE', 'PE']))  # Call and Put options
+            ].copy()
+            
+            if options_df.empty:
+                self.logger.error("No stock options found in NFO file")
+                return []
+                
+            # Convert expiry to datetime for sorting
+            options_df['expiry_date'] = pd.to_datetime(options_df['expiry'], format='%d-%b-%Y')
+            options_df = options_df.sort_values(['expiry_date', 'strikeprice'])
+            
+            # Get nearest expiry
+            min_expiry = options_df['expiry_date'].min()
+            options_df = options_df[options_df['expiry_date'] == min_expiry]
+            
+            for stock in self.stock_symbols:
+                try:
+                    # Get current stock price from NSE Cash
+                    stock_info = self.get_token_info(stock, 'NSE')
+                    if not stock_info:
+                        self.logger.warning(f"No price info found for {stock}")
+                        continue
+                        
+                    quote = self.api.get_quotes('NSE', stock_info['token'])
+                    if not quote:
+                        self.logger.warning(f"No quote available for {stock}")
+                        continue
+                        
+                    current_price = float(quote.get('lp', 0))
+                    if current_price <= 0:
+                        self.logger.warning(f"Invalid price for {stock}")
+                        continue
+                    
+                    # Filter options for this stock
+                    stock_options = options_df[options_df['symbol'] == stock].copy()
+                    
+                    if stock_options.empty:
+                        self.logger.warning(f"No options found for {stock}")
+                        continue
+                    
+                    # Find ATM strike
+                    stock_options['strike_diff'] = abs(stock_options['strikeprice'] - current_price)
+                    atm_strike = stock_options.loc[stock_options['strike_diff'].idxmin(), 'strikeprice']
+                    
+                    # Get strikes within range
+                    strike_interval = stock_options['strikeprice'].diff().mode().iloc[0]
+                    min_strike = atm_strike - (strike_range * strike_interval)
+                    max_strike = atm_strike + (strike_range * strike_interval)
+                    
+                    selected_options = stock_options[
+                        (stock_options['strikeprice'] >= min_strike) &
+                        (stock_options['strikeprice'] <= max_strike)
+                    ]
+                    
+                    # Add to symbols list
+                    for _, option in selected_options.iterrows():
+                        symbols.append({
+                            'symbol': option['tradingsymbol'],
+                            'token': str(option['token']),
+                            'exchange': 'NFO',
+                            'lot_size': int(option['lotsize']),
+                            'stock_name': stock,
+                            'expiry': option['expiry'],
+                            'strike': float(option['strikeprice']),
+                            'option_type': option['optiontype'],
+                            'instrument': 'OPTSTK'
+                        })
+                        
+                        self.logger.debug(
+                            f"Added {stock} {option['optiontype']} "
+                            f"@ {option['strikeprice']} "
+                            f"(Token: {option['token']})"
+                        )
+                        
+                except Exception as e:
+                    self.logger.error(f"Error processing {stock} options: {str(e)}")
+                    continue
+                    
+        except Exception as e:
+            self.logger.error(f"Error getting stock options: {str(e)}")
+            return []
+            
+        self.logger.info(f"Found {len(symbols)} stock options")
+        return symbols
+
+    def get_all_symbols(self):
+        """Get all symbols (indices, stocks, and their derivatives)"""
+        all_symbols = []
+        
+        # Get index futures and options
+        self.logger.info("Fetching index derivatives...")
+        index_derivatives = self.get_all_index_derivatives()
+        if index_derivatives:
+            all_symbols.extend(index_derivatives)
+            self.logger.info(f"Added {len(index_derivatives)} index derivatives")
+            
+        # Get stock symbols from NSE Cash
+        self.logger.info("Fetching NSE Cash symbols...")
+        cash_symbols = self.get_stock_symbols()
+        if cash_symbols:
+            all_symbols.extend(cash_symbols)
+            self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
+            
+        # Get stock futures
+        self.logger.info("Fetching stock futures...")
+        stock_futures = self.get_stock_futures()
+        if stock_futures:
+            all_symbols.extend(stock_futures)
+            self.logger.info(f"Added {len(stock_futures)} stock futures")
+            
+        # Get stock options
+        self.logger.info("Fetching stock options...")
+        stock_options = self.get_stock_options()
+        if stock_options:
+            all_symbols.extend(stock_options)
+            self.logger.info(f"Added {len(stock_options)} stock options")
+            
+        self.logger.info(
+            f"Total symbols selected: {len(all_symbols)} "
+            f"(Cash: {len(cash_symbols)}, "
+            f"Index Derivatives: {len(index_derivatives)}, "
+            f"Stock Futures: {len(stock_futures)}, "
+            f"Stock Options: {len(stock_options)})"
+        )
+        return all_symbols 

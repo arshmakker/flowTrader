@@ -147,8 +147,8 @@ def main():
         logging.info("Initializing data collector...")
         collector = DataCollector(api, symbol_manager)  # Pass symbol_manager to collector
         
-        # Start collecting data for index futures
-        logging.info("Starting data collection for index futures...")
+        # Start collecting data for all symbols
+        logging.info("Starting data collection for all symbols...")
         collector.start_collection()
         
         # Initialize paper trader with ₹9,00,000 capital
