@@ -120,100 +120,65 @@ def initialize_api():
         raise
 
 def main():
-    """Main function to run the trading system"""
-    collector = None
-    trader = None
-    start_time = datetime.now()
-    
     try:
-        # Setup logging
+        # Initialize logging
         setup_logging()
-        logging.info(Fore.CYAN + "=== Trading System Starting ===")
-        logging.info(Fore.CYAN + f"Start Time: {start_time}")
-        
-        # Log system information
-        log_system_info()
+        logger = logging.getLogger('main')
+        logger.info("=== Starting Trading System ===")
+        logger.info(f"Start Time: {datetime.now()}")
         
         # Initialize API
-        logging.info("Initializing API connection...")
         api = initialize_api()
-        
+        if not api:
+            logger.error("Failed to initialize API")
+            return
+            
         # Initialize components
-        logging.info("Initializing symbol manager...")
         symbol_manager = SymbolManager(api)
-        symbol_manager.load_symbol_files()  # Load symbols only once during initialization
-        
-        # Initialize data collector with symbol manager
-        logging.info("Initializing data collector...")
-        collector = DataCollector(api, symbol_manager)  # Pass symbol_manager to collector
-        
-        # Start collecting data for all symbols
-        logging.info("Starting data collection for all symbols...")
-        collector.start_collection()
-        
-        # Initialize paper trader with ₹9,00,000 capital
-        logging.info(Fore.GREEN + "Initializing paper trader with capital: ₹9,00,000")
-        trader = PaperTrader(data_collector=collector, initial_capital=900000)
-        
-        # Run until interrupted
-        logging.info(Fore.CYAN + "=== System Running ===")
-        last_system_info = datetime.now()
+        try:
+            symbol_manager.load_symbol_files()
+        except FileNotFoundError:
+            logger.warning("Symbol files not found, downloading from exchange...")
+            symbol_manager.download_master_files()
+            symbol_manager.load_symbol_files()
+            
+        collector = DataCollector(api, symbol_manager)
+        trader = None
         
         try:
+            trader = PaperTrader(data_collector=collector, initial_capital=900000)
+            logger.info("Paper trader initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing paper trader: {str(e)}")
+            # Continue without paper trader
+            
+        # Start data collection
+        collector.start_collection()
+        logger.info("Data collection started")
+        
+        # Main loop
+        try:
             while True:
-                current_time = datetime.now()
-                runtime = current_time - start_time
-                
-                # Process market data and check positions
-                if trader.is_trading_time():
-                    trader.process_market_data()
-                
-                # Log system info every 5 minutes
-                if (current_time - last_system_info).total_seconds() >= 300:
-                    log_system_info()
-                    last_system_info = current_time
-                
-                # Get and log position summary
-                summary = trader.get_position_summary()
-                logging.info(Fore.GREEN + f"Runtime: {runtime} - Position Summary: {summary}")
-                
-                time.sleep(5)
-                
+                if trader:
+                    try:
+                        trader.process_market_data()
+                    except Exception as e:
+                        logger.error(f"Error in paper trader: {str(e)}")
+                        # Don't let paper trader errors stop data collection
+                time.sleep(1)
         except KeyboardInterrupt:
-            logging.info(Fore.RED + "\n=== Graceful Shutdown Initiated ===")
-            if collector:
-                logging.info("Stopping data collection...")
-                collector.stop_collection()
-            
-            if trader:
-                final_summary = trader.get_position_summary()
-                logging.info(Fore.YELLOW + f"Final Position Summary: {final_summary}")
-            
-            logging.info(Fore.CYAN + f"Total Runtime: {datetime.now() - start_time}")
+            logger.info("Received shutdown signal")
+        finally:
+            # Cleanup
+            collector.stop_collection()
+            logger.info("=== Trading System Stopped ===")
+            logger.info(f"End Time: {datetime.now()}")
+            runtime = datetime.now() - start_time
+            logger.info(f"Total Runtime: {runtime}")
             
     except Exception as e:
-        logging.error(Fore.RED + f"Critical error in main: {str(e)}", exc_info=True)
-        if collector:
-            logging.info("Stopping data collection due to error...")
-            collector.stop_collection()
-            
-    finally:
-        if collector:
-            try:
-                collector.stop_collection()
-            except:
-                pass
+        logger.error(f"Critical error in main: {str(e)}", exc_info=True)
         
-        if trader:
-            try:
-                final_summary = trader.get_position_summary()
-                logging.info(Fore.YELLOW + f"Final Trading Summary: {final_summary}")
-            except:
-                pass
-                
-        logging.info(Fore.CYAN + "=== Trading System Stopped ===")
-        logging.info(Fore.CYAN + f"End Time: {datetime.now()}")
-        logging.info(Fore.CYAN + f"Total Runtime: {datetime.now() - start_time}")
-
 if __name__ == "__main__":
+    start_time = datetime.now()
     main()

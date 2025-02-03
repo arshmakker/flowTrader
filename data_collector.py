@@ -235,4 +235,15 @@ class DataCollector:
                 df.to_csv(filename, mode='a', header=False, index=False)
                 
         except Exception as e:
-            self.logger.error(f"Error saving raw data for {data_point['symbol']}: {str(e)}") 
+            self.logger.error(f"Error saving raw data for {data_point['symbol']}: {str(e)}")
+
+    def get_last_price(self, exchange, token):
+        """Get the last traded price for a symbol"""
+        try:
+            quote = self.api.get_quotes(exchange=exchange, token=token)
+            if quote:
+                return float(quote.get('lp', 0))
+            return None
+        except Exception as e:
+            self.logger.error(f"Error getting last price for {exchange}:{token}: {str(e)}")
+            return None 
