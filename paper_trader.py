@@ -378,65 +378,146 @@ class PaperTrader:
         
         return True
 
+    def get_latest_data(self, symbol_key):
+        """Get latest market data for a symbol"""
+        try:
+            if symbol_key not in self.symbol_cache:
+                self.logger.warning(f"Symbol {symbol_key} not found in cache")
+                return None
+
+            # Get data for all available segments
+            data_points = []
+            symbol_data = self.symbol_cache[symbol_key]
+
+            # Check each segment (CASH, FUTURES, OPTIONS)
+            for segment_type, segment_data in symbol_data.items():
+                if isinstance(segment_data, dict):  # Handle OPTIONS dictionary
+                    if segment_type == 'OPTIONS':
+                        for option_key, option_data in segment_data.items():
+                            quote = self.data_collector.api.get_quotes(
+                                option_data['exchange'],
+                                option_data['token']
+                            )
+                            if quote:
+                                data_points.append({
+                                    'timestamp': datetime.now(),
+                                    'symbol': option_data['symbol'],
+                                    'ltp': float(quote.get('lp', 0)),
+                                    'volume': int(quote.get('v', 0)),
+                                    'bid': float(quote.get('bp1', 0)),
+                                    'ask': float(quote.get('sp1', 0)),
+                                    'oi': int(quote.get('oi', 0)),
+                                    'bid_qty': int(quote.get('bq1', 0)),
+                                    'ask_qty': int(quote.get('sq1', 0)),
+                                    'instrument': 'OPTSTK',
+                                    'option_type': option_data['option_type'],
+                                    'strike': option_data['strike']
+                                })
+                else:  # Handle CASH and FUTURES
+                    quote = self.data_collector.api.get_quotes(
+                        segment_data['exchange'],
+                        segment_data['token']
+                    )
+                    if quote:
+                        data_points.append({
+                            'timestamp': datetime.now(),
+                            'symbol': segment_data['symbol'],
+                            'ltp': float(quote.get('lp', 0)),
+                            'volume': int(quote.get('v', 0)),
+                            'bid': float(quote.get('bp1', 0)),
+                            'ask': float(quote.get('sp1', 0)),
+                            'oi': int(quote.get('oi', 0)),
+                            'bid_qty': int(quote.get('bq1', 0)),
+                            'ask_qty': int(quote.get('sq1', 0)),
+                            'instrument': segment_data.get('instrument', 'EQ')
+                        })
+
+            if not data_points:
+                return None
+
+            # Convert to DataFrame
+            df = pd.DataFrame(data_points)
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            return df
+
+        except Exception as e:
+            self.logger.error(f"Error getting latest data for {symbol_key}: {str(e)}")
+            return None
+
     def check_entry_conditions(self, data: pd.DataFrame, symbol: str) -> Tuple[bool, str, float]:
         """Check entry conditions for a new trade using live data"""
         if data is None or len(data) == 0:
             return False, None, None
             
-        # Get current price and parameters
-        current_price = data['ltp'].iloc[-1]
-        bid = data['bid'].iloc[-1]
-        ask = data['ask'].iloc[-1]
-        volume = data['volume'].iloc[-1]
-        oi = data['oi'].iloc[-1]
-        
-        # Store last processed values for comparison
-        if symbol not in self.last_processed_time:
+        try:
+            # Get current price and parameters
+            row = data.iloc[-1]  # Get the latest data point
+            current_price = row['ltp']
+            volume = row['volume']
+            oi = row.get('oi', 0)  # Options and futures only
+            
+            # Store last processed values for comparison
+            if symbol not in self.last_processed_time:
+                self.last_processed_time[symbol] = {
+                    'price': current_price,
+                    'volume': volume,
+                    'oi': oi,
+                    'time': datetime.now()
+                }
+                return False, None, None
+                
+            last_data = self.last_processed_time[symbol]
+            time_diff = (datetime.now() - last_data['time']).total_seconds()
+            
+            # Only process if at least 5 seconds have passed
+            if time_diff < 5:
+                return False, None, None
+                
+            # Calculate changes
+            price_change = current_price - last_data['price']
+            volume_change = volume - last_data['volume']
+            oi_change = oi - last_data.get('oi', 0)
+            
+            # Get parameters for the symbol
+            if symbol not in self.index_params:
+                return False, None, None
+                
+            params = self.index_params[symbol]
+            min_movement = params['min_movement']
+            
+            # Update last processed values
             self.last_processed_time[symbol] = {
                 'price': current_price,
                 'volume': volume,
                 'oi': oi,
                 'time': datetime.now()
             }
+            
+            # Entry conditions:
+            # 1. Price movement exceeds minimum movement
+            # 2. Volume is increasing
+            # 3. Open Interest is increasing (for F&O)
+            # 4. Bid-Ask spread is reasonable
+            if abs(price_change) >= min_movement and volume_change > 0:
+                if row['instrument'] in ['FUTIDX', 'FUTSTK', 'OPTIDX', 'OPTSTK']:
+                    if oi_change <= 0:  # Need increasing OI for F&O
+                        return False, None, None
+                
+                # Check bid-ask spread
+                if 'bid' in row and 'ask' in row:
+                    spread = row['ask'] - row['bid']
+                    if spread > min_movement:  # Spread too wide
+                        return False, None, None
+                
+                # Determine direction based on price change
+                direction = 'BUY' if price_change > 0 else 'SELL'
+                return True, direction, current_price
+                
             return False, None, None
             
-        last_data = self.last_processed_time[symbol]
-        time_diff = (datetime.now() - last_data['time']).total_seconds()
-        
-        # Only process if at least 5 seconds have passed
-        if time_diff < 5:
+        except Exception as e:
+            self.logger.error(f"Error checking entry conditions for {symbol}: {str(e)}")
             return False, None, None
-            
-        # Calculate changes
-        price_change = current_price - last_data['price']
-        volume_change = volume - last_data['volume']
-        oi_change = oi - last_data['oi']
-        
-        min_movement = self.index_params[symbol]['min_movement']
-        
-        # Update last processed values
-        self.last_processed_time[symbol] = {
-            'price': current_price,
-            'volume': volume,
-            'oi': oi,
-            'time': datetime.now()
-        }
-        
-        # Entry conditions:
-        # 1. Price movement exceeds minimum movement
-        # 2. Volume is increasing
-        # 3. Open Interest is increasing (showing new positions)
-        # 4. Bid-Ask spread is reasonable
-        if (abs(price_change) >= min_movement and 
-            volume_change > 0 and 
-            oi_change > 0 and 
-            (ask - bid) <= min_movement):
-            
-            # Determine direction based on price change
-            direction = 'BUY' if price_change > 0 else 'SELL'
-            return True, direction, current_price
-            
-        return False, None, None
 
     def execute_trade(self, symbol: str, direction: str, price: float, params: dict):
         """Execute a new trade"""
@@ -565,54 +646,6 @@ class PaperTrader:
         # Remove position
         del self.positions[symbol]
 
-    def get_latest_data(self, symbol_key):
-        """Get latest market data for a symbol"""
-        try:
-            if symbol_key not in self.symbol_cache:
-                self.logger.warning(f"Symbol {symbol_key} not found in cache")
-                return None
-
-            # Get data for all available segments
-            data_points = []
-            symbol_data = self.symbol_cache[symbol_key]
-
-            # Check each segment (CASH, FUTURES, OPTIONS)
-            for segment_type, segment_data in symbol_data.items():
-                if isinstance(segment_data, dict):  # Handle OPTIONS dictionary
-                    if segment_type == 'OPTIONS':
-                        for option_key, option_data in segment_data.items():
-                            price = self.get_symbol_price(symbol_key, 'OPTIONS', option_key)
-                            if price:
-                                data_points.append({
-                                    'timestamp': datetime.now(),
-                                    'symbol': option_data['symbol'],
-                                    'ltp': price,
-                                    'instrument': 'OPTSTK',
-                                    'option_type': option_data['option_type'],
-                                    'strike': option_data['strike']
-                                })
-                else:  # Handle CASH and FUTURES
-                    price = self.get_symbol_price(symbol_key, segment_type)
-                    if price:
-                        data_points.append({
-                            'timestamp': datetime.now(),
-                            'symbol': segment_data['symbol'],
-                            'ltp': price,
-                            'instrument': segment_data.get('instrument', 'EQ')
-                        })
-
-            if not data_points:
-                return None
-
-            # Convert to DataFrame
-            df = pd.DataFrame(data_points)
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-            return df
-
-        except Exception as e:
-            self.logger.error(f"Error getting latest data for {symbol_key}: {str(e)}")
-            return None
-
     def process_market_data(self):
         """Process latest market data and execute trading logic"""
         if not self.is_trading_time():
@@ -661,4 +694,70 @@ class PaperTrader:
             
         summary.append(f"Daily P&L: {self.daily_pnl:.2f}")
         summary.append(f"Current Capital: {self.capital:.2f}")
-        return " | ".join(summary) 
+        return " | ".join(summary)
+
+    def save_trading_stats(self):
+        """Save trading statistics to file"""
+        try:
+            stats_dir = os.path.join('logs', 'trading_stats')
+            if not os.path.exists(stats_dir):
+                os.makedirs(stats_dir)
+                
+            today = datetime.now().strftime('%Y%m%d')
+            stats_file = os.path.join(stats_dir, f'trading_stats_{today}.json')
+            
+            # Calculate statistics
+            stats = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'total_trades': len(self.trades),
+                'daily_pnl': self.daily_pnl,
+                'current_capital': self.capital,
+                'win_rate': self._calculate_win_rate(),
+                'avg_profit': self._calculate_avg_profit(),
+                'max_drawdown': self._calculate_max_drawdown(),
+                'active_positions': len(self.positions),
+                'trades': self.trades  # Full trade history
+            }
+            
+            # Save to file
+            with open(stats_file, 'w') as f:
+                json.dump(stats, f, indent=4)
+                
+            self.logger.info(f"Trading statistics saved to {stats_file}")
+            
+        except Exception as e:
+            self.logger.error(f"Error saving trading statistics: {str(e)}")
+
+    def _calculate_win_rate(self):
+        """Calculate win rate from completed trades"""
+        if not self.trades:
+            return 0.0
+            
+        winning_trades = sum(1 for t in self.trades if t['pnl'] > 0)
+        return (winning_trades / len(self.trades)) * 100
+
+    def _calculate_avg_profit(self):
+        """Calculate average profit per trade"""
+        if not self.trades:
+            return 0.0
+            
+        total_pnl = sum(t['pnl'] for t in self.trades)
+        return total_pnl / len(self.trades)
+
+    def _calculate_max_drawdown(self):
+        """Calculate maximum drawdown"""
+        if not self.trades:
+            return 0.0
+            
+        peak = self.capital
+        max_drawdown = 0
+        current_capital = self.capital
+        
+        for trade in self.trades:
+            current_capital += trade['pnl']
+            if current_capital > peak:
+                peak = current_capital
+            drawdown = (peak - current_capital) / peak * 100
+            max_drawdown = max(max_drawdown, drawdown)
+            
+        return max_drawdown 

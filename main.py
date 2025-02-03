@@ -120,6 +120,10 @@ def initialize_api():
         raise
 
 def main():
+    collector = None
+    trader = None
+    start_time = datetime.now()
+    
     try:
         # Initialize logging
         setup_logging()
@@ -164,13 +168,39 @@ def main():
                         trader.process_market_data()
                     except Exception as e:
                         logger.error(f"Error in paper trader: {str(e)}")
-                        # Don't let paper trader errors stop data collection
                 time.sleep(1)
+                
         except KeyboardInterrupt:
-            logger.info("Received shutdown signal")
-        finally:
-            # Cleanup
-            collector.stop_collection()
+            logger.info("\n=== Received shutdown signal, cleaning up... ===")
+            
+            # Stop data collection first
+            if collector:
+                logger.info("Stopping data collection...")
+                collector.stop_collection()
+            
+            # Save final trading state
+            if trader:
+                try:
+                    # Log final positions
+                    positions = trader.get_positions()
+                    if positions:
+                        logger.info("Final Positions:")
+                        for pos in positions:
+                            logger.info(
+                                f"{pos['symbol']}: {pos['quantity']} units @ {pos['current_price']:.2f} "
+                                f"(Value: {pos['value']:.2f})"
+                            )
+                    
+                    # Log final summary
+                    summary = trader.get_position_summary()
+                    logger.info(f"Final Trading Summary: {summary}")
+                    
+                    # Save trading statistics
+                    trader.save_trading_stats()
+                    
+                except Exception as e:
+                    logger.error(f"Error saving final trading state: {str(e)}")
+            
             logger.info("=== Trading System Stopped ===")
             logger.info(f"End Time: {datetime.now()}")
             runtime = datetime.now() - start_time
@@ -179,6 +209,24 @@ def main():
     except Exception as e:
         logger.error(f"Critical error in main: {str(e)}", exc_info=True)
         
+    finally:
+        # Ensure cleanup happens even on error
+        if collector:
+            try:
+                collector.stop_collection()
+                logger.info("Data collection stopped")
+            except:
+                pass
+                
+        if trader:
+            try:
+                trader.save_trading_stats()
+                logger.info("Trading statistics saved")
+            except:
+                pass
+                
+        logger.info("=== Cleanup complete ===")
+
 if __name__ == "__main__":
     start_time = datetime.now()
     main()
