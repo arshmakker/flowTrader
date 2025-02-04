@@ -34,7 +34,8 @@ class SymbolManager:
         self.stock_symbols = [
             'HCLTECH', 'NTPC', 'BPCL', 'ONGC', 'WIPRO',
             'HDFCLIFE', 'SHRIRAMFIN', 'SBILIFE', 'COALINDIA',
-            'GRASIM', 'CIPLA', 'LT', 'POWERGRID', 'BEL'
+            'GRASIM', 'CIPLA', 'LT', 'POWERGRID', 'BEL',
+            'NIFTY','FINNIFTY','BANKNIFTY'
         ]
         
     def ensure_directory(self):
@@ -80,8 +81,20 @@ class SymbolManager:
             if os.path.exists(nfo_file):
                 self.logger.debug(f"Loading NFO symbols from {nfo_file}")
                 self.nse_fo = pd.read_csv(nfo_file)
-                # Standardize column names
-                self.nse_fo.columns = [col.lower() for col in self.nse_fo.columns]
+                # Map column names to lowercase and standardize them
+                column_map = {
+                    'Exchange': 'exchange',
+                    'Token': 'token',
+                    'LotSize': 'lotsize',
+                    'Symbol': 'symbol',
+                    'TradingSymbol': 'tradingsymbol',
+                    'Expiry': 'expiry',
+                    'Instrument': 'instrument',
+                    'OptionType': 'optiontype',
+                    'StrikePrice': 'strikeprice',
+                    'TickSize': 'ticksize'
+                }
+                self.nse_fo.rename(columns=column_map, inplace=True)
                 self.logger.info(f"Loaded NFO symbols: {len(self.nse_fo)} symbols")
                 self.logger.debug(f"NFO columns: {list(self.nse_fo.columns)}")
             else:
@@ -282,11 +295,17 @@ class SymbolManager:
         symbols = []
         
         try:
+            # First, ensure we have the correct column names
+            required_columns = ['exchange', 'token', 'lotsize', 'symbol', 'tradingsymbol', 
+                              'expiry', 'instrument', 'optiontype']
+            if not all(col in self.nse_fo.columns for col in required_columns):
+                self.logger.error(f"Missing required columns in NFO file. Available columns: {self.nse_fo.columns}")
+                return []
+
             # Filter for index futures
             futures_df = self.nse_fo[
                 (self.nse_fo['instrument'] == 'FUTIDX') &  # Index futures
-                (self.nse_fo['optiontype'] == 'XX') &      # Futures have XX as option type
-                (self.nse_fo['tradingsymbol'].str.endswith('F'))  # Trading symbol ends with F
+                (self.nse_fo['optiontype'] == 'XX')        # Futures have XX as option type
             ].copy()
             
             if futures_df.empty:
@@ -294,50 +313,59 @@ class SymbolManager:
                 return []
                 
             self.logger.info(f"Found {len(futures_df)} total index futures")
+            self.logger.debug(f"Sample futures: {futures_df[['symbol', 'tradingsymbol', 'expiry']].head()}")
             
             # Convert expiry to datetime for sorting
             futures_df['expiry_date'] = pd.to_datetime(futures_df['expiry'], format='%d-%b-%Y')
             futures_df = futures_df.sort_values('expiry_date')
             
-            # Map of exact symbols as they appear in the NFO file
-            symbol_map = {
-                'NIFTY': 'NIFTY',
-                'BANKNIFTY': 'BANKNIFTY',
-                'FINNIFTY': 'FINNIFTY'
+            # Define the indices we're interested in
+            target_indices = {
+                'NIFTY': {'symbol': 'NIFTY', 'lot_size': 75},
+                'BANKNIFTY': {'symbol': 'BANKNIFTY', 'lot_size': 30},
+                'FINNIFTY': {'symbol': 'FINNIFTY', 'lot_size': 65}
             }
             
             # For each index we're interested in
-            for index, exact_symbol in symbol_map.items():
+            for index_name, index_info in target_indices.items():
                 try:
                     # Filter for the specific index using exact symbol match
-                    index_filter = futures_df['symbol'] == exact_symbol
-                    index_futures = futures_df[index_filter]
+                    index_futures = futures_df[futures_df['symbol'].str.strip() == index_info['symbol']]
                     
                     if index_futures.empty:
-                        self.logger.warning(f"No futures found for {index}")
+                        self.logger.warning(f"No futures found for {index_name}")
+                        self.logger.debug(f"Available symbols: {futures_df['symbol'].unique()}")
                         continue
                     
                     # Get the nearest expiry contract
                     current_future = index_futures.iloc[0]
                     
-                    # Verify the trading symbol pattern (should end with F)
-                    if not current_future['tradingsymbol'].endswith('F'):
-                        self.logger.warning(f"Unexpected trading symbol pattern for {index}: {current_future['tradingsymbol']}")
-                        continue
-                        
+                    # Debug log the matched future details
+                    self.logger.debug(
+                        f"Found future for {index_name}: "
+                        f"Symbol={current_future['symbol']}, "
+                        f"TradingSymbol={current_future['tradingsymbol']}, "
+                        f"Expiry={current_future['expiry']}, "
+                        f"LotSize={current_future['lotsize']}"
+                    )
+                    
                     symbols.append({
                         'symbol': current_future['tradingsymbol'],
                         'token': str(current_future['token']),
                         'exchange': 'NFO',
                         'lot_size': int(current_future['lotsize']),
-                        'index_name': index,
-                        'expiry': current_future['expiry']
+                        'index_name': index_name,
+                        'expiry': current_future['expiry'],
+                        'instrument': 'FUTIDX'
                     })
                     
-                    self.logger.info(f"Selected {index} future: {current_future['tradingsymbol']} (Expiry: {current_future['expiry']})")
+                    self.logger.info(
+                        f"Selected {index_name} future: {current_future['tradingsymbol']} "
+                        f"(Expiry: {current_future['expiry']})"
+                    )
                         
                 except Exception as e:
-                    self.logger.error(f"Error processing {index} futures: {str(e)}")
+                    self.logger.error(f"Error processing {index_name} futures: {str(e)}")
                     continue
                     
         except Exception as e:
@@ -346,6 +374,8 @@ class SymbolManager:
             
         if not symbols:
             self.logger.error("No valid index futures found")
+        else:
+            self.logger.info(f"Successfully found {len(symbols)} index futures")
             
         return symbols
 
@@ -730,7 +760,7 @@ class SymbolManager:
         return symbols
 
     def get_all_symbols(self):
-        """Get all symbols (stocks and their derivatives)"""
+        """Get all symbols (stocks, indices and their derivatives)"""
         all_symbols = []
         
         # Get stock symbols from NSE Cash
@@ -739,6 +769,13 @@ class SymbolManager:
         if cash_symbols:
             all_symbols.extend(cash_symbols)
             self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
+            
+        # Get index derivatives (futures and options)
+        self.logger.info("Fetching index derivatives...")
+        index_derivatives = self.get_all_index_derivatives()
+        if index_derivatives:
+            all_symbols.extend(index_derivatives)
+            self.logger.info(f"Added {len(index_derivatives)} index derivatives")
             
         # Get stock futures
         self.logger.info("Fetching stock futures...")
@@ -757,7 +794,8 @@ class SymbolManager:
         self.logger.info(
             f"Total symbols selected: {len(all_symbols)} "
             f"(Cash: {len(cash_symbols)}, "
-            f"Futures: {len(stock_futures)}, "
-            f"Options: {len(stock_options)})"
+            f"Index Derivatives: {len(index_derivatives)}, "
+            f"Stock Futures: {len(stock_futures)}, "
+            f"Stock Options: {len(stock_options)})"
         )
         return all_symbols 
