@@ -8,15 +8,17 @@ logging.basicConfig(level=logging.DEBUG)
 api = ShoonyaApiPy()
 
 #credentials
-user    = <uid>
-pwd     = <password>
-factor2 = <2nd factor>
-vc      = <vendor code>
-app_key = <secret key>
-imei    = <imei>
+user    = 'FA50394'
+pwd     = 'Arsh@987567'
+vc      = 'FA50394_U'
+app_key = '8ce994566d0ce1ca66b205ccbcdcfdf4'
+imei    = 'xyz12345'
+
+# Get 2FA code from user
+factor2 = input("Please enter your 2FA code: ")
 
 #make the api call
-ret = api.login(userid=uid, password=pwd, twoFA=factor2, vendor_code=vc, api_secret=app_key, imei=imei)
+ret = api.login(userid=user, password=pwd, twoFA=factor2, vendor_code=vc, api_secret=app_key, imei=imei)
 
 print(ret)
 

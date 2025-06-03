@@ -1,2 +1,0 @@
-timestamp,symbol,instrument,ltp,volume,bid,ask,oi,bid_qty,ask_qty,stock_name,strike,option_type,expiry
-2025-02-03 09:30:10.689412,LT27FEB25C3350,OPTSTK,86.0,212400,85.55,86.45,93150,150,150,LT,3350.0,CE,27-FEB-2025

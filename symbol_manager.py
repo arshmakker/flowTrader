@@ -13,6 +13,7 @@ class SymbolManager:
         self.ensure_directory()
         self.nse_cash = None
         self.nse_fo = None
+        self.bse = None  # Added BSE dataframe
         
         # Define index specifications
         self.index_specs = {
@@ -36,6 +37,22 @@ class SymbolManager:
             'HDFCLIFE', 'SHRIRAMFIN', 'SBILIFE', 'COALINDIA',
             'GRASIM', 'CIPLA', 'LT', 'POWERGRID', 'BEL',
             'NIFTY','FINNIFTY','BANKNIFTY'
+        ]
+        
+        # Initialize empty ETF symbols list - will be populated after scanning NSE and BSE files
+        self.etf_symbols = []
+        
+        # Initial reference ETFs to help with pattern matching
+        self.reference_etfs = [
+            'NIFTYBEES',    # Nifty 50 ETF
+            'BANKBEES',     # Bank Nifty ETF
+            'GOLDBEES',     # Gold BeES
+            'LIQUIDBEES',   # Liquid BeES
+            'SETFNIF50',    # SBI Nifty 50 ETF
+            'NETFBEES',     # Nippon ETF
+            'KOTAKBKETF',   # Kotak Bank ETF
+            'BSEBANKEX',    # BSE Bankex ETF
+            'BSESENSEX'     # BSE Sensex ETF
         ]
         
     def ensure_directory(self):
@@ -68,20 +85,33 @@ class SymbolManager:
             if os.path.exists(nse_file):
                 self.logger.debug(f"Loading NSE symbols from {nse_file}")
                 self.nse_cash = pd.read_csv(nse_file)
-                # Standardize column names
                 self.nse_cash.columns = [col.lower() for col in self.nse_cash.columns]
                 self.logger.info(f"Loaded NSE Cash symbols: {len(self.nse_cash)} symbols")
-                self.logger.debug(f"NSE columns: {list(self.nse_cash.columns)}")
             else:
                 self.logger.error(f"NSE symbol file not found: {nse_file}")
                 raise FileNotFoundError(f"NSE symbol file not found: {nse_file}")
+            
+            # Load BSE symbols
+            bse_file = os.path.join(self.symbols_directory, 'BSE.csv')
+            if os.path.exists(bse_file):
+                self.logger.debug(f"Loading BSE symbols from {bse_file}")
+                self.bse = pd.read_csv(bse_file)
+                self.bse.columns = [col.lower() for col in self.bse.columns]
+                self.logger.info(f"Loaded BSE symbols: {len(self.bse)} symbols")
+                
+                # After loading both files, scan for ETFs and update the list
+                self.logger.info("Scanning for ETFs across exchanges...")
+                etf_analysis = self.scan_common_etfs()
+                if etf_analysis:
+                    self.logger.info(f"Updated ETF list with {len(self.etf_symbols)} symbols")
+            else:
+                self.logger.warning(f"BSE symbol file not found: {bse_file}")
             
             # Load NFO symbols
             nfo_file = os.path.join(self.symbols_directory, 'NFO.csv')
             if os.path.exists(nfo_file):
                 self.logger.debug(f"Loading NFO symbols from {nfo_file}")
                 self.nse_fo = pd.read_csv(nfo_file)
-                # Map column names to lowercase and standardize them
                 column_map = {
                     'Exchange': 'exchange',
                     'Token': 'token',
@@ -96,24 +126,10 @@ class SymbolManager:
                 }
                 self.nse_fo.rename(columns=column_map, inplace=True)
                 self.logger.info(f"Loaded NFO symbols: {len(self.nse_fo)} symbols")
-                self.logger.debug(f"NFO columns: {list(self.nse_fo.columns)}")
             else:
                 self.logger.error(f"NFO symbol file not found: {nfo_file}")
                 raise FileNotFoundError(f"NFO symbol file not found: {nfo_file}")
             
-            # Verify required columns are present
-            required_nse_columns = ['symbol', 'token', 'lotsize', 'ticksize']
-            required_nfo_columns = ['symbol', 'token', 'instrument', 'lotsize', 'optiontype', 'strikeprice', 'expiry']
-            
-            missing_nse = [col for col in required_nse_columns if col not in self.nse_cash.columns]
-            if missing_nse:
-                raise ValueError(f"Missing required columns in NSE.csv: {missing_nse}")
-                
-            missing_nfo = [col for col in required_nfo_columns if col not in self.nse_fo.columns]
-            if missing_nfo:
-                raise ValueError(f"Missing required columns in NFO.csv: {missing_nfo}")
-            
-            self.logger.info("Successfully loaded and verified both NSE and NFO symbol files")
             return True
                 
         except Exception as e:
@@ -759,9 +775,95 @@ class SymbolManager:
         self.logger.info(f"Found {len(symbols)} stock options")
         return symbols
 
+    def get_etf_symbols(self):
+        """Get list of ETF symbols from both NSE and BSE, tracking common ETFs on both exchanges"""
+        etf_symbols = []
+        
+        try:
+            # First get the common ETFs if not already scanned
+            if not self.etf_symbols:
+                self.scan_common_etfs()
+            
+            # Track common ETFs from both exchanges
+            common_etfs = set()
+            nse_etfs = {}
+            bse_etfs = {}
+            
+            # Get ETFs from NSE
+            if self.nse_cash is not None:
+                nse_matches = self.nse_cash[
+                    (self.nse_cash['symbol'].isin(self.etf_symbols)) |
+                    (self.nse_cash['symbol'].str.contains('ETF|BEES', case=False, na=False))
+                ]
+                
+                for _, etf in nse_matches.iterrows():
+                    symbol = etf['symbol'].upper()
+                    nse_etfs[symbol] = {
+                        'symbol': symbol,
+                        'token': str(etf['token']),
+                        'exchange': 'NSE',
+                        'instrument': 'ETF',
+                        'lotsize': int(etf.get('lotsize', 1)),
+                        'tick_size': float(etf.get('ticksize', 0.05))
+                    }
+                    
+            # Get ETFs from BSE
+            if self.bse is not None:
+                bse_matches = self.bse[
+                    (self.bse['symbol'].isin(self.etf_symbols)) |
+                    (self.bse['symbol'].str.contains('ETF|BEES', case=False, na=False))
+                ]
+                
+                for _, etf in bse_matches.iterrows():
+                    symbol = etf['symbol'].upper()
+                    bse_etfs[symbol] = {
+                        'symbol': symbol,
+                        'token': str(etf['token']),
+                        'exchange': 'BSE',
+                        'instrument': 'ETF',
+                        'lotsize': int(etf.get('lotsize', 1)),
+                        'tick_size': float(etf.get('ticksize', 0.05))
+                    }
+            
+            # Add all NSE ETFs to the tracking list
+            for symbol, etf_data in nse_etfs.items():
+                etf_symbols.append(etf_data)
+                if symbol in bse_etfs:
+                    common_etfs.add(symbol)
+                    # Also add BSE version for common ETFs
+                    etf_symbols.append(bse_etfs[symbol])
+                    self.logger.debug(f"Tracking ETF {symbol} on both NSE and BSE")
+                else:
+                    self.logger.debug(f"Tracking ETF {symbol} on NSE only")
+            
+            # Add BSE-only ETFs
+            for symbol, etf_data in bse_etfs.items():
+                if symbol not in nse_etfs:
+                    etf_symbols.append(etf_data)
+                    self.logger.debug(f"Tracking ETF {symbol} on BSE only")
+            
+            self.logger.info(
+                f"Total ETFs to track: {len(etf_symbols)} "
+                f"(Common: {len(common_etfs)}, "
+                f"NSE total: {len(nse_etfs)}, "
+                f"BSE total: {len(bse_etfs)})"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error getting ETF symbols: {str(e)}")
+            
+        return etf_symbols
+
     def get_all_symbols(self):
-        """Get all symbols (stocks, indices and their derivatives)"""
+        """Get all symbols (stocks, indices, ETFs and their derivatives)"""
         all_symbols = []
+        
+        # Get ETF symbols
+        self.logger.info("Fetching ETF symbols...")
+        etf_symbols = self.get_etf_symbols()
+        if etf_symbols:
+            all_symbols.extend(etf_symbols)
+            self.logger.info(f"Added {len(etf_symbols)} ETF symbols")
         
         # Get stock symbols from NSE Cash
         self.logger.info("Fetching NSE Cash symbols...")
@@ -770,7 +872,7 @@ class SymbolManager:
             all_symbols.extend(cash_symbols)
             self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
             
-        # Get index derivatives (futures and options)
+        # Get index derivatives
         self.logger.info("Fetching index derivatives...")
         index_derivatives = self.get_all_index_derivatives()
         if index_derivatives:
@@ -793,9 +895,72 @@ class SymbolManager:
             
         self.logger.info(
             f"Total symbols selected: {len(all_symbols)} "
-            f"(Cash: {len(cash_symbols)}, "
+            f"(ETFs: {len(etf_symbols)}, "
+            f"Cash: {len(cash_symbols)}, "
             f"Index Derivatives: {len(index_derivatives)}, "
             f"Stock Futures: {len(stock_futures)}, "
             f"Stock Options: {len(stock_options)})"
         )
-        return all_symbols 
+        return all_symbols
+
+    def scan_common_etfs(self):
+        """Scan and find common ETFs between NSE and BSE"""
+        try:
+            if self.nse_cash is None or self.bse is None:
+                self.logger.error("Both NSE and BSE files must be loaded first")
+                return
+            
+            # Find ETFs in NSE
+            nse_etfs = self.nse_cash[
+                self.nse_cash['symbol'].str.contains('ETF|BEES', case=False, na=False)
+            ]
+            
+            # Find ETFs in BSE
+            bse_etfs = self.bse[
+                self.bse['symbol'].str.contains('ETF|BEES', case=False, na=False)
+            ]
+            
+            # Get unique ETF symbols
+            nse_etf_symbols = set(nse_etfs['symbol'].str.upper())
+            bse_etf_symbols = set(bse_etfs['symbol'].str.upper())
+            
+            # Find common ETFs
+            common_etfs = nse_etf_symbols.intersection(bse_etf_symbols)
+            
+            # Find ETFs unique to each exchange
+            nse_only = nse_etf_symbols - bse_etf_symbols
+            bse_only = bse_etf_symbols - nse_etf_symbols
+            
+            # Log findings
+            self.logger.info(f"\nETF Analysis:")
+            self.logger.info(f"Total ETFs in NSE: {len(nse_etf_symbols)}")
+            self.logger.info(f"Total ETFs in BSE: {len(bse_etf_symbols)}")
+            self.logger.info(f"Common ETFs: {len(common_etfs)}")
+            
+            self.logger.info("\nCommon ETFs between NSE and BSE:")
+            for etf in sorted(common_etfs):
+                self.logger.info(f"- {etf}")
+            
+            self.logger.info("\nETFs only in NSE:")
+            for etf in sorted(nse_only):
+                self.logger.info(f"- {etf}")
+            
+            self.logger.info("\nETFs only in BSE:")
+            for etf in sorted(bse_only):
+                self.logger.info(f"- {etf}")
+            
+            # Update the etf_symbols list with all discovered ETFs
+            self.etf_symbols = list(nse_etf_symbols.union(bse_etf_symbols))
+            self.logger.info(f"\nUpdated ETF tracking list with {len(self.etf_symbols)} symbols")
+            
+            return {
+                'common': common_etfs,
+                'nse_only': nse_only,
+                'bse_only': bse_only,
+                'nse_total': len(nse_etf_symbols),
+                'bse_total': len(bse_etf_symbols)
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error scanning ETFs: {str(e)}")
+            return None 

@@ -141,6 +141,16 @@ def main():
         symbol_manager = SymbolManager(api)
         try:
             symbol_manager.load_symbol_files()
+            
+            # Scan for ETFs
+            logger.info("Scanning for ETFs across exchanges...")
+            etf_analysis = symbol_manager.scan_common_etfs()
+            if etf_analysis:
+                logger.info("ETF scan complete. Found:")
+                logger.info(f"- {etf_analysis['nse_total']} ETFs in NSE")
+                logger.info(f"- {etf_analysis['bse_total']} ETFs in BSE")
+                logger.info(f"- {len(etf_analysis['common'])} common ETFs")
+            
         except FileNotFoundError:
             logger.warning("Symbol files not found, downloading from exchange...")
             symbol_manager.download_master_files()
