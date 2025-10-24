@@ -75,14 +75,14 @@ class DataCollector:
         return last_thursday.strftime('%d%b%y').upper()
 
     def get_index_symbols(self):
-        """Get list of all symbols to monitor"""
+        """Get list of all symbols to monitor for data collection"""
         if self.symbol_manager:
-            return self.symbol_manager.get_all_symbols()
+            return self.symbol_manager.get_data_collection_symbols()
         else:
             self.logger.warning("No symbol manager provided, creating temporary one")
             temp_manager = SymbolManager(self.api)
             temp_manager.load_symbol_files()
-            return temp_manager.get_all_symbols()
+            return temp_manager.get_data_collection_symbols()
 
     def start_collection(self, symbols=None):
         """Start collecting data for all symbols"""

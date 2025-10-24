@@ -31,12 +31,24 @@ class SymbolManager:
             }
         }
         
-        # Define stock symbols to monitor
+        # Define stock symbols to monitor - NIFTY 50, BANKNIFTY, and FINNIFTY constituents
+        # Note: This list combines all unique stocks from the three indices
         self.stock_symbols = [
-            'HCLTECH', 'NTPC', 'BPCL', 'ONGC', 'WIPRO',
-            'HDFCLIFE', 'SHRIRAMFIN', 'SBILIFE', 'COALINDIA',
-            'GRASIM', 'CIPLA', 'LT', 'POWERGRID', 'BEL',
-            'NIFTY','FINNIFTY','BANKNIFTY'
+            # NIFTY 50 stocks (50)
+            'RELIANCE', 'TCS', 'HDFCBANK', 'INFY', 'ICICIBANK', 'HINDUNILVR', 'ITC', 
+            'SBIN', 'BHARTIARTL', 'KOTAKBANK', 'LT', 'AXISBANK', 'ASIANPAINT', 'MARUTI', 
+            'TITAN', 'BAJFINANCE', 'HCLTECH', 'SUNPHARMA', 'ULTRACEMCO', 'NESTLEIND', 
+            'WIPRO', 'ONGC', 'NTPC', 'POWERGRID', 'TATAMOTORS', 'M&M', 'ADANIENT', 
+            'JSWSTEEL', 'HINDALCO', 'COALINDIA', 'GRASIM', 'BRITANNIA', 'DIVISLAB', 
+            'TECHM', 'BAJAJFINSV', 'INDUSINDBK', 'HEROMOTOCO', 'CIPLA', 'DRREDDY', 
+            'EICHERMOT', 'APOLLOHOSP', 'BPCL', 'TATACONSUM', 'ADANIPORTS', 'SBILIFE', 
+            'LTIM', 'HDFCLIFE', 'TATASTEEL', 'PIDILITIND', 'HAVELLS',
+            # BANKNIFTY stocks (12)
+            'BANKBARODA', 'PNB', 'FEDERALBNK', 'IDFCFIRSTB', 'BANDHANBNK', 'AUBANK',
+            # FINNIFTY stocks (additional)
+            'ICICIGI', 'HDFCAMC', 'MUTHOOTFIN', 'CHOLAFIN', 'SHRIRAMFIN', 'LICHSGFIN',
+            # Index symbols
+            'NIFTY', 'FINNIFTY', 'BANKNIFTY'
         ]
         
         # Initialize empty ETF symbols list - will be populated after scanning NSE and BSE files
@@ -900,6 +912,35 @@ class SymbolManager:
             f"Index Derivatives: {len(index_derivatives)}, "
             f"Stock Futures: {len(stock_futures)}, "
             f"Stock Options: {len(stock_options)})"
+        )
+        return all_symbols
+
+    def get_data_collection_symbols(self):
+        """Get symbols for data collection only - cash stocks + index derivatives"""
+        all_symbols = []
+        
+        # Get stock symbols from NSE Cash (equity data for all constituent stocks)
+        self.logger.info("Fetching NSE Cash symbols for data collection...")
+        cash_symbols = self.get_stock_symbols()
+        if cash_symbols:
+            all_symbols.extend(cash_symbols)
+            self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
+            
+        # Get index derivatives (futures + ATM options for NIFTY, BANKNIFTY, FINNIFTY)
+        self.logger.info("Fetching index derivatives for data collection...")
+        index_derivatives = self.get_all_index_derivatives()
+        if index_derivatives:
+            all_symbols.extend(index_derivatives)
+            self.logger.info(f"Added {len(index_derivatives)} index derivatives")
+        
+        # Count by type
+        futures_count = len([s for s in all_symbols if s.get('instrument') in ['FUTIDX', 'FUTSTK']])
+        options_count = len([s for s in all_symbols if s.get('instrument') in ['OPTIDX', 'OPTSTK']])
+        cash_count = len([s for s in all_symbols if s.get('instrument') == 'EQ'])
+        
+        self.logger.info(
+            f"Data collection symbols selected: {len(all_symbols)} total "
+            f"(Cash: {cash_count}, Futures: {futures_count}, Options: {options_count})"
         )
         return all_symbols
 

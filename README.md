@@ -1,6 +1,6 @@
-# Index Futures Trading System
+# Market Data Collection System
 
-A Python-based automated trading system for index futures (NIFTY, BANKNIFTY, FINNIFTY) using the Shoonya API. The system implements paper trading with real-time data collection and automated trading strategies.
+A Python-based market data collection system for NIFTY 50, BANKNIFTY, and FINNIFTY stocks and their index derivatives using the Shoonya API. The system collects real-time tick data for analysis purposes.
 
 ## System Architecture
 
@@ -77,31 +77,44 @@ apikey: "YOUR_API_KEY"
 imei: "YOUR_IMEI"
 ```
 
+## Data Collection Configuration
+
+### Symbols Being Collected
+
+**Cash/Equity Stocks:**
+- NIFTY 50: All 50 constituent stocks
+- BANKNIFTY: 12 banking stocks (HDFCBANK, ICICIBANK, KOTAKBANK, SBIN, AXISBANK, INDUSINDBK, BANKBARODA, PNB, FEDERALBNK, IDFCFIRSTB, BANDHANBNK, AUBANK)
+- FINNIFTY: 20 financial sector stocks (banks + NBFCs including BAJFINANCE, BAJAJFINSV, SBILIFE, HDFCLIFE, ICICIGI, etc.)
+
+**Index Derivatives:**
+- NIFTY, BANKNIFTY, FINNIFTY
+- Current month futures
+- ATM options (5 strikes above and below current price)
+
+### Data Storage Structure
+Data is stored in `market_data_YYYYMMDD/` directories:
+- `raw_data/cash/` - Equity tick data
+- `raw_data/futures/` - Futures tick data  
+- `raw_data/options/` - Options tick data (organized by underlying)
+
 ## System Workflow
 
 1. **Initialization**
    - System loads credentials and connects to Shoonya API
    - Initializes logging system
    - Sets up data directories
-   - Loads symbol information
+   - Loads symbol information from master files
 
 2. **Data Collection**
    - Creates date-specific directories for market data
-   - Collects real-time tick data for index futures
-   - Processes and stores data in raw and processed formats
+   - Collects real-time tick data every second
+   - Stores data in structured CSV format
    - Maintains separate directories for different data types
 
-3. **Trading Operations**
-   - Monitors market data in real-time
-   - Applies trading strategies
-   - Manages paper trading positions
-   - Implements risk management rules
-
-4. **Monitoring & Logging**
+3. **Monitoring & Logging**
    - Detailed logging of all system operations
    - Regular system health checks
-   - Performance monitoring
-   - Position and PnL tracking
+   - Data collection statistics
 
 ## Directory Structure
 
@@ -129,62 +142,13 @@ shoonyapythonmod/
 ├── cred.yml.template     # Credentials template
 └── requirements.txt      # Dependencies
 
-## Trading Parameters
+## Data Collection Features
 
-### NIFTY
-- Lot Size: 50
-- Minimum Movement: 5 points
-- Initial Stop: 8 points
-- Target 1: 8 points (Exit 40%)
-- Target 2: 12 points (Exit 30%)
-- Trailing Stop: 3 points
-- Margin per Lot: ₹23,000
-- Maximum Lots: 3
-
-### BANKNIFTY
-- Lot Size: 15
-- Minimum Movement: 12 points
-- Initial Stop: 15 points
-- Target 1: 20 points (Exit 40%)
-- Target 2: 30 points (Exit 30%)
-- Trailing Stop: 6 points
-- Margin per Lot: ₹49,000
-- Maximum Lots: 2
-
-### FINNIFTY
-- Lot Size: 40
-- Minimum Movement: 8 points
-- Initial Stop: 12 points
-- Target 1: 15 points (Exit 40%)
-- Target 2: 22 points (Exit 30%)
-- Trailing Stop: 4 points
-- Margin per Lot: ₹23,000
-- Maximum Lots: 3
-
-## Risk Management
-
-1. Capital Protection:
-   - Maximum 2% daily loss limit
-   - Maximum 3 trades per day
-   - No new trades after 2 consecutive losses
-
-2. Position Management:
-   - Initial entry with 60% of intended position size
-   - First target exits 40% of position
-   - Second target exits 30% of position
-   - Trailing stop on remaining 30%
-
-3. Margin Requirements:
-   - Maximum 30% capital per trade
-   - Proper lot size calculation based on available margin
-
-## Testing
-
-The system includes a comprehensive testing framework:
-- Unit tests for API functionality
-- Strategy backtesting capabilities
-- Paper trading simulation
-- Performance analysis tools
+- **Real-time tick data collection** at 1-second intervals
+- **Comprehensive symbol coverage** for NIFTY 50, BANKNIFTY, and FINNIFTY constituents
+- **Structured data storage** organized by instrument type and date
+- **Automatic directory management** with daily folders
+- **Logging system** for monitoring and debugging
 
 ## Logging System
 
@@ -193,28 +157,22 @@ The system includes a comprehensive testing framework:
    - Error and warning messages
    - System performance metrics
    - API communication logs
+   - Data collection statistics
 
-2. **Trading Logs**
-   - Trade execution details
-   - Position management
-   - PnL tracking
-   - Risk metrics
-
-3. **Market Data**
-   - Raw tick data
-   - Processed market data
-   - Daily data organization
-   - Backup and archival
+2. **Market Data**
+   - Raw tick data stored in CSV format
+   - Automatic daily data organization
+   - Separate directories for cash, futures, and options
 
 ## Development
 
 - Use the test suite for validating changes
 - Follow the example files for implementation references
 - Monitor logs for system behavior
-- Use strategy tester for algorithm validation
+- Check data files for collection quality
 
 ## Note
 
-This is a paper trading system designed for testing and development. Always validate strategies thoroughly before live trading. Past performance does not guarantee future results.
+This is a data collection system designed for market analysis. The collected data can be used for backtesting, research, and strategy development. Always validate data quality before using for analysis.
 
 

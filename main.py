@@ -89,13 +89,18 @@ def initialize_api():
         logging.info("Attempting to login to Shoonya API...")
         logging.debug(f"Using credentials - User: {creds['user']}, Vendor: {creds['vc']}")
         
-        # Prompt for 2FA code
+        # Always prompt for 2FA code
         factor2 = input(Fore.CYAN + "Enter your 2FA code: ")
+        
         if not factor2:
             logging.error(Fore.RED + "2FA code is required")
             raise ValueError("2FA code is required")
-            
-        # Login to API
+        
+        # Ensure factor2 is a string (API requires string format)
+        factor2 = str(factor2).strip()
+        
+        # Attempt login
+        logging.info("Attempting to login to Shoonya API...")
         login_status = api.login(
             userid=creds['user'],
             password=creds['pwd'],
@@ -128,7 +133,7 @@ def main():
         # Initialize logging
         setup_logging()
         logger = logging.getLogger('main')
-        logger.info("=== Starting Trading System ===")
+        logger.info("=== Starting Data Collection System ===")
         logger.info(f"Start Time: {datetime.now()}")
         
         # Initialize API
@@ -157,27 +162,29 @@ def main():
             symbol_manager.load_symbol_files()
             
         collector = DataCollector(api, symbol_manager)
+        # Paper trading disabled for data collection focus
         trader = None
         
-        try:
-            trader = PaperTrader(data_collector=collector, initial_capital=900000)
-            logger.info("Paper trader initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing paper trader: {str(e)}")
-            # Continue without paper trader
+        # try:
+        #     trader = PaperTrader(data_collector=collector, initial_capital=900000)
+        #     logger.info("Paper trader initialized successfully")
+        # except Exception as e:
+        #     logger.error(f"Error initializing paper trader: {str(e)}")
+        #     # Continue without paper trader
             
         # Start data collection
         collector.start_collection()
         logger.info("Data collection started")
         
-        # Main loop
+        # Main loop - data collection only
         try:
             while True:
-                if trader:
-                    try:
-                        trader.process_market_data()
-                    except Exception as e:
-                        logger.error(f"Error in paper trader: {str(e)}")
+                # Paper trading disabled - only collecting data
+                # if trader:
+                #     try:
+                #         trader.process_market_data()
+                #     except Exception as e:
+                #         logger.error(f"Error in paper trader: {str(e)}")
                 time.sleep(1)
                 
         except KeyboardInterrupt:
@@ -211,7 +218,7 @@ def main():
                 except Exception as e:
                     logger.error(f"Error saving final trading state: {str(e)}")
             
-            logger.info("=== Trading System Stopped ===")
+            logger.info("=== Data Collection System Stopped ===")
             logger.info(f"End Time: {datetime.now()}")
             runtime = datetime.now() - start_time
             logger.info(f"Total Runtime: {runtime}")
