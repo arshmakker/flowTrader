@@ -20,6 +20,26 @@ from technical_indicators import (
     get_historical_price_data
 )
 
+# Debug logging setup
+DEBUG_LOG_PATH = '/Users/arshdeep/git/ironcondor/.cursor/debug.log'
+
+def _debug_log(location, message, data, hypothesis_id=None):
+    """Write debug log entry"""
+    try:
+        log_entry = {
+            "sessionId": "debug-session",
+            "runId": "run1",
+            "hypothesisId": hypothesis_id or "general",
+            "location": location,
+            "message": message,
+            "data": data,
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
+        with open(DEBUG_LOG_PATH, 'a') as f:
+            f.write(json.dumps(log_entry) + '\n')
+    except Exception:
+        pass  # Silently fail if logging fails
+
 logger = logging.getLogger('StrategyRunner')
 
 
@@ -90,6 +110,114 @@ def get_weekly_expiry(date=None):
     return expiry
 
 
+def get_next_available_expiry(symbol_manager, preferred_date=None):
+    """
+    Get the next available expiry date from the symbol file.
+    This ensures we only use expiries that actually exist in NFO.csv.
+    
+    Args:
+        symbol_manager: SymbolManager instance
+        preferred_date: Preferred expiry date (default: calculated weekly expiry)
+    
+    Returns:
+        date: Next available expiry date from symbol file
+    """
+    try:
+        # Calculate preferred expiry if not provided
+        if preferred_date is None:
+            preferred_date = get_weekly_expiry()
+        else:
+            preferred_date = _get_date_object(preferred_date)
+        
+        if symbol_manager.nse_fo is None:
+            logger.error("NFO symbols not loaded")
+            return preferred_date
+        
+        # Get all NIFTY options
+        nifty_options = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
+            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
+            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
+        ].copy()
+        
+        if nifty_options.empty:
+            logger.warning("No NIFTY options found in symbol manager, using calculated expiry")
+            return preferred_date
+        
+        # Convert expiry to datetime for date-based matching
+        nifty_options['expiry_date'] = pd.to_datetime(nifty_options['expiry'], format='%d-%b-%Y', errors='coerce')
+        
+        # Get unique expiry dates
+        valid_expiries = nifty_options['expiry_date'].dropna().dt.date.unique()
+        
+        if len(valid_expiries) == 0:
+            logger.warning("No valid expiry dates found, using calculated expiry")
+            return preferred_date
+        
+        # Find nearest future expiry (prefer future expiries)
+        future_expiries = [d for d in valid_expiries if d >= preferred_date]
+        if future_expiries:
+            nearest_expiry = min(future_expiries)
+        else:
+            # If no future expiries, use the latest available
+            nearest_expiry = max(valid_expiries)
+        
+        # Only log if different from preferred
+        if nearest_expiry != preferred_date:
+            logger.debug(f"Using available expiry: {nearest_expiry.strftime('%d-%b-%Y')} (preferred was {preferred_date.strftime('%d-%b-%Y')})")
+        
+        return nearest_expiry
+        
+    except Exception as e:
+        logger.error(f"Error getting next available expiry: {str(e)}", exc_info=True)
+        return preferred_date if preferred_date else datetime.now().date()
+
+
+def get_all_eligible_expiries(symbol_manager, max_expiries_to_check=10):
+    """
+    Get all available expiries from symbol file, sorted by date.
+    Returns expiries that could potentially meet eligibility criteria.
+    
+    Args:
+        symbol_manager: SymbolManager instance
+        max_expiries_to_check: Maximum number of expiries to check
+    
+    Returns:
+        list: List of expiry dates (datetime.date objects)
+    """
+    try:
+        if symbol_manager.nse_fo is None:
+            logger.error("NFO symbols not loaded")
+            return []
+        
+        # Get all NIFTY options
+        nifty_options = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
+            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
+            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
+        ].copy()
+        
+        if nifty_options.empty:
+            return []
+        
+        # Convert expiry to datetime for date-based matching
+        nifty_options['expiry_date'] = pd.to_datetime(nifty_options['expiry'], format='%d-%b-%Y', errors='coerce')
+        
+        # Get unique expiry dates, sorted
+        valid_expiries = sorted(nifty_options['expiry_date'].dropna().dt.date.unique())
+        
+        # Filter to future expiries only
+        today = datetime.now().date()
+        future_expiries = [d for d in valid_expiries if d >= today]
+        
+        # Return up to max_expiries_to_check expiries
+        return future_expiries[:max_expiries_to_check]
+        
+    except Exception as e:
+        logger.error(f"Error getting eligible expiries: {str(e)}", exc_info=True)
+        return []
+
+
 def get_nifty_spot_price(api, symbol_manager):
     """
     Get current NIFTY spot price.
@@ -148,114 +276,100 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
             ['strike', 'option_type', 'ltp', 'bid', 'ask', 'delta', 'oi', 'volume']
     """
     try:
-        # Get the correct futures symbol from symbol manager
         expiry_date_obj = _get_date_object(expiry_date)
+        expiry_str_formatted = expiry_date_obj.strftime('%d-%b-%Y').upper()  # Format: 25-DEC-2025
         
-        # Get all NIFTY futures and find the one matching our expiry
-        futures_list = symbol_manager.get_index_futures()
-        nifty_future = None
+        # Get options directly from symbol manager for the expiry
+        # The expiry_date should already be from the symbol file (via get_next_available_expiry)
+        logger.info(f"Getting NIFTY options for expiry: {expiry_str_formatted}")
         
-        for future in futures_list:
-            if future.get('index_name') == 'NIFTY':
-                # Check if expiry matches
-                future_expiry = pd.to_datetime(future.get('expiry', ''), format='%d-%b-%Y')
-                if future_expiry.date() == expiry_date_obj:
-                    nifty_future = future
-                    break
+        # Get options from symbol manager filtered by expiry
+        if symbol_manager.nse_fo is None:
+            logger.error("NFO symbols not loaded")
+            return pd.DataFrame()
         
-        if not nifty_future:
-            # Fallback: try to construct symbol manually
-            expiry_str = expiry_date_obj.strftime('%d%b%y').upper()
-            futures_symbol = f"NIFTY{expiry_str}F"
-            logger.warning(f"Could not find NIFTY future for expiry {expiry_date_obj}, trying {futures_symbol}")
-        else:
-            futures_symbol = nifty_future['symbol']  # This is the tradingsymbol
-            logger.info(f"Found NIFTY future: {futures_symbol} (Expiry: {nifty_future.get('expiry')})")
+        # Get all NIFTY options
+        nifty_options_all = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
+            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
+            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
+        ].copy()
         
-        logger.info(f"Fetching option chain for {futures_symbol} at strike {int(spot_price)}")
+        if nifty_options_all.empty:
+            logger.error("No NIFTY options found in symbol manager")
+            return pd.DataFrame()
         
-        # Get option chain from API
-        option_chain_raw = api.get_option_chain(
-            exchange='NFO',
-            tradingsymbol=futures_symbol,
-            strikeprice=int(spot_price),
-            count=count
-        )
+        # Convert expiry to datetime for date-based matching
+        nifty_options_all['expiry_date'] = pd.to_datetime(nifty_options_all['expiry'], format='%d-%b-%Y', errors='coerce')
         
-        if not option_chain_raw or 'values' not in option_chain_raw:
-            logger.warning(f"No option chain data returned for {futures_symbol}")
-            # Try alternative: maybe the API needs the symbol without 'F' suffix
-            if futures_symbol.endswith('F'):
-                alt_symbol = futures_symbol[:-1]  # Remove 'F'
-                logger.info(f"Trying alternative symbol: {alt_symbol}")
-                option_chain_raw = api.get_option_chain(
-                    exchange='NFO',
-                    tradingsymbol=alt_symbol,
-                    strikeprice=int(spot_price),
-                    count=count
-                )
-                if not option_chain_raw or 'values' not in option_chain_raw:
-                    logger.warning(f"No option chain data returned for {alt_symbol} either")
-                    return pd.DataFrame()
-            else:
-                return pd.DataFrame()
+        # Find options matching the expiry date (should exist since we got it from symbol file)
+        options_df = nifty_options_all[
+            nifty_options_all['expiry_date'].dt.date == expiry_date_obj
+        ].copy()
         
-        # Process option chain data
+        if options_df.empty:
+            # This shouldn't happen if get_next_available_expiry worked correctly, but handle gracefully
+            logger.error(f"No NIFTY options found for expiry {expiry_str_formatted} (this should not happen)")
+            return pd.DataFrame()
+        
+        # Get the actual expiry string from the first row (expiry column, not expiry_date)
+        actual_expiry_str = options_df['expiry'].iloc[0]
+        
+        # Drop the temporary expiry_date column
+        if 'expiry_date' in options_df.columns:
+            options_df = options_df.drop(columns=['expiry_date'])
+        
+        logger.info(f"Found {len(options_df)} NIFTY options for expiry {actual_expiry_str}")
+        
+        # Filter by strikes around spot price
+        strike_interval = 50  # NIFTY strike interval is typically 50
+        min_strike = int(spot_price) - (count * strike_interval)
+        max_strike = int(spot_price) + (count * strike_interval)
+        
+        options_df = options_df[
+            (options_df['strikeprice'] >= min_strike) &
+            (options_df['strikeprice'] <= max_strike)
+        ].copy()
+        
+        if options_df.empty:
+            logger.warning(f"No options found in strike range {min_strike}-{max_strike}")
+            return pd.DataFrame()
+        
+        logger.info(f"Filtered to {len(options_df)} options in strike range {min_strike}-{max_strike}")
+        
+        # #region agent log
+        _debug_log('strategy_runner.py:275', 'Options from symbol manager', {
+            'target_expiry': expiry_str_formatted,
+            'actual_expiry': actual_expiry_str,
+            'total_options': len(options_df),
+            'strike_range': f"{min_strike}-{max_strike}",
+            'sample_symbols': options_df['tradingsymbol'].head(5).tolist()
+        }, 'E')
+        # #endregion
+        
+        # Process options and fetch quotes
         chain_data = []
-        for option in option_chain_raw.get('values', []):
+        total_options = len(options_df)
+        filtered_by_quote = 0
+        filtered_by_strike = 0
+        
+        for _, option_row in options_df.iterrows():
             try:
+                tsym = option_row['tradingsymbol']
+                token = str(option_row['token'])
+                strike = float(option_row['strikeprice'])
+                option_type = option_row['optiontype']
+                
                 # Get quote for this option
-                quote = api.get_quotes(option['exch'], option['token'])
+                quote = api.get_quotes(option_row['exchange'], token)
                 if not quote:
+                    filtered_by_quote += 1
                     continue
                 
-                # Determine option type
-                tsym = option.get('tsym', '')
-                option_type = 'CE' if 'CE' in tsym else 'PE' if 'PE' in tsym else None
-                if not option_type:
-                    continue
-                
-                # Extract strike price - try multiple methods
-                strike = 0.0
-                
-                # Method 1: Direct strike field
-                if 'strprc' in option and option['strprc']:
-                    try:
-                        strike = float(option['strprc'])
-                    except:
-                        pass
-                
-                # Method 2: Extract from trading symbol (NIFTY format: NIFTY24JAN20200CE or NIFTY24JAN20200PE)
-                if strike == 0 and tsym:
-                    try:
-                        # Remove NIFTY prefix
-                        symbol_part = tsym.replace('NIFTY', '')
-                        # Remove option type suffix (CE/PE)
-                        symbol_part = symbol_part.replace('CE', '').replace('PE', '')
-                        # Remove 'F' if present (futures suffix)
-                        symbol_part = symbol_part.replace('F', '')
-                        # Extract numeric part - this should be the strike
-                        # Format is typically: DDMMMYYSTRIKE or DDMMMYY
-                        # Try to extract the last numeric sequence as strike
-                        # Find all numeric sequences
-                        numbers = re.findall(r'\d+', symbol_part)
-                        if numbers:
-                            # The last number is usually the strike
-                            strike_str = numbers[-1]
-                            if len(strike_str) >= 4:  # Strike should be at least 4 digits
-                                strike = float(strike_str)
-                    except:
-                        pass
-                
-                # Method 3: Try 'strike' field (alternative naming)
-                if strike == 0 and 'strike' in option:
-                    try:
-                        strike = float(option['strike'])
-                    except:
-                        pass
-                
-                if strike == 0:
-                    logger.debug(f"Could not extract strike price for {tsym}")
+                # Strike is already extracted from symbol manager data
+                if strike <= 0:
+                    filtered_by_strike += 1
+                    logger.debug(f"Invalid strike price for {tsym}")
                     continue
                 
                 # Calculate mid price if bid/ask available
@@ -271,21 +385,36 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
                     'bid': bid,
                     'ask': ask,
                     'mid_price': mid_price,
-                    'delta': float(option.get('delta', 0)) if option.get('delta') else 0.0,  # May not be available
+                    'delta': 0.0,  # Delta not available from symbol manager, would need to calculate
                     'oi': int(quote.get('oi', 0)),
                     'volume': int(quote.get('v', 0))
                 })
                 
             except Exception as e:
-                logger.debug(f"Error processing option {option.get('tsym', 'unknown')}: {str(e)}")
+                logger.debug(f"Error processing option {tsym}: {str(e)}")
                 continue
         
+        # #region agent log
+        _debug_log('strategy_runner.py:280', 'Filter results', {
+            'total_options': total_options,
+            'filtered_by_quote': filtered_by_quote,
+            'filtered_by_strike': filtered_by_strike,
+            'final_count': len(chain_data)
+        }, 'F')
+        # #endregion
+        
         if not chain_data:
-            logger.warning("No valid option chain data processed")
+            logger.warning(f"No valid option chain data processed for expiry {expiry_str_formatted}")
+            logger.debug(f"Total options found: {total_options}")
             return pd.DataFrame()
         
         option_chain_df = pd.DataFrame(chain_data)
-        logger.info(f"Processed {len(option_chain_df)} option contracts")
+        logger.info(f"Processed {len(option_chain_df)} option contracts for weekly expiry {expiry_str_formatted}")
+        
+        # Log sample strikes to verify
+        if not option_chain_df.empty:
+            sample_strikes = option_chain_df['strike'].unique()[:5]
+            logger.debug(f"Sample strikes found: {sample_strikes}")
         
         return option_chain_df
         
@@ -337,7 +466,7 @@ def calculate_adx_wrapper(api, symbol_manager, period=14):
         )
         
         if highs is None or lows is None or closes is None:
-            logger.warning("Could not fetch historical price data, using fallback ADX")
+            logger.info("Could not fetch historical price data from API, using fallback ADX value (18.0). This is normal if API doesn't support historical data or system is new.")
             return 18.0  # Fallback value
         
         # Calculate ADX
@@ -489,22 +618,23 @@ def save_trade_proposal(trade_proposal, output_dir='trade_proposals'):
 
 def run_iron_condor_strategy(api, symbol_manager):
     """
-    Run Iron Condor strategy check.
+    Run Iron Condor strategy check - checks multiple expiries to find valid trade.
     
     This function:
     1. Gets NIFTY spot price
-    2. Gets weekly expiry date
-    3. Fetches option chain
-    4. Builds market state
-    5. Generates trade proposal
-    6. Saves proposal if valid
+    2. Gets all available expiries from symbol file
+    3. Checks each expiry until finding a valid trade:
+       - Fetches option chain
+       - Builds market state
+       - Generates trade proposal
+    4. Saves proposal if valid
     
     Args:
         api: ShoonyaApiPy instance
         symbol_manager: SymbolManager instance
     
     Returns:
-        dict: Trade proposal or None if no valid trade
+        dict: Trade proposal or None if no valid trade found across all expiries
     """
     try:
         logger.info("=== Running Iron Condor Strategy Check ===")
@@ -517,57 +647,72 @@ def run_iron_condor_strategy(api, symbol_manager):
         
         logger.info(f"NIFTY spot price: {spot_price}")
         
-        # Step 2: Get weekly expiry
-        expiry_date = get_weekly_expiry()
-        expiry_date_obj = _get_date_object(expiry_date)
-        days_to_expiry = (expiry_date_obj - datetime.now().date()).days
+        # Step 2: Get available expiries to check (limit to 3 to reduce API calls)
+        # Only check nearest 3 expiries to optimize API usage
+        available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=3)
         
-        logger.info(f"Weekly expiry: {expiry_date_obj.strftime('%Y-%m-%d')} ({days_to_expiry} days)")
-        
-        # Step 3: Get option chain
-        option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50)
-        if option_chain_df.empty:
-            logger.warning("Could not fetch option chain data")
+        if not available_expiries:
+            logger.warning("No available expiries found")
             return None
         
-        logger.info(f"Fetched {len(option_chain_df)} option contracts")
+        logger.info(f"Checking {len(available_expiries)} expiries (optimized for API usage): {[d.strftime('%Y-%m-%d') for d in available_expiries]}")
         
-        # Step 4: Build market state (reuse option chain we already fetched)
-        market_state = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
-        if not market_state:
-            logger.warning("Could not build market state")
-            return None
+        # Step 3: Check each expiry until we find a valid trade
+        for expiry_date in available_expiries:
+            expiry_date_obj = _get_date_object(expiry_date)
+            days_to_expiry = (expiry_date_obj - datetime.now().date()).days
+            
+            logger.info(f"Checking expiry: {expiry_date_obj.strftime('%Y-%m-%d')} ({days_to_expiry} days)")
+            
+            # Get option chain for this expiry (reduced to 30 strikes to optimize API calls)
+            # 30 strikes = 60 options (30 calls + 30 puts) = ~60 API calls per expiry
+            # With 3 expiries max = ~180 API calls per strategy check (every 5 minutes)
+            option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
+            if option_chain_df.empty:
+                logger.debug(f"No option chain data for expiry {expiry_date_obj.strftime('%Y-%m-%d')}")
+                continue
+            
+            logger.info(f"Fetched {len(option_chain_df)} option contracts for {expiry_date_obj.strftime('%Y-%m-%d')}")
+            
+            # Build market state
+            market_state = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
+            if not market_state:
+                logger.debug(f"Could not build market state for expiry {expiry_date_obj.strftime('%Y-%m-%d')}")
+                continue
+            
+            # Generate trade proposal (eligibility check happens inside)
+            trade_proposal = generate_iron_condor_trade(market_state, option_chain_df)
+            
+            if trade_proposal:
+                logger.info("✅ Valid Iron Condor trade found!")
+                logger.info(f"   Strategy: {trade_proposal['strategy']}")
+                logger.info(f"   Expiry: {trade_proposal['expiry']}")
+                logger.info(f"   Lots: {trade_proposal['lots']}")
+                logger.info(f"   Net Credit: ₹{trade_proposal['net_credit']:.2f} per lot")
+                logger.info(f"   Total Credit: ₹{trade_proposal['net_credit_total']:.2f}")
+                logger.info(f"   Max Loss: ₹{trade_proposal['max_loss']:.2f}")
+                logger.info(f"   Max Profit: ₹{trade_proposal['max_profit']:.2f}")
+                logger.info(f"   Reward-to-Risk: {trade_proposal['reward_to_risk']:.2f}")
+                
+                # Log legs
+                logger.info("   Legs:")
+                for leg in trade_proposal['legs']:
+                    logger.info(
+                        f"     {leg['position']} {leg['option_type']} @ {leg['strike']} "
+                        f"(Price: ₹{leg['price']:.2f})"
+                    )
+                
+                # Save proposal
+                save_trade_proposal(trade_proposal)
+                
+                return trade_proposal
+            else:
+                # Log why this expiry didn't work (eligibility will log the reason)
+                logger.debug(f"No valid trade for expiry {expiry_date_obj.strftime('%Y-%m-%d')}, trying next...")
         
-        # Step 5: Generate trade proposal
-        trade_proposal = generate_iron_condor_trade(market_state, option_chain_df)
-        
-        # Step 6: Handle result
-        if trade_proposal:
-            logger.info("✅ Valid Iron Condor trade found!")
-            logger.info(f"   Strategy: {trade_proposal['strategy']}")
-            logger.info(f"   Expiry: {trade_proposal['expiry']}")
-            logger.info(f"   Lots: {trade_proposal['lots']}")
-            logger.info(f"   Net Credit: ₹{trade_proposal['net_credit']:.2f} per lot")
-            logger.info(f"   Total Credit: ₹{trade_proposal['net_credit_total']:.2f}")
-            logger.info(f"   Max Loss: ₹{trade_proposal['max_loss']:.2f}")
-            logger.info(f"   Max Profit: ₹{trade_proposal['max_profit']:.2f}")
-            logger.info(f"   Reward-to-Risk: {trade_proposal['reward_to_risk']:.2f}")
-            
-            # Log legs
-            logger.info("   Legs:")
-            for leg in trade_proposal['legs']:
-                logger.info(
-                    f"     {leg['position']} {leg['option_type']} @ {leg['strike']} "
-                    f"(Price: ₹{leg['price']:.2f})"
-                )
-            
-            # Save proposal
-            save_trade_proposal(trade_proposal)
-            
-            return trade_proposal
-        else:
-            logger.info("❌ No valid trade found (market conditions not suitable)")
-            return None
+        # If we get here, no expiry produced a valid trade
+        logger.info("❌ No valid trade found across all checked expiries")
+        return None
             
     except Exception as e:
         logger.error(f"Error running Iron Condor strategy: {str(e)}", exc_info=True)

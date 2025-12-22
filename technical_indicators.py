@@ -285,16 +285,31 @@ def calculate_iv_percentile(option_chain_df, spot_price, days_to_expiry, data_di
         # Load historical IV data
         historical_ivs = load_historical_iv(spot_price, days_to_expiry, data_dir)
         
-        # If we don't have enough historical data, use a simple estimate
+        # If we don't have enough historical data, use intelligent estimate based on current IV
         if len(historical_ivs) < 20:
-            logger.warning(f"Only {len(historical_ivs)} historical IV values, using estimate")
-            # Use a simple heuristic: if current IV is in typical range (15-30%), assume 50-70 percentile
-            if 15 <= current_iv <= 30:
-                return 65.0  # Default to middle range
-            elif current_iv < 15:
-                return 30.0  # Low IV
+            logger.info(f"Only {len(historical_ivs)} historical IV values available (need 20+), using current IV as proxy. This is normal for new systems.")
+            
+            # Use current IV to estimate percentile
+            # This allows trading when IV is actually high, even without historical data
+            # Typical NIFTY IV range: 10-40%
+            if current_iv < 12:
+                # Very low IV → Low percentile (below threshold, won't trade - safe)
+                estimated_percentile = 40.0
+                logger.info(f"Estimated IV percentile: {estimated_percentile:.1f}% (current IV: {current_iv:.2f}% is very low)")
+            elif current_iv < 18:
+                # Low-normal IV → Moderate percentile (at threshold, allows trading but cautious)
+                estimated_percentile = 55.0  # Just at threshold
+                logger.info(f"Estimated IV percentile: {estimated_percentile:.1f}% (current IV: {current_iv:.2f}% is low-normal)")
+            elif current_iv < 25:
+                # Normal-high IV → High percentile (good for selling options)
+                estimated_percentile = 70.0  # Well above threshold
+                logger.info(f"Estimated IV percentile: {estimated_percentile:.1f}% (current IV: {current_iv:.2f}% is normal-high)")
             else:
-                return 80.0  # High IV
+                # Very high IV → Very high percentile (excellent for selling options)
+                estimated_percentile = 85.0  # At upper limit
+                logger.info(f"Estimated IV percentile: {estimated_percentile:.1f}% (current IV: {current_iv:.2f}% is very high)")
+            
+            return estimated_percentile
         
         # Calculate percentile
         historical_ivs = np.array(historical_ivs)
@@ -381,9 +396,111 @@ def calculate_adx(high_prices, low_prices, close_prices, period=14):
         return None
 
 
+def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days=30):
+    """
+    Get historical price data from stored data collector files.
+    Uses NIFTY futures data as a proxy for NIFTY index.
+    
+    Args:
+        api: ShoonyaApiPy instance (not used, kept for compatibility)
+        symbol_manager: SymbolManager instance
+        symbol_name: Symbol name (e.g., 'Nifty 50')
+        days: Number of days of historical data to fetch
+    
+    Returns:
+        tuple: (high_prices, low_prices, close_prices) or (None, None, None) if error
+    """
+    try:
+        import glob
+        from pathlib import Path
+        
+        # Use NIFTY futures as proxy for NIFTY index
+        # Find the most recent NIFTY futures contract
+        if symbol_manager.nse_fo is None:
+            return None, None, None
+        
+        # Get active NIFTY futures
+        nifty_futures = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo['instrument'] == 'FUTIDX') &
+            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
+            (symbol_manager.nse_fo['optiontype'] == 'XX')
+        ].copy()
+        
+        if nifty_futures.empty:
+            logger.debug("No NIFTY futures found in symbol manager")
+            return None, None, None
+        
+        # Get the nearest expiry future
+        nifty_futures['expiry_date'] = pd.to_datetime(nifty_futures['expiry'], format='%d-%b-%Y', errors='coerce')
+        today = datetime.now().date()
+        active_futures = nifty_futures[nifty_futures['expiry_date'].dt.date >= today]
+        
+        if active_futures.empty:
+            logger.debug("No active NIFTY futures found")
+            return None, None, None
+        
+        # Get the nearest expiry
+        nearest_future = active_futures.sort_values('expiry_date').iloc[0]
+        future_symbol = nearest_future['tradingsymbol']
+        
+        # Look for stored data files
+        base_dir = Path('.')
+        data_dirs = sorted([d for d in base_dir.glob('market_data_*') if d.is_dir()], reverse=True)
+        
+        if not data_dirs:
+            logger.debug("No stored data directories found")
+            return None, None, None
+        
+        # Collect data from multiple days
+        all_data = []
+        for data_dir in data_dirs[:days]:  # Check up to 'days' number of directories
+            futures_file = data_dir / 'raw_data' / 'futures' / f"{future_symbol}_{data_dir.name[-8:]}.csv"
+            if futures_file.exists():
+                try:
+                    df = pd.read_csv(futures_file)
+                    if 'timestamp' in df.columns and 'ltp' in df.columns:
+                        df['timestamp'] = pd.to_datetime(df['timestamp'])
+                        all_data.append(df)
+                except Exception as e:
+                    logger.debug(f"Error reading {futures_file}: {str(e)}")
+                    continue
+        
+        if not all_data:
+            logger.debug("No stored futures data found")
+            return None, None, None
+        
+        # Combine all data
+        combined_df = pd.concat(all_data, ignore_index=True)
+        
+        # Group by date and calculate daily OHLC
+        combined_df['date'] = combined_df['timestamp'].dt.date
+        daily_bars = combined_df.groupby('date').agg({
+            'ltp': ['max', 'min', 'last']  # High, Low, Close
+        }).reset_index()
+        
+        daily_bars.columns = ['date', 'high', 'low', 'close']
+        daily_bars = daily_bars.sort_values('date')
+        
+        if len(daily_bars) < 15:
+            logger.debug(f"Only {len(daily_bars)} days of stored data available, need at least 15 for ADX")
+            return None, None, None
+        
+        highs = daily_bars['high'].tolist()
+        lows = daily_bars['low'].tolist()
+        closes = daily_bars['close'].tolist()
+        
+        logger.info(f"Using {len(daily_bars)} days of stored NIFTY futures data for ADX calculation")
+        return highs, lows, closes
+        
+    except Exception as e:
+        logger.debug(f"Error getting historical data from stored files: {str(e)}")
+        return None, None, None
+
+
 def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
     """
     Get historical price data for ADX calculation.
+    First tries stored data from data collector, then falls back to API.
     
     Args:
         api: ShoonyaApiPy instance
@@ -394,11 +511,19 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
     Returns:
         tuple: (high_prices, low_prices, close_prices) or (None, None, None) if error
     """
+    # Method 1: Try stored data first (preferred)
+    highs, lows, closes = get_historical_price_data_from_stored(
+        api, symbol_manager, symbol_name, days
+    )
+    if highs is not None and lows is not None and closes is not None:
+        return highs, lows, closes
+    
+    # Method 2: Fallback to API (if available)
     try:
         # Get symbol token
         symbol_info = symbol_manager.get_token_info(symbol_name, exchange='NSE')
         if not symbol_info:
-            logger.error(f"Could not find token for {symbol_name}")
+            logger.debug(f"Could not find token for {symbol_name}")
             return None, None, None
         
         token = symbol_info['token']
@@ -408,7 +533,10 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
         start_date = end_date - timedelta(days=days)
         
         # Try to fetch daily price series using token
-        # Use get_time_price_series with daily interval (1440 minutes = 1 day)
+        price_data = None
+        error_messages = []
+        
+        # Method 1: Try get_time_price_series
         try:
             price_data = api.get_time_price_series(
                 exchange='NSE',
@@ -417,8 +545,14 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
                 endtime=int(end_date.timestamp()),
                 interval=1440  # Daily interval (1440 minutes = 1 day)
             )
-        except:
-            # Fallback: try get_daily_price_series if available
+            if price_data:
+                logger.debug(f"Successfully fetched price data using get_time_price_series")
+        except Exception as e:
+            error_messages.append(f"get_time_price_series: {str(e)}")
+            logger.debug(f"get_time_price_series failed: {str(e)}")
+        
+        # Method 2: Fallback to get_daily_price_series if available
+        if not price_data:
             try:
                 tradingsymbol = symbol_info.get('tradingsymbol', symbol_name)
                 price_data = api.get_daily_price_series(
@@ -427,12 +561,14 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
                     startdate=int(start_date.timestamp()),
                     enddate=int(end_date.timestamp())
                 )
+                if price_data:
+                    logger.debug(f"Successfully fetched price data using get_daily_price_series")
             except Exception as e:
-                logger.warning(f"Error fetching price data: {str(e)}")
-                price_data = None
+                error_messages.append(f"get_daily_price_series: {str(e)}")
+                logger.debug(f"get_daily_price_series failed: {str(e)}")
         
         if not price_data:
-            logger.warning(f"No historical price data returned for {symbol_name}")
+            logger.debug(f"Could not fetch historical price data for {symbol_name} from API. Methods tried: {', '.join(error_messages) if error_messages else 'none'}.")
             return None, None, None
         
         # Parse price data - handle both formats
@@ -450,6 +586,11 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
         
         for entry in entries:
             try:
+                # Check if entry is a dictionary, skip if it's a string or other type
+                if not isinstance(entry, dict):
+                    logger.debug(f"Skipping non-dict entry: {type(entry)}")
+                    continue
+                
                 # Try different field names
                 high = float(entry.get('h', entry.get('high', entry.get('High', 0))))
                 low = float(entry.get('l', entry.get('low', entry.get('Low', 0))))
@@ -459,7 +600,7 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
                     highs.append(high)
                     lows.append(low)
                     closes.append(close)
-            except (ValueError, TypeError, KeyError) as e:
+            except (ValueError, TypeError, KeyError, AttributeError) as e:
                 logger.debug(f"Error parsing price entry: {str(e)}")
                 continue
         

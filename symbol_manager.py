@@ -451,22 +451,36 @@ class SymbolManager:
             self.logger.info(f"Found {len(options_df)} total index options")
                 
             # Convert expiry to datetime for sorting
-            options_df['expiry_date'] = pd.to_datetime(options_df['expiry'], format='%d-%b-%Y')
+            options_df['expiry_date'] = pd.to_datetime(options_df['expiry'], format='%d-%b-%Y', errors='coerce')
+            
+            # Filter out expired contracts (keep only contracts expiring today or later)
+            today = datetime.now().date()
+            options_df = options_df[options_df['expiry_date'].dt.date >= today]
+            
+            if options_df.empty:
+                self.logger.warning("No active (non-expired) index options found")
+                return []
+            
             options_df = options_df.sort_values(['expiry_date', 'strikeprice'])
             
             # Filter by index if specified
             if index_name:
                 options_df = options_df[options_df['symbol'] == index_name]
-                self.logger.info(f"Found {len(options_df)} options for {index_name}")
+                self.logger.info(f"Found {len(options_df)} active options for {index_name}")
             
             # Filter by expiry if specified
             if expiry:
-                options_df = options_df[options_df['expiry'] == expiry]
+                expiry_date = pd.to_datetime(expiry, format='%d-%b-%Y', errors='coerce')
+                if expiry_date is not pd.NaT and expiry_date.date() >= today:
+                    options_df = options_df[options_df['expiry'] == expiry]
+                else:
+                    self.logger.warning(f"Specified expiry {expiry} is in the past, ignoring")
+                    return []
             else:
-                # Get nearest expiry
+                # Get nearest active expiry
                 min_expiry = options_df['expiry_date'].min()
                 options_df = options_df[options_df['expiry_date'] == min_expiry]
-                self.logger.info(f"Filtered to nearest expiry: {min_expiry.strftime('%d-%b-%Y')}")
+                self.logger.info(f"Filtered to nearest active expiry: {min_expiry.strftime('%d-%b-%Y')}")
             
             # Get current market price for ATM strike selection
             if index_name:
@@ -562,8 +576,14 @@ class SymbolManager:
             
         return symbols
 
-    def get_all_index_derivatives(self):
-        """Get both futures and options for indices"""
+    def get_all_index_derivatives(self, max_expiries_per_index=2):
+        """
+        Get both futures and options for indices.
+        Collects data for multiple expiries (nearest 2 by default) to optimize API calls.
+        
+        Args:
+            max_expiries_per_index: Maximum number of expiries to collect data for (default: 2)
+        """
         derivatives = []
         
         # Get futures
@@ -573,16 +593,60 @@ class SymbolManager:
             derivatives.extend(futures)
             self.logger.info(f"Added {len(futures)} futures contracts")
             
-        # Get options (5 strikes above and below ATM for each index)
-        self.logger.info("Fetching index options...")
+        # Get options for multiple expiries (to match strategy checks)
+        self.logger.info(f"Fetching index options for up to {max_expiries_per_index} expiries per index...")
         for index in ['NIFTY', 'BANKNIFTY', 'FINNIFTY']:
-            options = self.get_index_options(index_name=index, strike_range=5)
-            if options:
-                derivatives.extend(options)
-                ce_count = len([opt for opt in options if opt['option_type'] == 'CE'])
-                pe_count = len([opt for opt in options if opt['option_type'] == 'PE'])
+            # Get options for multiple expiries
+            all_options = []
+            expiries_collected = []
+            
+            # Get all available expiries for this index
+            if self.nse_fo is None:
+                continue
+                
+            index_options_all = self.nse_fo[
+                (self.nse_fo['instrument'] == 'OPTIDX') &
+                (self.nse_fo['symbol'] == index) &
+                (self.nse_fo['optiontype'].isin(['CE', 'PE']))
+            ].copy()
+            
+            if index_options_all.empty:
+                continue
+            
+            # Convert expiry to datetime and filter active contracts
+            index_options_all['expiry_date'] = pd.to_datetime(
+                index_options_all['expiry'], format='%d-%b-%Y', errors='coerce'
+            )
+            today = datetime.now().date()
+            index_options_all = index_options_all[
+                index_options_all['expiry_date'].dt.date >= today
+            ]
+            
+            if index_options_all.empty:
+                continue
+            
+            # Get unique expiries, sorted
+            unique_expiries = sorted(
+                index_options_all['expiry_date'].dt.date.unique()
+            )[:max_expiries_per_index]
+            
+            # Collect options for each expiry (reduced strike_range to 3 to optimize API calls)
+            # 3 strikes above/below ATM = 7 strikes total = 14 options (7 calls + 7 puts) per expiry
+            # With 2 expiries = 28 options per index = ~28 API calls per collection cycle
+            for expiry_date in unique_expiries:
+                expiry_str = expiry_date.strftime('%d-%b-%Y').upper()
+                options = self.get_index_options(index_name=index, expiry=expiry_str, strike_range=3)
+                if options:
+                    all_options.extend(options)
+                    expiries_collected.append(expiry_str)
+            
+            if all_options:
+                derivatives.extend(all_options)
+                ce_count = len([opt for opt in all_options if opt['option_type'] == 'CE'])
+                pe_count = len([opt for opt in all_options if opt['option_type'] == 'PE'])
                 self.logger.info(
-                    f"Added {ce_count} calls and {pe_count} puts for {index}"
+                    f"Added {ce_count} calls and {pe_count} puts for {index} "
+                    f"(expiries: {', '.join(expiries_collected)})"
                 )
         
         self.logger.info(
