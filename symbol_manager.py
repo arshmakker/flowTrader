@@ -283,8 +283,17 @@ class SymbolManager:
                 self.logger.warning(f"Symbol file for {exchange} not loaded")
                 return None
                 
-            # Search for the symbol (case-insensitive)
-            symbol_match = df[df['symbol'].str.lower() == symbol.lower()]
+            # Search for the symbol (case-insensitive) - try both symbol and tradingsymbol columns
+            symbol_match = df[
+                (df['symbol'].str.lower() == symbol.lower())
+            ]
+            
+            # If not found by symbol, try trading symbol (if column exists)
+            if len(symbol_match) == 0 and 'tradingsymbol' in df.columns:
+                symbol_match = df[
+                    (df['tradingsymbol'].str.lower() == symbol.lower())
+                ]
+            
             if len(symbol_match) == 0:
                 self.logger.warning(f"Symbol {symbol} not found in {exchange}")
                 return None
@@ -345,6 +354,15 @@ class SymbolManager:
             
             # Convert expiry to datetime for sorting
             futures_df['expiry_date'] = pd.to_datetime(futures_df['expiry'], format='%d-%b-%Y')
+            
+            # Filter out expired contracts (keep only contracts expiring today or later)
+            today = datetime.now().date()
+            futures_df = futures_df[futures_df['expiry_date'].dt.date >= today]
+            
+            if futures_df.empty:
+                self.logger.warning("No active futures contracts found (all expired)")
+                return []
+            
             futures_df = futures_df.sort_values('expiry_date')
             
             # Define the indices we're interested in
@@ -361,11 +379,11 @@ class SymbolManager:
                     index_futures = futures_df[futures_df['symbol'].str.strip() == index_info['symbol']]
                     
                     if index_futures.empty:
-                        self.logger.warning(f"No futures found for {index_name}")
+                        self.logger.warning(f"No active futures found for {index_name}")
                         self.logger.debug(f"Available symbols: {futures_df['symbol'].unique()}")
                         continue
                     
-                    # Get the nearest expiry contract
+                    # Get the nearest expiry contract (first active one)
                     current_future = index_futures.iloc[0]
                     
                     # Debug log the matched future details

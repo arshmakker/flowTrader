@@ -9,6 +9,7 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
+from strategy_runner import run_iron_condor_strategy, is_market_hours
 from colorama import init, Fore, Style
 
 try:
@@ -165,18 +166,18 @@ def main():
         # Paper trading disabled for data collection focus
         trader = None
         
-        # try:
-        #     trader = PaperTrader(data_collector=collector, initial_capital=900000)
-        #     logger.info("Paper trader initialized successfully")
-        # except Exception as e:
-        #     logger.error(f"Error initializing paper trader: {str(e)}")
-        #     # Continue without paper trader
-            
         # Start data collection
         collector.start_collection()
         logger.info("Data collection started")
         
-        # Main loop - data collection only
+        # Strategy check timing
+        STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
+        last_strategy_check = datetime.now()
+        
+        logger.info(Fore.CYAN + "Iron Condor strategy integration enabled")
+        logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
+        
+        # Main loop - data collection and strategy checks
         try:
             while True:
                 # Paper trading disabled - only collecting data
@@ -185,6 +186,26 @@ def main():
                 #         trader.process_market_data()
                 #     except Exception as e:
                 #         logger.error(f"Error in paper trader: {str(e)}")
+                
+                # Run Iron Condor strategy check periodically during market hours
+                current_time = datetime.now()
+                time_since_last_check = (current_time - last_strategy_check).total_seconds()
+                
+                if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
+                    if is_market_hours():
+                        try:
+                            logger.info(Fore.CYAN + "Running Iron Condor strategy check...")
+                            trade_proposal = run_iron_condor_strategy(api, symbol_manager)
+                            if trade_proposal:
+                                logger.info(Fore.GREEN + f"✅ Trade proposal generated: {trade_proposal['lots']} lots, "
+                                          f"Credit: ₹{trade_proposal['net_credit_total']:.2f}")
+                            else:
+                                logger.debug("No valid trade proposal generated")
+                        except Exception as e:
+                            logger.error(f"Error running Iron Condor strategy: {str(e)}", exc_info=True)
+                    
+                    last_strategy_check = current_time
+                
                 time.sleep(1)
                 
         except KeyboardInterrupt:
