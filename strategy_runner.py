@@ -433,17 +433,21 @@ def calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
         days_to_expiry: Days to expiration
     
     Returns:
-        float: IV percentile (0-100), or None if calculation fails
+        float: IV percentile (0-100), or fallback value if calculation fails
     """
     try:
         iv_percentile = calculate_iv_percentile(
             option_chain_df, spot_price, days_to_expiry
         )
+        # Handle None return value
+        if iv_percentile is None:
+            logger.warning("IV percentile calculation returned None, using fallback value (65.0)")
+            return 65.0
         return iv_percentile
     except Exception as e:
         logger.error(f"Error calculating IV percentile: {str(e)}", exc_info=True)
         # Fallback to default value if calculation fails
-        logger.warning("Using fallback IV percentile value")
+        logger.warning("Using fallback IV percentile value (65.0)")
         return 65.0
 
 
@@ -466,7 +470,9 @@ def calculate_adx_wrapper(api, symbol_manager, period=14):
         )
         
         if highs is None or lows is None or closes is None:
-            logger.info("Could not fetch historical price data from API, using fallback ADX value (18.0). This is normal if API doesn't support historical data or system is new.")
+            # This is expected for new systems - Shoonya API doesn't support historical data
+            # System will use stored data from data collector as it accumulates over time
+            logger.info("Using fallback ADX value (18.0). Historical data will be available once data collector accumulates 15+ days of data. This is normal for new systems.")
             return 18.0  # Fallback value
         
         # Calculate ADX
@@ -566,9 +572,14 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
             'expiry': _get_date_object(expiry_date).strftime('%Y-%m-%d')
         }
         
+        # Format values safely (handle None)
+        iv_str = f"{iv_percentile:.1f}%" if iv_percentile is not None else "N/A"
+        adx_str = f"{adx_14:.1f}" if adx_14 is not None else "N/A"
+        dte_str = str(days_to_expiry) if days_to_expiry is not None else "N/A"
+        
         logger.info(
-            f"Market state: IV={iv_percentile:.1f}%, DTE={days_to_expiry}, "
-            f"ADX={adx_14:.1f}, Event={has_major_event}"
+            f"Market state: IV={iv_str}, DTE={dte_str}, "
+            f"ADX={adx_str}, Event={has_major_event}"
         )
         
         return market_state

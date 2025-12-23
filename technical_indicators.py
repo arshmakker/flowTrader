@@ -169,14 +169,16 @@ def calculate_atm_iv(option_chain_df, spot_price, days_to_expiry, risk_free_rate
     return atm_iv
 
 
-def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv'):
+def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv', exclude_current_timestamp=None):
     """
     Load historical IV data for percentile calculation.
+    Includes today's earlier calculations but excludes the current one to avoid circular logic.
     
     Args:
         spot_price: Current spot price
         days_to_expiry: Days to expiration
         data_dir: Directory where historical IV data is stored
+        exclude_current_timestamp: ISO format timestamp to exclude (e.g., '2025-12-23T13:53:22.123456')
     
     Returns:
         list: Historical IV values, or empty list if no data
@@ -188,9 +190,47 @@ def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv'):
             os.makedirs(data_dir)
             return []
         
+        # Parse exclude timestamp if provided
+        exclude_time = None
+        if exclude_current_timestamp:
+            try:
+                exclude_time = datetime.fromisoformat(exclude_current_timestamp)
+            except (ValueError, AttributeError):
+                logger.debug(f"Could not parse exclude timestamp: {exclude_current_timestamp}")
+        
         # Look for IV data files (stored by date)
         # Format: iv_data_YYYYMMDD.json
         today = datetime.now()
+        today_date_str = today.strftime('%Y%m%d')
+        
+        # First, load today's data (if exists) - include earlier calculations but exclude current
+        today_filename = os.path.join(data_dir, f"iv_data_{today_date_str}.json")
+        if os.path.exists(today_filename):
+            try:
+                with open(today_filename, 'r') as f:
+                    data = json.load(f)
+                    # Filter by similar DTE range (±2 days) and exclude current timestamp
+                    for entry in data:
+                        # Check DTE match
+                        if abs(entry.get('days_to_expiry', 0) - days_to_expiry) <= 2:
+                            # Exclude current calculation if timestamp matches (within 5 seconds)
+                            entry_timestamp = entry.get('timestamp')
+                            if entry_timestamp and exclude_time:
+                                try:
+                                    entry_time = datetime.fromisoformat(entry_timestamp)
+                                    time_diff = abs((entry_time - exclude_time).total_seconds())
+                                    if time_diff < 5:  # Exclude if within 5 seconds
+                                        continue
+                                except (ValueError, AttributeError):
+                                    pass  # If can't parse, include it
+                            
+                            iv = entry.get('iv', None)
+                            if iv:
+                                historical_ivs.append(iv)
+            except Exception as e:
+                logger.debug(f"Error loading today's IV data from {today_filename}: {str(e)}")
+        
+        # Then load historical data from previous days
         for days_back in range(1, 90):  # Look back 90 days
             date = today - timedelta(days=days_back)
             filename = os.path.join(data_dir, f"iv_data_{date.strftime('%Y%m%d')}.json")
@@ -209,7 +249,7 @@ def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv'):
                     logger.debug(f"Error loading IV data from {filename}: {str(e)}")
                     continue
         
-        logger.debug(f"Loaded {len(historical_ivs)} historical IV values")
+        logger.debug(f"Loaded {len(historical_ivs)} historical IV values (including today's earlier calculations)")
         return historical_ivs
         
     except Exception as e:
@@ -279,11 +319,14 @@ def calculate_iv_percentile(option_chain_df, spot_price, days_to_expiry, data_di
             logger.warning("Could not calculate current IV")
             return None
         
+        # Get current timestamp before saving (to exclude it from historical data)
+        current_timestamp = datetime.now().isoformat()
+        
         # Save current IV for future percentile calculations
         save_iv_data(current_iv, spot_price, days_to_expiry, data_dir)
         
-        # Load historical IV data
-        historical_ivs = load_historical_iv(spot_price, days_to_expiry, data_dir)
+        # Load historical IV data (exclude current calculation to avoid circular logic)
+        historical_ivs = load_historical_iv(spot_price, days_to_expiry, data_dir, exclude_current_timestamp=current_timestamp)
         
         # If we don't have enough historical data, use intelligent estimate based on current IV
         if len(historical_ivs) < 20:
@@ -482,7 +525,7 @@ def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days
         daily_bars = daily_bars.sort_values('date')
         
         if len(daily_bars) < 15:
-            logger.debug(f"Only {len(daily_bars)} days of stored data available, need at least 15 for ADX")
+            logger.info(f"Only {len(daily_bars)} days of stored data available (need at least 15 for ADX). System will accumulate more data over time.")
             return None, None, None
         
         highs = daily_bars['high'].tolist()
@@ -518,7 +561,9 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
     if highs is not None and lows is not None and closes is not None:
         return highs, lows, closes
     
-    # Method 2: Fallback to API (if available)
+    # Method 2: Fallback to API (Note: Shoonya API does not support historical data)
+    # This is expected to fail for new systems or when API doesn't support historical data
+    logger.debug(f"Stored data insufficient, attempting API (expected to fail if API doesn't support historical data)")
     try:
         # Get symbol token
         symbol_info = symbol_manager.get_token_info(symbol_name, exchange='NSE')
@@ -568,7 +613,8 @@ def get_historical_price_data(api, symbol_manager, symbol_name, days=30):
                 logger.debug(f"get_daily_price_series failed: {str(e)}")
         
         if not price_data:
-            logger.debug(f"Could not fetch historical price data for {symbol_name} from API. Methods tried: {', '.join(error_messages) if error_messages else 'none'}.")
+            # This is expected - Shoonya API does not support historical price data
+            logger.debug(f"API does not support historical price data for {symbol_name} (expected behavior). Will use stored data as it accumulates.")
             return None, None, None
         
         # Parse price data - handle both formats
