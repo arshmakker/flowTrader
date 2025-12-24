@@ -636,7 +636,7 @@ class SymbolManager:
             for expiry_date in unique_expiries:
                 expiry_str = expiry_date.strftime('%d-%b-%Y').upper()
                 options = self.get_index_options(index_name=index, expiry=expiry_str, strike_range=3)
-            if options:
+                if options:
                     all_options.extend(options)
                     expiries_collected.append(expiry_str)
             

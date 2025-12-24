@@ -187,8 +187,24 @@ def main():
                 #     except Exception as e:
                 #         logger.error(f"Error in paper trader: {str(e)}")
                 
-                # Run Iron Condor strategy check periodically during market hours
+                # Check if market has closed (after 3:30 PM)
                 current_time = datetime.now()
+                market_close_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+                
+                # If it's past 3:30 PM on a weekday, stop the system
+                if current_time.weekday() < 5 and current_time >= market_close_time:
+                    logger.info(Fore.YELLOW + "Market has closed (3:30 PM). Stopping system...")
+                    # Stop data collection before exiting
+                    if collector:
+                        logger.info("Stopping data collection...")
+                        collector.stop_collection()
+                    logger.info("=== Data Collection System Stopped ===")
+                    logger.info(f"End Time: {datetime.now()}")
+                    runtime = datetime.now() - start_time
+                    logger.info(f"Total Runtime: {runtime}")
+                    break
+                
+                # Run Iron Condor strategy check periodically during market hours
                 time_since_last_check = (current_time - last_strategy_check).total_seconds()
                 
                 if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
