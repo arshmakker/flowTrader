@@ -210,8 +210,16 @@ def get_all_eligible_expiries(symbol_manager, max_expiries_to_check=10):
         today = datetime.now().date()
         future_expiries = [d for d in valid_expiries if d >= today]
         
+        # Filter out expiries with less than 3 days to expiry (DAYS_TO_EXPIRY_MIN)
+        from strategies.iron_condor.config import DAYS_TO_EXPIRY_MIN
+        eligible_expiries = []
+        for expiry_date in future_expiries:
+            days_to_expiry = (expiry_date - today).days
+            if days_to_expiry >= DAYS_TO_EXPIRY_MIN:
+                eligible_expiries.append(expiry_date)
+        
         # Return up to max_expiries_to_check expiries
-        return future_expiries[:max_expiries_to_check]
+        return eligible_expiries[:max_expiries_to_check]
         
     except Exception as e:
         logger.error(f"Error getting eligible expiries: {str(e)}", exc_info=True)
@@ -658,9 +666,9 @@ def run_iron_condor_strategy(api, symbol_manager):
         
         logger.info(f"NIFTY spot price: {spot_price}")
         
-        # Step 2: Get available expiries to check (limit to 3 to reduce API calls)
-        # Only check nearest 3 expiries to optimize API usage
-        available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=3)
+        # Step 2: Get available expiries to check (increased to 7 to find more opportunities)
+        # Check up to 7 expiries to find optimal IV percentile and DTE combinations
+        available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=7)
         
         if not available_expiries:
             logger.warning("No available expiries found")

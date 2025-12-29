@@ -3,8 +3,8 @@ Configuration constants for Iron Condor strategy
 """
 
 # Market eligibility thresholds
-IV_PERCENTILE_MIN = 55
-IV_PERCENTILE_MAX = 85
+IV_PERCENTILE_MIN = 50  # Expanded from 55 to allow more opportunities
+IV_PERCENTILE_MAX = 90  # Expanded from 85 to allow more opportunities
 DAYS_TO_EXPIRY_MIN = 3
 DAYS_TO_EXPIRY_MAX = 30  # Expanded to include monthly expiries (was 6)
 ADX_THRESHOLD = 22
