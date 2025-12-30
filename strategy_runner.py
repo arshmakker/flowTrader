@@ -564,6 +564,10 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
         expiry_date_obj = _get_date_object(expiry_date)
         days_to_expiry = (expiry_date_obj - datetime.now().date()).days
         
+        # Determine instrument type based on DTE
+        # DTE <= 7: Weekly expiry, DTE > 7: Monthly expiry
+        instrument_type = 'WEEKLY' if days_to_expiry <= 7 else 'MONTHLY'
+        
         # Calculate market metrics
         iv_percentile = calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
         adx_14 = calculate_adx_wrapper(api, symbol_manager)
@@ -575,7 +579,7 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
             'adx_14': adx_14,
             'has_major_event': has_major_event,
             'instrument': 'NIFTY',
-            'instrument_type': 'WEEKLY',
+            'instrument_type': instrument_type,
             'spot_price': spot_price,
             'expiry': _get_date_object(expiry_date).strftime('%Y-%m-%d')
         }

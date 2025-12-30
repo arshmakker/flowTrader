@@ -21,11 +21,11 @@ def is_market_eligible(market_state: dict) -> bool:
     Check if market conditions are eligible for Iron Condor strategy.
     
     Rules:
-    1. IV Percentile between 55 and 85
-    2. Days to expiry between 3 and 6
+    1. IV Percentile between 50 and 100
+    2. Days to expiry between 3 and 30
     3. ADX(14) < 22
     4. No RBI or major event in next 48h
-    5. Instrument = NIFTY weekly
+    5. Instrument = NIFTY (weekly or monthly)
     
     Args:
         market_state: Dictionary containing:
@@ -84,8 +84,9 @@ def is_market_eligible(market_state: dict) -> bool:
             logger.debug(f"Instrument {instrument} != {TARGET_INSTRUMENT}")
             return False
         
-        if instrument_type != INSTRUMENT_TYPE:
-            logger.debug(f"Instrument type {instrument_type} != {INSTRUMENT_TYPE}")
+        # Allow both WEEKLY and MONTHLY expiries for more opportunities
+        if instrument_type not in ["WEEKLY", "MONTHLY"]:
+            logger.debug(f"Instrument type {instrument_type} not in [WEEKLY, MONTHLY]")
             return False
         
         logger.info("Market eligibility check passed")
