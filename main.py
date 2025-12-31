@@ -9,7 +9,10 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
-from strategy_runner import run_iron_condor_strategy, is_market_hours
+from strategy_runner import run_iron_condor_strategy, is_market_hours, get_nifty_spot_price, get_option_chain_data
+from strategy_runner import get_all_eligible_expiries
+from technical_indicators import calculate_iv_percentile
+from datetime import timedelta
 from colorama import init, Fore, Style
 
 try:
@@ -174,8 +177,13 @@ def main():
         STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
         last_strategy_check = datetime.now()
         
+        # IV calculation timing (more frequent to build historical data faster)
+        IV_CALCULATION_INTERVAL = 120  # Calculate IV every 2 minutes (120 seconds)
+        last_iv_calculation = datetime.now()
+        
         logger.info(Fore.CYAN + "Iron Condor strategy integration enabled")
         logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
+        logger.info(f"IV calculations will run every {IV_CALCULATION_INTERVAL // 60} minutes to build historical data")
         
         # Main loop - data collection and strategy checks
         try:
@@ -203,6 +211,42 @@ def main():
                     runtime = datetime.now() - start_time
                     logger.info(f"Total Runtime: {runtime}")
                     break
+                
+                # Calculate IV more frequently to build historical data (independent of strategy checks)
+                time_since_iv_calc = (current_time - last_iv_calculation).total_seconds()
+                
+                if time_since_iv_calc >= IV_CALCULATION_INTERVAL:
+                    if is_market_hours():
+                        try:
+                            # Get spot price and nearest expiry for IV calculation
+                            spot_price = get_nifty_spot_price(api, symbol_manager)
+                            if spot_price:
+                                # Get the nearest expiry (for IV calculation)
+                                eligible_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=1)
+                                if eligible_expiries:
+                                    expiry_date = eligible_expiries[0]
+                                    # Get minimal option chain (just 10 strikes for IV calculation - lighter weight)
+                                    option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=10)
+                                    if not option_chain.empty:
+                                        # Calculate days to expiry (expiry_date from get_all_eligible_expiries is a date object)
+                                        from datetime import date
+                                        if isinstance(expiry_date, date):
+                                            days_to_expiry = (expiry_date - current_time.date()).days
+                                        elif isinstance(expiry_date, datetime):
+                                            days_to_expiry = (expiry_date.date() - current_time.date()).days
+                                        else:
+                                            # Fallback: try to parse as string
+                                            expiry_date_obj = datetime.strptime(str(expiry_date), '%Y-%m-%d')
+                                            days_to_expiry = (expiry_date_obj.date() - current_time.date()).days
+                                        
+                                        # Calculate and save IV (this will save to historical data)
+                                        iv_percentile = calculate_iv_percentile(option_chain, spot_price, days_to_expiry)
+                                        if iv_percentile is not None:
+                                            logger.debug(f"IV calculated: {iv_percentile:.1f}% (saved for historical data)")
+                        except Exception as e:
+                            logger.debug(f"Error calculating IV (non-critical): {str(e)}")
+                    
+                    last_iv_calculation = current_time
                 
                 # Run Iron Condor strategy check periodically during market hours
                 time_since_last_check = (current_time - last_strategy_check).total_seconds()

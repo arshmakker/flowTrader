@@ -117,6 +117,7 @@ def _select_short_call(calls: pd.DataFrame, spot_price: float) -> Optional[Dict]
         
         if not valid_delta.empty:
             # Select most liquid strike in delta range
+            valid_delta = valid_delta.copy()
             valid_delta['liquidity'] = (
                 valid_delta.get('oi', 0).fillna(0) +
                 valid_delta.get('volume', 0).fillna(0)
@@ -134,6 +135,7 @@ def _select_short_call(calls: pd.DataFrame, spot_price: float) -> Optional[Dict]
     ]
     
     if not valid_distance.empty:
+        valid_distance = valid_distance.copy()
         valid_distance['liquidity'] = (
             valid_distance.get('oi', 0).fillna(0) +
             valid_distance.get('volume', 0).fillna(0)

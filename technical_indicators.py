@@ -495,15 +495,30 @@ def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days
             return None, None, None
         
         # Collect data from multiple days
+        # Note: We look for ANY NIFTY future file in each directory, not just the current contract,
+        # because historical data might have been collected with different future contracts
         all_data = []
         for data_dir in data_dirs[:days]:  # Check up to 'days' number of directories
-            futures_file = data_dir / 'raw_data' / 'futures' / f"{future_symbol}_{data_dir.name[-8:]}.csv"
-            if futures_file.exists():
+            futures_dir = data_dir / 'raw_data' / 'futures'
+            if not futures_dir.exists():
+                continue
+            
+            # Look for ANY NIFTY future file in this directory (not just current contract)
+            # Historical data might have been collected with different future contracts
+            nifty_futures_files = list(futures_dir.glob('NIFTY*FUT_*.csv'))
+            if not nifty_futures_files:
+                # Also try without FUT suffix (in case naming is different)
+                nifty_futures_files = list(futures_dir.glob('NIFTY*_*.csv'))
+            
+            # Use the first NIFTY future file found for this date
+            if nifty_futures_files:
+                futures_file = nifty_futures_files[0]
                 try:
                     df = pd.read_csv(futures_file)
                     if 'timestamp' in df.columns and 'ltp' in df.columns:
                         df['timestamp'] = pd.to_datetime(df['timestamp'])
                         all_data.append(df)
+                        logger.debug(f"Loaded data from {futures_file.name} ({len(df)} rows)")
                 except Exception as e:
                     logger.debug(f"Error reading {futures_file}: {str(e)}")
                     continue

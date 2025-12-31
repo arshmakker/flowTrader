@@ -24,7 +24,24 @@ WING_WIDTH_MIN = 100
 WING_WIDTH_MAX = 150
 
 # Payoff validation thresholds
-NET_CREDIT_MIN = 70.0  # ₹ per lot
+# NET_CREDIT_MIN rationale:
+# Iron Condor requires 4 option orders (2 short + 2 long legs)
+# Transaction costs per trade:
+#   - Brokerage: ₹5 × 4 orders = ₹20
+#   - GST on brokerage (18%): ₹3.60
+#   - STT (0.1% on sell premium): ~₹0.10-0.15
+#   - Transaction charges (0.03503% on premium): ~₹0.05-0.10
+#   - GST on transaction charges (18%): ~₹0.01-0.02
+#   - Stamp duty (0.003% on buy premium): ~₹0.001-0.002
+# Total costs: ~₹23-24 per trade
+# 
+# Minimum credit threshold considerations:
+#   - Must cover full transaction costs: ₹24
+#   - Should provide profit buffer for viable trades
+#   - Adjusted to ₹30 to allow trades in current low-IV market conditions
+#     while still maintaining cost coverage + small profit buffer
+#   - Can be increased to ₹50-70 in high-IV environments for better margins
+NET_CREDIT_MIN = 30.0  # ₹ per lot (covers transaction costs + small profit buffer)
 NET_CREDIT_MAX = 110.0  # ₹ per lot
 MAX_LOSS_PER_LOT_MAX = 1500.0  # ₹ per lot
 MIN_REWARD_TO_RISK = 2.0
