@@ -44,6 +44,14 @@ logs/
 market_data_*/
 data/raw_data/
 data/processed_data/
+market_data_iv/
+
+# Backtest Reports
+backtest_report_*.json
+
+# Trade Proposals
+trade_proposals/
+*.trade_proposal.json
 
 # IDE
 .vscode/
