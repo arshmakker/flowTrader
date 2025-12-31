@@ -52,6 +52,79 @@ def black_scholes_price(S, K, T, r, sigma, option_type='call'):
     return max(price, 0)
 
 
+def calculate_probability_of_profit(spot_price: float, short_call_strike: float, 
+                                     short_put_strike: float, iv: float, 
+                                     days_to_expiry: int, risk_free_rate: float = RISK_FREE_RATE) -> float:
+    """
+    Calculate Probability of Profit (PoP) for Iron Condor strategy.
+    
+    PoP is the probability that the underlying price stays between the short strikes
+    at expiration, resulting in maximum profit.
+    
+    Uses Black-Scholes normal distribution approach:
+    PoP = N(d2_put) - N(d2_call)
+    where N is cumulative normal distribution and d2 is from Black-Scholes formula.
+    
+    Args:
+        spot_price: Current spot price of underlying
+        short_call_strike: Short call strike price
+        short_put_strike: Short put strike price
+        iv: Implied volatility (annual, as decimal, e.g., 0.15 for 15%)
+        days_to_expiry: Days to expiration
+        risk_free_rate: Risk-free rate (annual, default 6%)
+    
+    Returns:
+        float: Probability of profit as percentage (0-100)
+    """
+    try:
+        if days_to_expiry <= 0:
+            # At expiration, PoP is 1 if price is between strikes, 0 otherwise
+            if short_put_strike <= spot_price <= short_call_strike:
+                return 100.0
+            else:
+                return 0.0
+        
+        if iv <= 0:
+            logger.warning("IV is zero or negative, cannot calculate PoP accurately")
+            return 50.0  # Default to 50% if IV unavailable
+        
+        # Convert days to years
+        T = days_to_expiry / 365.0
+        
+        # Calculate d2 for both strikes using Black-Scholes formula
+        # d2 = (ln(S/K) + (r - 0.5*sigma^2)*T) / (sigma * sqrt(T))
+        
+        # For short put strike (lower bound)
+        if short_put_strike > 0:
+            d2_put = (np.log(spot_price / short_put_strike) + 
+                      (risk_free_rate - 0.5 * iv ** 2) * T) / (iv * np.sqrt(T))
+            prob_below_put = norm.cdf(d2_put)  # Probability price < put strike
+        else:
+            prob_below_put = 0.0
+        
+        # For short call strike (upper bound)
+        if short_call_strike > 0:
+            d2_call = (np.log(spot_price / short_call_strike) + 
+                       (risk_free_rate - 0.5 * iv ** 2) * T) / (iv * np.sqrt(T))
+            prob_below_call = norm.cdf(d2_call)  # Probability price < call strike
+        else:
+            prob_below_call = 1.0
+        
+        # PoP = Probability(put_strike < price < call_strike)
+        # = P(price < call_strike) - P(price < put_strike)
+        pop = prob_below_call - prob_below_put
+        
+        # Ensure PoP is between 0 and 1
+        pop = max(0.0, min(1.0, pop))
+        
+        # Convert to percentage
+        return pop * 100.0
+        
+    except Exception as e:
+        logger.error(f"Error calculating PoP: {str(e)}")
+        return 50.0  # Default to 50% on error
+
+
 def calculate_implied_volatility(option_price, S, K, T, r, option_type='call', max_iter=100):
     """
     Calculate implied volatility from option price using Black-Scholes.

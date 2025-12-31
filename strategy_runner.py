@@ -17,7 +17,8 @@ from strategies.iron_condor import generate_iron_condor_trade
 from technical_indicators import (
     calculate_iv_percentile,
     calculate_adx,
-    get_historical_price_data
+    get_historical_price_data,
+    calculate_atm_iv
 )
 
 # Debug logging setup
@@ -573,6 +574,13 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
         adx_14 = calculate_adx_wrapper(api, symbol_manager)
         has_major_event = check_major_events(expiry_date)
         
+        # Calculate current IV for PoP calculation
+        current_iv = None
+        try:
+            current_iv = calculate_atm_iv(option_chain_df, spot_price, days_to_expiry)
+        except Exception as e:
+            logger.debug(f"Could not calculate current IV: {str(e)}")
+        
         market_state = {
             'iv_percentile': iv_percentile,
             'days_to_expiry': days_to_expiry,
@@ -581,7 +589,8 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
             'instrument': 'NIFTY',
             'instrument_type': instrument_type,
             'spot_price': spot_price,
-            'expiry': _get_date_object(expiry_date).strftime('%Y-%m-%d')
+            'expiry': _get_date_object(expiry_date).strftime('%Y-%m-%d'),
+            'current_iv': current_iv  # Add current IV for PoP calculation
         }
         
         # Format values safely (handle None)

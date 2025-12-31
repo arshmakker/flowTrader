@@ -3,13 +3,14 @@ Payoff validation for Iron Condor strategy
 """
 
 import logging
-from typing import Dict
+from typing import Dict, Optional
 from .config import (
     NET_CREDIT_MIN,
     NET_CREDIT_MAX,
     MAX_LOSS_PER_LOT_MAX,
     MIN_REWARD_TO_RISK
 )
+from technical_indicators import calculate_probability_of_profit, calculate_atm_iv
 
 logger = logging.getLogger(__name__)
 
@@ -19,27 +20,35 @@ class StrategyRejectedError(Exception):
     pass
 
 
-def validate_payoff(legs: Dict) -> Dict:
+def validate_payoff(legs: Dict, spot_price: Optional[float] = None, 
+                    days_to_expiry: Optional[int] = None, 
+                    iv: Optional[float] = None,
+                    option_chain: Optional[object] = None) -> Dict:
     """
     Validate Iron Condor payoff meets risk/reward criteria.
     
     Rules:
-    1. Net credit per lot ∈ ₹70–₹110
-    2. Max loss per lot ≤ ₹1,500
-    3. Reward-to-risk ≥ 2.0
+    1. Net credit per lot ∈ [NET_CREDIT_MIN, NET_CREDIT_MAX]
+    2. Max loss per lot ≤ MAX_LOSS_PER_LOT_MAX
+    3. Reward-to-risk ≥ MIN_REWARD_TO_RISK
     
     Args:
         legs: Dictionary with keys:
-            - short_call: dict with mid_price
-            - short_put: dict with mid_price
-            - long_call: dict with mid_price
-            - long_put: dict with mid_price
+            - short_call: dict with mid_price, strike
+            - short_put: dict with mid_price, strike
+            - long_call: dict with mid_price, strike
+            - long_put: dict with mid_price, strike
+        spot_price: Current spot price (for PoP calculation)
+        days_to_expiry: Days to expiration (for PoP calculation)
+        iv: Implied volatility (annual, as decimal). If None, will try to calculate from option_chain
+        option_chain: DataFrame with option chain data (for IV calculation if iv not provided)
     
     Returns:
         Dictionary with:
             - net_credit: float (per lot)
             - max_loss: float (per lot)
             - reward_to_risk: float
+            - probability_of_profit: float (percentage, 0-100)
             - is_valid: bool
     
     Raises:
@@ -79,11 +88,42 @@ def validate_payoff(legs: Dict) -> Dict:
             # If max_loss <= 0, this is actually a net debit trade (invalid)
             reward_to_risk = 0
         
+        # Calculate Probability of Profit (PoP)
+        probability_of_profit = None
+        if spot_price and days_to_expiry and days_to_expiry > 0:
+            # Get IV if not provided
+            calculated_iv = iv
+            if calculated_iv is None and option_chain is not None:
+                try:
+                    import pandas as pd
+                    if isinstance(option_chain, pd.DataFrame) and not option_chain.empty:
+                        calculated_iv = calculate_atm_iv(option_chain, spot_price, days_to_expiry)
+                        if calculated_iv:
+                            # Convert from percentage to decimal if needed
+                            if calculated_iv > 1:
+                                calculated_iv = calculated_iv / 100.0
+                except Exception as e:
+                    logger.debug(f"Could not calculate IV for PoP: {str(e)}")
+            
+            if calculated_iv and calculated_iv > 0:
+                try:
+                    probability_of_profit = calculate_probability_of_profit(
+                        spot_price=spot_price,
+                        short_call_strike=short_call_strike,
+                        short_put_strike=short_put_strike,
+                        iv=calculated_iv,
+                        days_to_expiry=days_to_expiry
+                    )
+                    logger.debug(f"Calculated PoP: {probability_of_profit:.1f}%")
+                except Exception as e:
+                    logger.debug(f"Error calculating PoP: {str(e)}")
+        
         # Validation checks
         validation_result = {
             "net_credit": net_credit,
             "max_loss": max_loss,
             "reward_to_risk": reward_to_risk,
+            "probability_of_profit": probability_of_profit,
             "is_valid": False
         }
         
@@ -124,9 +164,10 @@ def validate_payoff(legs: Dict) -> Dict:
             )
         
         validation_result["is_valid"] = True
+        pop_str = f", PoP={probability_of_profit:.1f}%" if probability_of_profit is not None else ""
         logger.info(
             f"Payoff validation passed: credit={net_credit:.2f}, "
-            f"max_loss={max_loss:.2f}, R:R={reward_to_risk:.2f}"
+            f"max_loss={max_loss:.2f}, R:R={reward_to_risk:.2f}{pop_str}"
         )
         
         return validation_result

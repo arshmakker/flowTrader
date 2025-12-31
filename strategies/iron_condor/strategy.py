@@ -104,7 +104,24 @@ def generate_iron_condor_trade(
         
         # Step 3: Validate payoff
         try:
-            payoff = validate_payoff(legs)
+            # Get days to expiry and IV for PoP calculation
+            days_to_expiry = market_state.get('days_to_expiry')
+            
+            # Try to get IV from market_state or calculate from option chain
+            iv = None
+            if 'current_iv' in market_state:
+                iv = market_state['current_iv']
+                # Convert from percentage to decimal if needed
+                if iv and iv > 1:
+                    iv = iv / 100.0
+            
+            payoff = validate_payoff(
+                legs=legs,
+                spot_price=spot_price,
+                days_to_expiry=days_to_expiry,
+                iv=iv,
+                option_chain=option_chain
+            )
         except StrategyRejectedError as e:
             logger.info(f"Payoff validation failed: {str(e)}")
             return None
@@ -178,6 +195,7 @@ def generate_iron_condor_trade(
             "net_credit_total": payoff['net_credit'] * lots,
             "max_loss_per_lot": payoff['max_loss'],
             "reward_to_risk": payoff['reward_to_risk'],
+            "probability_of_profit": payoff.get('probability_of_profit'),
             "spot_price": spot_price,
             "generated_at": datetime.now().isoformat(),
             "exit_rules": {
@@ -188,9 +206,10 @@ def generate_iron_condor_trade(
             }
         }
         
+        pop_str = f", PoP={payoff.get('probability_of_profit', 0):.1f}%" if payoff.get('probability_of_profit') is not None else ""
         logger.info(
             f"Iron Condor trade proposal generated: {lots} lots, "
-            f"credit={payoff['net_credit']:.2f}, max_loss={payoff['max_loss']:.2f}"
+            f"credit={payoff['net_credit']:.2f}, max_loss={payoff['max_loss']:.2f}{pop_str}"
         )
         
         return trade_proposal
