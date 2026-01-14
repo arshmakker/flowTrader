@@ -5,31 +5,55 @@ Detects three market regimes:
 - CONVEX: Low IV, compressed volatility, suitable for convex strategies
 - INCOME: High IV, low trend, suitable for income strategies (Iron Condor)
 - NEUTRAL: Transitional state, no new trades
+
+Features:
+- Regime persistence (anti-whipsaw): Requires N=2 consecutive detections
+- ATR history storage: Maintains 10-15 sessions for robust percentile calculation
 """
 
 import pandas as pd
 import numpy as np
 import logging
-from datetime import datetime, timedelta
+import os
+import json
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Tuple
 from technical_indicators import get_historical_price_data
 
 logger = logging.getLogger(__name__)
 
+# ATR history storage directory
+ATR_HISTORY_DIR = 'market_data_atr'
+ATR_HISTORY_FILE = os.path.join(ATR_HISTORY_DIR, 'atr_history.json')
+
 
 class RegimeDetector:
     """Detect market regime based on IV, ADX, ATR, and price range"""
     
-    def __init__(self, cache_duration_minutes=15):
+    # Class variables for persistence (shared across all instances)
+    _last_confirmed_regime = None
+    _candidate_regime = None
+    _confirmation_count_current = 0
+    
+    def __init__(self, cache_duration_minutes=15, confirmation_count=2):
         """
         Initialize RegimeDetector
         
         Args:
             cache_duration_minutes: How long to cache regime before recalculating
+            confirmation_count: Number of consecutive detections required for regime change (default: 2)
         """
         self.cache_duration_minutes = cache_duration_minutes
         self.cached_regime = None
         self.cached_time = None
+        
+        # Regime persistence (anti-whipsaw) - use class variables
+        self.confirmation_count = confirmation_count
+        # Note: persistence state is stored as class variables above
+        
+        # Ensure ATR history directory exists
+        if not os.path.exists(ATR_HISTORY_DIR):
+            os.makedirs(ATR_HISTORY_DIR)
     
     def calculate_atr(self, high_prices: List[float], low_prices: List[float], 
                      close_prices: List[float], period: int = 14) -> Optional[float]:
@@ -71,22 +95,97 @@ class RegimeDetector:
             logger.error(f"Error calculating ATR: {str(e)}", exc_info=True)
             return None
     
-    def calculate_atr_percentile(self, current_atr: float, historical_atrs: List[float]) -> Optional[float]:
+    def save_atr_data(self, atr_value: float, date_str: str = None):
+        """
+        Save ATR value to history for percentile calculation
+        
+        Args:
+            atr_value: Current ATR value
+            date_str: Date string (YYYY-MM-DD), defaults to today
+        """
+        try:
+            if date_str is None:
+                date_str = datetime.now().strftime('%Y-%m-%d')
+            
+            # Load existing history
+            history = self.load_atr_history()
+            
+            # Add or update entry
+            entry = {
+                'date': date_str,
+                'atr': atr_value,
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Remove old entry for same date if exists
+            history = [h for h in history if h.get('date') != date_str]
+            history.append(entry)
+            
+            # Keep only last 20 sessions (for robustness)
+            history = sorted(history, key=lambda x: x.get('date', ''), reverse=True)[:20]
+            
+            # Save to file
+            with open(ATR_HISTORY_FILE, 'w') as f:
+                json.dump(history, f, indent=2)
+            
+            logger.debug(f"Saved ATR data: {atr_value:.2f} for {date_str}")
+            
+        except Exception as e:
+            logger.error(f"Error saving ATR data: {str(e)}")
+    
+    def load_atr_history(self) -> List[Dict]:
+        """
+        Load ATR history from storage
+        
+        Returns:
+            List of ATR entries with 'date' and 'atr' keys
+        """
+        try:
+            if os.path.exists(ATR_HISTORY_FILE):
+                with open(ATR_HISTORY_FILE, 'r') as f:
+                    history = json.load(f)
+                    # Ensure we have at least 10-15 sessions
+                    if len(history) >= 10:
+                        return history
+                    else:
+                        logger.debug(f"ATR history has only {len(history)} sessions (target: 10-15)")
+                        return history
+            return []
+        except Exception as e:
+            logger.error(f"Error loading ATR history: {str(e)}")
+            return []
+    
+    def calculate_atr_percentile(self, current_atr: float, historical_atrs: List[float] = None) -> Optional[float]:
         """
         Calculate ATR percentile relative to historical ATR values
         
+        Uses stored ATR history (10-15 sessions) for robust calculation.
+        Falls back to provided historical_atrs if available.
+        
         Args:
             current_atr: Current ATR value
-            historical_atrs: List of historical ATR values (last ~20 trading days)
+            historical_atrs: Optional list of historical ATR values (fallback)
         
         Returns:
             ATR percentile (0-100) or None if calculation fails
         """
         try:
-            # Lowered minimum from 5 to 2 to work with limited data (17 days = 3 historical ATRs)
-            if not historical_atrs or len(historical_atrs) < 2:
-                logger.debug(f"Insufficient historical ATR data: {len(historical_atrs)} values (need at least 2)")
-                return None
+            # Try to load from stored history first (more robust)
+            stored_history = self.load_atr_history()
+            if stored_history and len(stored_history) >= 10:
+                # Extract ATR values from stored history
+                stored_atrs = [h['atr'] for h in stored_history if h.get('atr') and h['atr'] > 0]
+                if len(stored_atrs) >= 10:
+                    historical_atrs = stored_atrs
+                    logger.debug(f"Using stored ATR history: {len(stored_atrs)} sessions")
+            
+            # Fallback to provided historical_atrs if stored history insufficient
+            if not historical_atrs or len(historical_atrs) < 10:
+                if historical_atrs and len(historical_atrs) >= 2:
+                    logger.debug(f"Using provided ATR history: {len(historical_atrs)} values (minimum: 10 for robustness)")
+                else:
+                    logger.debug(f"Insufficient ATR history: {len(historical_atrs) if historical_atrs else 0} values (need at least 10 for robustness)")
+                    return None
             
             if current_atr <= 0:
                 return None
@@ -95,6 +194,8 @@ class RegimeDetector:
             sorted_atrs = sorted(historical_atrs)
             count_below = sum(1 for atr in sorted_atrs if atr < current_atr)
             percentile = (count_below / len(sorted_atrs)) * 100.0
+            
+            logger.debug(f"ATR percentile: {percentile:.1f}% (current: {current_atr:.2f}, samples: {len(sorted_atrs)})")
             
             return percentile
             
@@ -277,8 +378,8 @@ class RegimeDetector:
                             if period_atr:
                                 historical_atrs.append(period_atr)
                         
-                        if historical_atrs:
-                            atr_percentile = self.calculate_atr_percentile(atr, historical_atrs)
+                        # Use stored ATR history for percentile (more robust)
+                        atr_percentile = self.calculate_atr_percentile(atr, historical_atrs)
             
             # Calculate recent price range
             last_range = self.calculate_recent_range(recent_candles, minutes=60)
@@ -308,35 +409,45 @@ class RegimeDetector:
                     range_state = "NORMAL"
             
             # Regime detection rules (STRICT)
-            regime = "NEUTRAL"
+            detected_regime = "NEUTRAL"
             
             # CONVEX regime
             if (iv_percentile is not None and iv_percentile < 40 and
                 atr_percentile is not None and atr_percentile < 25 and
                 last_range is not None and rolling_avg_range is not None and
                 last_range < (rolling_avg_range * 0.6)):
-                regime = "CONVEX"
+                detected_regime = "CONVEX"
                 logger.info(f"Regime detected: CONVEX (IV={iv_percentile:.1f}%, ATR%={atr_percentile:.1f}%, Range=COMPRESSED)")
             
             # INCOME regime
             elif (iv_percentile is not None and iv_percentile > 60 and
                   adx_14 is not None and adx_14 < 20 and
                   atr_percentile is not None and atr_percentile < 50):  # ATR not expanding
-                regime = "INCOME"
+                detected_regime = "INCOME"
                 logger.info(f"Regime detected: INCOME (IV={iv_percentile:.1f}%, ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%)")
             
             else:
-                regime = "NEUTRAL"
+                detected_regime = "NEUTRAL"
                 logger.debug(f"Regime: NEUTRAL (IV={iv_percentile:.1f}%, ADX={adx_14:.1f}, ATR%={atr_percentile or 'N/A'})")
+            
+            # Apply regime persistence (anti-whipsaw)
+            confirmed_regime = self._apply_regime_persistence(detected_regime)
+            
+            # Save ATR to history if calculated
+            if atr and atr > 0:
+                self.save_atr_data(atr)
             
             # Build result
             regime_result = {
-                "regime": regime,
+                "regime": confirmed_regime,  # Use confirmed regime
+                "detected_regime": detected_regime,  # Also include raw detection
                 "iv_percentile": iv_percentile,
                 "adx": adx_14,
                 "atr": atr,
                 "atr_percentile": atr_percentile,
-                "range_state": range_state
+                "range_state": range_state,
+                "confirmation_count": RegimeDetector._confirmation_count_current,  # Use class variable
+                "last_confirmed_regime": RegimeDetector._last_confirmed_regime  # Use class variable
             }
             
             # Cache result
@@ -354,6 +465,59 @@ class RegimeDetector:
                 "atr_percentile": None,
                 "range_state": "NORMAL"
             }
+    
+    def _apply_regime_persistence(self, detected_regime: str) -> str:
+        """
+        Apply regime persistence logic (anti-whipsaw)
+        
+        A regime change is accepted ONLY if the same regime is detected
+        N consecutive times (default: N=2).
+        
+        Uses class variables to maintain state across instances.
+        
+        Args:
+            detected_regime: Currently detected regime
+        
+        Returns:
+            Confirmed regime (may be previous if not yet confirmed)
+        """
+        # Initialize if first detection
+        if RegimeDetector._last_confirmed_regime is None:
+            RegimeDetector._last_confirmed_regime = detected_regime
+            RegimeDetector._candidate_regime = detected_regime
+            RegimeDetector._confirmation_count_current = 1
+            logger.debug(f"Initial regime confirmed: {detected_regime}")
+            return detected_regime
+        
+        # If same as last confirmed, no change needed
+        if detected_regime == RegimeDetector._last_confirmed_regime:
+            RegimeDetector._confirmation_count_current = 0  # Reset counter
+            return RegimeDetector._last_confirmed_regime
+        
+        # If different from last confirmed, check if it matches candidate
+        if detected_regime == RegimeDetector._candidate_regime:
+            # Same candidate as before, increment count
+            RegimeDetector._confirmation_count_current += 1
+        else:
+            # New candidate, reset count
+            RegimeDetector._candidate_regime = detected_regime
+            RegimeDetector._confirmation_count_current = 1
+        
+        # Check if confirmation threshold reached
+        if RegimeDetector._confirmation_count_current >= self.confirmation_count:
+            # Regime change confirmed
+            old_regime = RegimeDetector._last_confirmed_regime
+            RegimeDetector._last_confirmed_regime = detected_regime
+            RegimeDetector._confirmation_count_current = 0
+            logger.info(f"Regime change confirmed: {old_regime} → {detected_regime} (after {self.confirmation_count} confirmations)")
+            return detected_regime
+        else:
+            # Not yet confirmed, return last confirmed
+            logger.debug(
+                f"Regime change pending: {RegimeDetector._last_confirmed_regime} → {detected_regime} "
+                f"({RegimeDetector._confirmation_count_current}/{self.confirmation_count} confirmations)"
+            )
+            return RegimeDetector._last_confirmed_regime
     
     def _cache_regime(self, regime_result: Dict):
         """Cache regime result"""

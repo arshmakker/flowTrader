@@ -338,8 +338,87 @@ def main():
                                                 position, current_prices
                                             )
                                             
-                                            # Check profit target (1% of margin)
-                                            if position_tracker.check_profit_target(position, current_pnl):
+                                            # Check for convex exit conditions (if convex position)
+                                            should_exit_convex = False
+                                            convex_exit_reason = None
+                                            if position.get('book') == 'CONVEX' or 'BACKSPREAD' in position.get('strategy', '').upper():
+                                                # Get current regime for convex exit check
+                                                from strategy_runner import build_market_state_from_chain
+                                                from regime import RegimeDetector
+                                                
+                                                market_state = build_market_state_from_chain(
+                                                    api, symbol_manager, spot_price, expiry_date, option_chain
+                                                )
+                                                if market_state:
+                                                    regime_detector = RegimeDetector()
+                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+                                                    regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
+                                                    current_regime = regime_info.get('regime', 'NEUTRAL')
+                                                    
+                                                    # Calculate days to expiry
+                                                    days_to_expiry = (expiry_date - current_time.date()).days
+                                                    entry_days_to_expiry = position.get('days_to_expiry', days_to_expiry)
+                                                    
+                                                    # Get entry spot and range state
+                                                    entry_spot = position.get('entry_spot', spot_price)
+                                                    entry_range_state = position.get('entry_range_state', None)
+                                                    
+                                                    should_exit_convex, convex_exit_reason = position_tracker.check_convex_exit_conditions(
+                                                        position,
+                                                        current_regime,
+                                                        spot_price,
+                                                        entry_spot,
+                                                        days_to_expiry,
+                                                        entry_days_to_expiry,
+                                                        current_atr_percentile=regime_info.get('atr_percentile'),
+                                                        entry_range_state=entry_range_state,
+                                                        current_range_state=regime_info.get('range_state')
+                                                    )
+                                            
+                                            # Check for calendar exit conditions (if calendar position)
+                                            should_exit_calendar = False
+                                            calendar_exit_reason = None
+                                            if position.get('book') == 'NEUTRAL' or 'CALENDAR' in position.get('strategy', '').upper():
+                                                # Get current regime for calendar exit check
+                                                from strategy_runner import build_market_state_from_chain
+                                                from regime import RegimeDetector
+                                                
+                                                market_state = build_market_state_from_chain(
+                                                    api, symbol_manager, spot_price, expiry_date, option_chain
+                                                )
+                                                if market_state:
+                                                    regime_detector = RegimeDetector()
+                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+                                                    regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
+                                                    current_regime = regime_info.get('regime', 'NEUTRAL')
+                                                    
+                                                    # Calculate days to short expiry
+                                                    days_to_expiry_short = (expiry_date - current_time.date()).days
+                                                    entry_days_to_expiry_short = position.get('days_to_expiry_short', days_to_expiry_short)
+                                                    
+                                                    # Get entry spot and prices
+                                                    entry_spot = position.get('entry_spot', spot_price)
+                                                    entry_prices = position.get('entry_prices', {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in position['legs']})
+                                                    
+                                                    # Get IV percentiles
+                                                    current_iv_percentile = market_state.get('iv_percentile')
+                                                    entry_iv_percentile = position.get('entry_iv_percentile', current_iv_percentile)
+                                                    
+                                                    should_exit_calendar, calendar_exit_reason = position_tracker.check_calendar_exit_conditions(
+                                                        position,
+                                                        current_regime,
+                                                        spot_price,
+                                                        entry_spot,
+                                                        days_to_expiry_short,
+                                                        entry_days_to_expiry_short,
+                                                        current_prices,
+                                                        entry_prices,
+                                                        current_iv_percentile=current_iv_percentile,
+                                                        entry_iv_percentile=entry_iv_percentile
+                                                    )
+                                            
+                                            # Check profit target (1% of margin) for Iron Condor
+                                            if not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
                                                 logger.info(
                                                     f"✅ Profit target reached for position {position['trade_id']}: "
                                                     f"P&L=₹{current_pnl:.2f}, "
@@ -356,6 +435,39 @@ def main():
                                                 # TODO: Execute actual exit orders via API
                                                 # For now, just log and mark as closed
                                                 logger.info(f"Position {position['trade_id']} marked for exit")
+                                            
+                                            # Check calendar exit conditions
+                                            elif should_exit_calendar:
+                                                logger.info(
+                                                    f"⚠️ Calendar exit condition triggered for position {position['trade_id']}: "
+                                                    f"{calendar_exit_reason}, P&L=₹{current_pnl:.2f}"
+                                                )
+                                                
+                                                # Close position
+                                                position_tracker.close_position(
+                                                    position,
+                                                    f"calendar_exit_{calendar_exit_reason}",
+                                                    current_pnl
+                                                )
+                                                
+                                                logger.info(f"Position {position['trade_id']} marked for exit (calendar)")
+                                            
+                                            # Check convex exit conditions
+                                            elif should_exit_convex:
+                                                logger.info(
+                                                    f"⚠️ Convex exit condition triggered for position {position['trade_id']}: "
+                                                    f"{convex_exit_reason}, P&L=₹{current_pnl:.2f}"
+                                                )
+                                                
+                                                # Close position
+                                                position_tracker.close_position(
+                                                    position,
+                                                    f"convex_exit_{convex_exit_reason}",
+                                                    current_pnl
+                                                )
+                                                
+                                                logger.info(f"Position {position['trade_id']} marked for exit (convex)")
+                                            
                                             else:
                                                 # Log current status
                                                 margin_used = position.get('margin_used', 0)

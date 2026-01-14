@@ -15,7 +15,9 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from strategies.iron_condor import generate_iron_condor_trade
 from strategies.convex import generate_nifty_call_backspread
-from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX
+from strategies.neutral import generate_neutral_call_calendar
+from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX, STRATEGY_CALENDAR
+from strategies.neutral.config import ENABLE_NEUTRAL_CALENDAR
 from regime import RegimeDetector
 from technical_indicators import (
     calculate_iv_percentile,
@@ -669,6 +671,152 @@ def save_trade_proposal(trade_proposal, output_dir='trade_proposals'):
         logger.error(f"Error saving trade proposal: {str(e)}")
 
 
+def _determine_neutral_sub_state(market_state: Dict, regime_info: Dict) -> str:
+    """
+    Determine NEUTRAL sub-state based on market conditions
+    
+    Rules:
+    - NEUTRAL_PASSIVE: ADX rising OR ATR ambiguous OR signals conflicting
+    - NEUTRAL_ACTIVE: Otherwise (neutral-safe strategies allowed, e.g., calendar spreads)
+    
+    Args:
+        market_state: Market state dictionary
+        regime_info: Regime detection result
+    
+    Returns:
+        "NEUTRAL_PASSIVE" or "NEUTRAL_ACTIVE"
+    """
+    try:
+        adx_14 = market_state.get('adx_14')
+        iv_percentile = market_state.get('iv_percentile')
+        atr_percentile = regime_info.get('atr_percentile')
+        range_state = regime_info.get('range_state')
+        
+        # Check for conflicting signals
+        conflicting_signals = False
+        if iv_percentile is not None and adx_14 is not None:
+            # High IV + High ADX = conflicting (should be INCOME but ADX too high)
+            if iv_percentile > 60 and adx_14 >= 20:
+                conflicting_signals = True
+        
+        # Check for ADX rising (would need historical ADX, simplified check)
+        # For now, check if ADX is in ambiguous zone (18-22)
+        adx_ambiguous = adx_14 is not None and 18 <= adx_14 < 22
+        
+        # Check for ATR ambiguous
+        atr_ambiguous = atr_percentile is None or (atr_percentile is not None and 20 <= atr_percentile <= 30)
+        
+        # Determine sub-state
+        if conflicting_signals or adx_ambiguous or atr_ambiguous:
+            return "NEUTRAL_PASSIVE"
+        else:
+            return "NEUTRAL_ACTIVE"
+            
+    except Exception as e:
+        logger.error(f"Error determining NEUTRAL sub-state: {str(e)}")
+        return "NEUTRAL_PASSIVE"  # Default to passive on error
+
+
+def _determine_no_trade_reason(market_state: Dict, regime_info: Dict, neutral_sub_state: str = None) -> str:
+    """
+    Determine reason why no trade is allowed (for auditability)
+    
+    Args:
+        market_state: Market state dictionary
+        regime_info: Regime detection result
+        neutral_sub_state: NEUTRAL sub-state if applicable
+    
+    Returns:
+        String describing no-trade reason
+    """
+    try:
+        iv_percentile = market_state.get('iv_percentile')
+        adx_14 = market_state.get('adx_14')
+        atr_percentile = regime_info.get('atr_percentile')
+        detected_regime = regime_info.get('detected_regime', 'NEUTRAL')
+        confirmed_regime = regime_info.get('regime', 'NEUTRAL')
+        
+        # Check for regime transition
+        if detected_regime != confirmed_regime:
+            return "REGIME_TRANSITION"
+        
+        # Check for high IV + high ADX
+        if iv_percentile is not None and adx_14 is not None:
+            if iv_percentile > 60 and adx_14 >= 20:
+                return "HIGH_IV_HIGH_ADX"
+        
+        # Check for conflicting signals
+        if neutral_sub_state == "NEUTRAL_PASSIVE":
+            if atr_percentile is None:
+                return "ATR_DATA_INSUFFICIENT"
+            elif iv_percentile is not None and adx_14 is not None:
+                if not (iv_percentile > 60 and adx_14 < 20) and not (iv_percentile < 40 and atr_percentile < 25):
+                    return "SIGNALS_CONFLICTING"
+        
+        # Default NEUTRAL reason
+        return "NEUTRAL_REGIME"
+        
+    except Exception as e:
+        logger.error(f"Error determining no-trade reason: {str(e)}")
+        return "UNKNOWN"
+
+
+def _log_strategy_decision(regime: str, neutral_sub_state: str, strategy_allowed: List[str],
+                          strategy_executed: str, no_trade_reason: str, regime_info: Dict):
+    """
+    Log strategy decision for auditability and post-analysis
+    
+    Args:
+        regime: Confirmed regime
+        neutral_sub_state: NEUTRAL sub-state if applicable
+        strategy_allowed: List of strategies allowed in this regime
+        strategy_executed: Strategy that was executed (if any)
+        no_trade_reason: Reason why no trade was executed (if applicable)
+        regime_info: Regime detection result
+    """
+    try:
+        decision_log = {
+            "timestamp": datetime.now().isoformat(),
+            "regime": regime,
+            "sub_state": neutral_sub_state,
+            "strategy_allowed": strategy_allowed,
+            "strategy_executed": strategy_executed,
+            "no_trade_reason": no_trade_reason if not strategy_executed else None,
+            "regime_details": {
+                "iv_percentile": regime_info.get('iv_percentile'),
+                "adx": regime_info.get('adx'),
+                "atr_percentile": regime_info.get('atr_percentile'),
+                "range_state": regime_info.get('range_state'),
+                "detected_regime": regime_info.get('detected_regime'),
+                "confirmation_count": regime_info.get('confirmation_count', 0)
+            }
+        }
+        
+        # Log to file for post-analysis
+        log_file = 'strategy_decisions.json'
+        decisions = []
+        if os.path.exists(log_file):
+            try:
+                with open(log_file, 'r') as f:
+                    decisions = json.load(f)
+            except:
+                pass
+        
+        decisions.append(decision_log)
+        
+        # Keep only last 1000 entries
+        if len(decisions) > 1000:
+            decisions = decisions[-1000:]
+        
+        with open(log_file, 'w') as f:
+            json.dump(decisions, f, indent=2)
+        
+        logger.debug(f"Strategy decision logged: regime={regime}, executed={strategy_executed}, reason={no_trade_reason}")
+        
+    except Exception as e:
+        logger.error(f"Error logging strategy decision: {str(e)}")
+
+
 def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=1000000.0):
     """
     Run strategy check with regime detection and routing.
@@ -727,35 +875,90 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
         regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
         regime = regime_info.get('regime', 'NEUTRAL')
+        detected_regime = regime_info.get('detected_regime', regime)
         
-        logger.info(f"Regime detected: {regime}")
+        # Step 5a: Determine NEUTRAL sub-state
+        neutral_sub_state = None
+        if regime == "NEUTRAL":
+            neutral_sub_state = _determine_neutral_sub_state(market_state, regime_info)
+        
+        logger.info(f"Regime: {regime} (detected: {detected_regime})")
+        if neutral_sub_state:
+            logger.info(f"  NEUTRAL sub-state: {neutral_sub_state}")
         logger.info(f"  IV Percentile: {regime_info.get('iv_percentile', 'N/A'):.1f}%")
         logger.info(f"  ADX: {regime_info.get('adx', 'N/A'):.1f}")
         logger.info(f"  ATR Percentile: {regime_info.get('atr_percentile', 'N/A')}")
         logger.info(f"  Range State: {regime_info.get('range_state', 'N/A')}")
+        if regime_info.get('confirmation_count', 0) > 0:
+            logger.info(f"  Regime confirmation: {regime_info.get('confirmation_count')}/{regime_detector.confirmation_count}")
         
         # Step 6: Route based on regime
+        no_trade_reason = None
+        strategy_allowed = []
+        strategy_executed = None
+        
         if regime == "INCOME":
+            strategy_allowed.append("IRON_CONDOR")
             # Check mutual exclusion
             if not can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker):
+                no_trade_reason = "MUTUAL_EXCLUSION"
                 logger.info("Iron Condor blocked by mutual exclusion")
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
                 return None
             
             # Run Iron Condor strategy
-            return _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
+            trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
+            strategy_executed = "IRON_CONDOR" if trade_proposal else None
+            if not trade_proposal:
+                no_trade_reason = "NO_VALID_TRADE"
+            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
+            return trade_proposal
         
         elif regime == "CONVEX":
+            strategy_allowed.append("CALL_BACKSPREAD")
             # Check mutual exclusion
             if not can_enter_strategy(STRATEGY_CONVEX, position_tracker):
+                no_trade_reason = "MUTUAL_EXCLUSION"
                 logger.info("Convex strategy blocked by mutual exclusion")
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
                 return None
             
             # Run Convex Backspread strategy
-            return _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital)
+            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital)
+            strategy_executed = "CALL_BACKSPREAD" if trade_proposal else None
+            if not trade_proposal:
+                no_trade_reason = "NO_VALID_TRADE"
+            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
+            return trade_proposal
         
         else:  # NEUTRAL
-            logger.info("NEUTRAL regime: No new trades allowed")
-            return None
+            # Check if calendar is allowed in NEUTRAL_ACTIVE
+            if neutral_sub_state == "NEUTRAL_ACTIVE" and ENABLE_NEUTRAL_CALENDAR:
+                strategy_allowed.append("ATM_CALL_CALENDAR")
+                # Check mutual exclusion
+                if not can_enter_strategy(STRATEGY_CALENDAR, position_tracker):
+                    no_trade_reason = "MUTUAL_EXCLUSION"
+                    logger.info("Calendar strategy blocked by mutual exclusion")
+                    _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
+                    return None
+                
+                # Run Calendar strategy
+                trade_proposal = _run_neutral_calendar_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime_info)
+                strategy_executed = "ATM_CALL_CALENDAR" if trade_proposal else None
+                if not trade_proposal:
+                    no_trade_reason = "NO_VALID_TRADE"
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
+                return trade_proposal
+            else:
+                # NEUTRAL_PASSIVE or calendar disabled - stand aside
+                no_trade_reason = _determine_no_trade_reason(market_state, regime_info, neutral_sub_state)
+                if neutral_sub_state == "NEUTRAL_PASSIVE":
+                    no_trade_reason = "NEUTRAL_PASSIVE"
+                elif not ENABLE_NEUTRAL_CALENDAR:
+                    no_trade_reason = "CALENDAR_DISABLED"
+                logger.info(f"NEUTRAL regime: No new trades allowed (reason: {no_trade_reason})")
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
+                return None
         
     except Exception as e:
         logger.error(f"Error in regime-based strategy execution: {str(e)}", exc_info=True)
@@ -809,6 +1012,7 @@ def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, ma
                 # Add regime info to trade proposal
                 trade_proposal['regime_at_entry'] = 'INCOME'
                 trade_proposal['book'] = 'INCOME'
+                # Note: entry_range_state not needed for Iron Condor (only for Convex)
                 
                 logger.info("✅ Valid Iron Condor trade found!")
                 logger.info(f"   Strategy: {trade_proposal['strategy']}")
@@ -870,12 +1074,19 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
             logger.warning("Could not build market state for Convex strategy")
             return None
         
+        # Get regime info for entry range state (needed for convex exit checks)
+        regime_detector = RegimeDetector()
+        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+        regime_info = regime_detector.detect_regime(market_state_expiry, recent_candles, api, symbol_manager)
+        entry_range_state = regime_info.get('range_state')
+        
         # Generate trade proposal
         trade_proposal = generate_nifty_call_backspread(market_state_expiry, option_chain_df, capital)
         
         if trade_proposal:
-            # Add regime info
+            # Add regime info and entry state for convex exit checks
             trade_proposal['regime_at_entry'] = 'CONVEX'
+            trade_proposal['entry_range_state'] = entry_range_state
             
             logger.info("✅ Valid Convex Backspread trade found!")
             logger.info(f"   Strategy: {trade_proposal['strategy']}")
@@ -908,6 +1119,99 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
         
     except Exception as e:
         logger.error(f"Error running Convex Backspread strategy: {str(e)}", exc_info=True)
+        return None
+
+
+def _run_neutral_calendar_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime_info):
+    """Run Neutral Calendar strategy"""
+    try:
+        logger.info("=== Running Neutral Calendar Strategy (NEUTRAL_ACTIVE regime) ===")
+        
+        # Get weekly expiry (first expiry)
+        expiry_weekly = available_expiries[0]
+        expiry_weekly_obj = _get_date_object(expiry_weekly)
+        
+        # Get monthly expiry (find next monthly expiry after weekly)
+        expiry_monthly = None
+        expiry_monthly_obj = None
+        
+        # Look for monthly expiry (typically 4-5 weeks out)
+        for expiry in available_expiries[1:]:
+            expiry_obj = _get_date_object(expiry)
+            days_diff = (expiry_obj - expiry_weekly_obj).days
+            # Monthly expiry is typically 21-35 days after weekly
+            if 21 <= days_diff <= 35:
+                expiry_monthly = expiry
+                expiry_monthly_obj = expiry_obj
+                break
+        
+        if not expiry_monthly:
+            logger.info("No suitable monthly expiry found for calendar")
+            return None
+        
+        days_to_expiry_weekly = (expiry_weekly_obj - datetime.now().date()).days
+        days_to_expiry_monthly = (expiry_monthly_obj - datetime.now().date()).days
+        
+        # Get option chains for both expiries
+        option_chain_weekly = get_option_chain_data(api, symbol_manager, spot_price, expiry_weekly, count=30)
+        option_chain_monthly = get_option_chain_data(api, symbol_manager, spot_price, expiry_monthly, count=30)
+        
+        if option_chain_weekly.empty or option_chain_monthly.empty:
+            logger.info("Empty option chains for calendar strategy")
+            return None
+        
+        # Build market state with both expiries
+        market_state_calendar = market_state.copy()
+        market_state_calendar['expiry'] = expiry_weekly_obj.strftime('%Y-%m-%d')
+        market_state_calendar['expiry_monthly'] = expiry_monthly_obj.strftime('%Y-%m-%d')
+        market_state_calendar['days_to_expiry'] = days_to_expiry_weekly
+        market_state_calendar['days_to_expiry_monthly'] = days_to_expiry_monthly
+        market_state_calendar['sub_state'] = "NEUTRAL_ACTIVE"
+        market_state_calendar['range_state'] = regime_info.get('range_state', 'NORMAL')
+        market_state_calendar['entry_iv_percentile'] = market_state.get('iv_percentile')
+        
+        # Generate trade proposal
+        trade_proposal = generate_neutral_call_calendar(
+            market_state_calendar,
+            option_chain_weekly,
+            option_chain_monthly,
+            capital,
+            symbol_manager
+        )
+        
+        if trade_proposal:
+            logger.info("✅ Valid Neutral Calendar trade found!")
+            logger.info(f"   Strategy: {trade_proposal['strategy']}")
+            logger.info(f"   Weekly Expiry: {trade_proposal['expiry_short']}")
+            logger.info(f"   Monthly Expiry: {trade_proposal['expiry_long']}")
+            logger.info(f"   Strike: {trade_proposal['legs'][0]['strike']}")
+            logger.info(f"   Net Debit: ₹{trade_proposal['net_debit']:.2f} per lot")
+            logger.info(f"   Total Debit: ₹{trade_proposal['net_debit_total']:.2f}")
+            logger.info(f"   Max Loss: ₹{trade_proposal['max_loss']:.2f}")
+            
+            # Log legs
+            logger.info("   Legs:")
+            for leg in trade_proposal['legs']:
+                logger.info(
+                    f"     {leg['position']} {leg['option_type']} @ {leg['strike']} "
+                    f"(Expiry: {leg['expiry']}, Price: ₹{leg['price']:.2f})"
+                )
+            
+            # Save proposal
+            save_trade_proposal(trade_proposal)
+            
+            # Add to position tracker if provided
+            if position_tracker is not None:
+                position_tracker.add_position(trade_proposal)
+                logger.info(f"Position added to tracker: {trade_proposal['lots']} lot(s)")
+            
+            return trade_proposal
+        else:
+            logger.info("❌ No valid Neutral Calendar trade found")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error running Neutral Calendar strategy: {str(e)}", exc_info=True)
         return None
 
 

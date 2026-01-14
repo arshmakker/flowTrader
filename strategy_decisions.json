@@ -1,0 +1,322 @@
+[
+  {
+    "timestamp": "2026-01-14T13:18:22.217288",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 65.02673796791444,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:23:12.597188",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.92258408969568,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:28:12.596320",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.78423015450187,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:33:24.285381",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.68085106382979,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:38:13.704352",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.54352441613588,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:43:19.270889",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.44091149973504,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:48:25.739112",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.30460074034903,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:53:24.909865",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.20274551214361,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T13:59:17.413079",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 64.06743940990516,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:04:17.675527",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.96633350867964,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:09:20.634234",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.86554621848739,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:13:19.752491",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.7650760356581,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:18:20.540268",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.63160648874935,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:23:23.687341",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.53187042842215,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:29:21.551875",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.39937434827946,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:33:22.782361",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.300364393545024,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:39:23.224211",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.168831168831176,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:43:26.070548",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 63.07053941908713,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:48:38.532312",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 62.939958592132506,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-01-14T14:53:24.294500",
+    "regime": "NEUTRAL",
+    "sub_state": "NEUTRAL_PASSIVE",
+    "strategy_allowed": [],
+    "strategy_executed": null,
+    "no_trade_reason": "NEUTRAL_PASSIVE",
+    "regime_details": {
+      "iv_percentile": 62.842377260981905,
+      "adx": 48.6571649817843,
+      "atr_percentile": 66.66666666666666,
+      "range_state": "NORMAL",
+      "detected_regime": "NEUTRAL",
+      "confirmation_count": 1
+    }
+  }
+]

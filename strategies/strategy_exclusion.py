@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Strategy types
 STRATEGY_IRON_CONDOR = "IRON_CONDOR"
 STRATEGY_CONVEX = "CONVEX"
+STRATEGY_CALENDAR = "CALENDAR"
 STRATEGY_NONE = "NONE"
 
 
@@ -54,6 +55,7 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
         # Check strategy types
         iron_condor_active = False
         convex_active = False
+        calendar_active = False
         
         for position in active_positions:
             strategy = position.get('strategy', '').upper()
@@ -63,20 +65,31 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
                 iron_condor_active = True
             elif strategy == 'CALL_BACKSPREAD' or book == 'CONVEX':
                 convex_active = True
+            elif strategy == 'ATM_CALL_CALENDAR' or book == 'NEUTRAL':
+                calendar_active = True
         
-        # Mutual exclusion check
-        if iron_condor_active and convex_active:
+        # Mutual exclusion check - only one strategy type can be active
+        active_count = sum([iron_condor_active, convex_active, calendar_active])
+        if active_count > 1:
             logger.error(
-                "CRITICAL: Both Iron Condor and Convex strategies have active positions! "
+                f"CRITICAL: Multiple strategies have active positions! "
+                f"Iron Condor: {iron_condor_active}, Convex: {convex_active}, Calendar: {calendar_active} "
                 "This violates mutual exclusion. Manual intervention required."
             )
-            # Return the first one found (but log error)
-            return STRATEGY_IRON_CONDOR
+            # Return priority order: Iron Condor > Convex > Calendar
+            if iron_condor_active:
+                return STRATEGY_IRON_CONDOR
+            elif convex_active:
+                return STRATEGY_CONVEX
+            else:
+                return STRATEGY_CALENDAR
         
         if iron_condor_active:
             return STRATEGY_IRON_CONDOR
         elif convex_active:
             return STRATEGY_CONVEX
+        elif calendar_active:
+            return STRATEGY_CALENDAR
         else:
             return STRATEGY_NONE
             
@@ -90,7 +103,7 @@ def can_enter_strategy(strategy_type: str, position_tracker: Optional[IronCondor
     Check if a strategy can enter new trades based on mutual exclusion rules.
     
     Args:
-        strategy_type: "IRON_CONDOR" or "CONVEX"
+        strategy_type: "IRON_CONDOR", "CONVEX", or "CALENDAR"
         position_tracker: Optional IronCondorPositionTracker instance
     
     Returns:
@@ -102,17 +115,24 @@ def can_enter_strategy(strategy_type: str, position_tracker: Optional[IronCondor
         # No active positions, allow entry
         return True
     
+    # Calendar can only enter if no other strategies active
+    if strategy_type == STRATEGY_CALENDAR:
+        if active_strategy != STRATEGY_NONE:
+            logger.info(f"Calendar blocked: {active_strategy} strategy has active positions")
+            return False
+        return True
+    
     if strategy_type == STRATEGY_IRON_CONDOR:
-        # Iron Condor can only enter if no Convex positions
-        if active_strategy == STRATEGY_CONVEX:
-            logger.info("Iron Condor blocked: Convex strategy has active positions")
+        # Iron Condor can only enter if no other strategies active
+        if active_strategy != STRATEGY_NONE:
+            logger.info(f"Iron Condor blocked: {active_strategy} strategy has active positions")
             return False
         return True
     
     elif strategy_type == STRATEGY_CONVEX:
-        # Convex can only enter if no Iron Condor positions
-        if active_strategy == STRATEGY_IRON_CONDOR:
-            logger.info("Convex strategy blocked: Iron Condor has active positions")
+        # Convex can only enter if no other strategies active
+        if active_strategy != STRATEGY_NONE:
+            logger.info(f"Convex strategy blocked: {active_strategy} strategy has active positions")
             return False
         return True
     

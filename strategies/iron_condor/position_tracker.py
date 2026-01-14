@@ -56,6 +56,11 @@ class IronCondorPositionTracker:
             'strategy': trade_proposal.get('strategy', 'UNKNOWN'),
             'book': trade_proposal.get('book', 'UNKNOWN'),
             'regime_at_entry': trade_proposal.get('regime_at_entry', 'UNKNOWN'),
+            'days_to_expiry': trade_proposal.get('days_to_expiry'),  # Store for convex exit checks
+            'days_to_expiry_short': trade_proposal.get('days_to_expiry_short'),  # Store for calendar exit checks
+            'entry_range_state': None,  # Will be set from regime_info if available
+            'entry_iv_percentile': trade_proposal.get('entry_iv_percentile'),  # Store for calendar exit checks
+            'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])},  # Store entry prices for calendar exit checks
             'status': 'OPEN'
         }
         self.active_positions.append(position)
@@ -127,6 +132,181 @@ class IronCondorPositionTracker:
             if current_pnl >= profit_target:
                 return True
         return False
+    
+    def check_convex_exit_conditions(self, position: Dict, current_regime: str, 
+                                     current_spot: float, entry_spot: float,
+                                     days_to_expiry: int, entry_days_to_expiry: int,
+                                     current_atr_percentile: float = None,
+                                     entry_range_state: str = None,
+                                     current_range_state: str = None):
+        """
+        Check mandatory exit conditions for Convex Backspread strategy
+        
+        MANDATORY exits:
+        - Exit immediately if regime != CONVEX
+        - Exit if no ATR expansion within 40% of expiry time
+        - Exit if time elapsed > 40% of expiry duration
+        - Exit if price re-enters compression range after entry
+        
+        Args:
+            position: Position dictionary
+            current_regime: Current detected regime
+            current_spot: Current spot price
+            entry_spot: Entry spot price
+            days_to_expiry: Current days to expiry
+            entry_days_to_expiry: Days to expiry at entry
+            current_atr_percentile: Current ATR percentile (optional)
+            entry_range_state: Range state at entry (optional)
+            current_range_state: Current range state (optional)
+        
+        Returns:
+            Tuple of (should_exit: bool, exit_reason: str)
+        """
+        try:
+            strategy = position.get('strategy', '').upper()
+            if 'BACKSPREAD' not in strategy and position.get('book') != 'CONVEX':
+                # Not a convex position, use standard exit logic
+                return False, None
+            
+            # Exit condition 1: Regime changed from CONVEX
+            if current_regime != "CONVEX":
+                return True, "REGIME_CHANGED"
+            
+            # Exit condition 2: Time elapsed > 40% of expiry duration
+            if entry_days_to_expiry > 0:
+                time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
+                if time_elapsed_pct > 0.40:
+                    return True, "TIME_ELAPSED_40PCT"
+            
+            # Exit condition 3: No ATR expansion within 40% of expiry time
+            # Check if we're past 40% of time and ATR hasn't expanded
+            if entry_days_to_expiry > 0:
+                time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
+                if time_elapsed_pct >= 0.40:
+                    # Check if ATR has expanded (percentile should be higher)
+                    if current_atr_percentile is not None:
+                        # If ATR percentile is still low (< 30), no expansion occurred
+                        if current_atr_percentile < 30:
+                            return True, "NO_ATR_EXPANSION"
+            
+            # Exit condition 4: Price re-entered compression range
+            # If range was COMPRESSED at entry and is still COMPRESSED, check if price moved back
+            if entry_range_state == "COMPRESSED" and current_range_state == "COMPRESSED":
+                # Calculate price movement from entry
+                price_change_pct = abs(current_spot - entry_spot) / entry_spot
+                # If price moved significantly but range is still compressed, might indicate re-compression
+                # This is a conservative check - if we're still in compression after time elapsed, exit
+                if entry_days_to_expiry > 0:
+                    time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
+                    if time_elapsed_pct > 0.30 and price_change_pct < 0.005:  # Less than 0.5% movement
+                        return True, "RE_COMPRESSION"
+            
+            return False, None
+            
+        except Exception as e:
+            logger.error(f"Error checking convex exit conditions: {str(e)}")
+            return False, None
+    
+    def check_calendar_exit_conditions(self, position: Dict, current_regime: str,
+                                      current_spot: float, entry_spot: float,
+                                      days_to_expiry_short: int, entry_days_to_expiry_short: int,
+                                      current_prices: Dict, entry_prices: Dict,
+                                      current_iv_percentile: float = None,
+                                      entry_iv_percentile: float = None) -> tuple:
+        """
+        Check mandatory exit conditions for Calendar strategy
+        
+        Exit immediately if ANY trigger fires:
+        1) regime != "NEUTRAL"
+        2) short option has decayed ≥ 65%
+        3) days_to_short_expiry ≤ 1
+        4) abs(spot_move) > 0.75 × expected_move
+        5) IV spike ≥ +10 points without price follow-through
+        
+        Args:
+            position: Position dictionary
+            current_regime: Current detected regime
+            current_spot: Current spot price
+            entry_spot: Entry spot price
+            days_to_expiry_short: Current days to short expiry
+            entry_days_to_expiry_short: Days to short expiry at entry
+            current_prices: Current option prices dict
+            entry_prices: Entry option prices dict
+            current_iv_percentile: Current IV percentile (optional)
+            entry_iv_percentile: Entry IV percentile (optional)
+        
+        Returns:
+            Tuple of (should_exit: bool, exit_reason: str)
+        """
+        try:
+            strategy = position.get('strategy', '').upper()
+            if 'CALENDAR' not in strategy and position.get('book') != 'NEUTRAL':
+                # Not a calendar position
+                return False, None
+            
+            from strategies.neutral.config import (
+                SHORT_DECAY_THRESHOLD,
+                MIN_SHORT_DTE,
+                SPOT_MOVE_THRESHOLD,
+                IV_SPIKE_THRESHOLD
+            )
+            
+            # Exit condition 1: Regime changed from NEUTRAL
+            if current_regime != "NEUTRAL":
+                return True, "REGIME_CHANGED"
+            
+            # Exit condition 2: Days to short expiry ≤ 1
+            if days_to_expiry_short <= MIN_SHORT_DTE:
+                return True, "SHORT_DTE_THRESHOLD"
+            
+            # Exit condition 3: Short option decayed ≥ 65%
+            # Find short leg (weekly expiry)
+            short_leg = None
+            long_leg = None
+            for leg in position['legs']:
+                if leg['position'] == 'SHORT':
+                    short_leg = leg
+                elif leg['position'] == 'LONG':
+                    long_leg = leg
+            
+            if short_leg:
+                entry_short_price = short_leg['price']
+                strike = int(short_leg['strike'])
+                option_type = short_leg['option_type']
+                option_key = f"{option_type}{strike}"
+                current_short_price = current_prices.get(option_key, entry_short_price)
+                
+                # Calculate decay percentage
+                if entry_short_price > 0:
+                    decay_pct = (entry_short_price - current_short_price) / entry_short_price
+                    if decay_pct >= SHORT_DECAY_THRESHOLD:
+                        return True, "SHORT_DECAY_65PCT"
+            
+            # Exit condition 4: Spot move > 0.75 × expected_move
+            # Expected move = spot × IV × sqrt(days/365)
+            if entry_iv_percentile is not None and entry_days_to_expiry_short > 0:
+                entry_iv = entry_iv_percentile / 100.0  # Convert to decimal
+                expected_move = entry_spot * entry_iv * (entry_days_to_expiry_short / 365.0) ** 0.5
+                spot_move = abs(current_spot - entry_spot)
+                
+                if spot_move > (SPOT_MOVE_THRESHOLD * expected_move):
+                    return True, "SPOT_MOVE_EXCEEDED"
+            
+            # Exit condition 5: IV spike ≥ +10 points without price follow-through
+            if current_iv_percentile is not None and entry_iv_percentile is not None:
+                iv_change = current_iv_percentile - entry_iv_percentile
+                if iv_change >= IV_SPIKE_THRESHOLD:
+                    # Check if price followed through
+                    spot_move_pct = abs(current_spot - entry_spot) / entry_spot
+                    # If IV spiked but price didn't move much, exit
+                    if spot_move_pct < 0.01:  # Less than 1% price move
+                        return True, "IV_SPIKE_NO_FOLLOWTHROUGH"
+            
+            return False, None
+            
+        except Exception as e:
+            logger.error(f"Error checking calendar exit conditions: {str(e)}")
+            return False, None
     
     def close_position(self, position: Dict, exit_reason: str, final_pnl: float):
         """Close a position and log performance by regime"""
