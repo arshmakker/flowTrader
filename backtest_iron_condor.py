@@ -379,13 +379,16 @@ class IronCondorBacktester:
             symbol_key = f"{option_type}{strike}"
             current_price = current_prices.get(symbol_key, leg.get('price', 0))
             
+            # Get lot size from position (default to 50 if not available)
+            lot_size = position.get('lot_size', 50)
+            
             # Calculate value
             if leg['position'] == 'SHORT':
                 # Short: we received premium, so value decreases as price increases
-                value = (leg['price'] - current_price) * position['lots'] * 50  # 50 is lot size
+                value = (leg['price'] - current_price) * position['lots'] * lot_size
             else:
                 # Long: we paid premium, so value increases as price increases
-                value = (current_price - leg['price']) * position['lots'] * 50
+                value = (current_price - leg['price']) * position['lots'] * lot_size
             
             total_value += value
         
@@ -404,7 +407,14 @@ class IronCondorBacktester:
         current_value = self.calculate_position_value(position, current_prices)
         current_pnl = current_value - entry_credit
         
-        # Check profit target (50-60% of max profit)
+        # Check profit target: 1% of margin used (PRIORITY)
+        margin_used = position.get('margin_used')
+        if margin_used and margin_used > 0:
+            profit_target = margin_used * 0.01  # 1% of margin
+            if current_pnl >= profit_target:
+                return True, f"profit_target_margin (₹{profit_target:.2f})"
+        
+        # Fallback: Check old profit target (50-60% of max profit)
         max_profit = position['max_profit']
         profit_target_low = max_profit * 0.50
         profit_target_high = max_profit * 0.60

@@ -9,8 +9,9 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
-from strategy_runner import run_iron_condor_strategy, is_market_hours, get_nifty_spot_price, get_option_chain_data
+from strategy_runner import run_strategy_with_regime, run_iron_condor_strategy, is_market_hours, get_nifty_spot_price, get_option_chain_data
 from strategy_runner import get_all_eligible_expiries
+from strategies.iron_condor.position_tracker import IronCondorPositionTracker
 from technical_indicators import calculate_iv_percentile
 from datetime import timedelta
 from colorama import init, Fore, Style
@@ -169,6 +170,10 @@ def main():
         # Paper trading disabled for data collection focus
         trader = None
         
+        # Initialize position tracker
+        position_tracker = IronCondorPositionTracker()
+        logger.info("Position tracker initialized")
+        
         # Start data collection
         collector.start_collection()
         logger.info("Data collection started")
@@ -176,6 +181,10 @@ def main():
         # Strategy check timing
         STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
         last_strategy_check = datetime.now()
+        
+        # Position monitoring timing
+        POSITION_CHECK_INTERVAL = 60  # Check positions every 1 minute (60 seconds)
+        last_position_check = datetime.now()
         
         # IV calculation timing (more frequent to build historical data faster)
         IV_CALCULATION_INTERVAL = 120  # Calculate IV every 2 minutes (120 seconds)
@@ -254,17 +263,117 @@ def main():
                 if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
                     if is_market_hours():
                         try:
-                            logger.info(Fore.CYAN + "Running Iron Condor strategy check...")
-                            trade_proposal = run_iron_condor_strategy(api, symbol_manager)
+                            logger.info(Fore.CYAN + "Running strategy check with regime detection...")
+                            trade_proposal = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=1000000.0)
                             if trade_proposal:
-                                logger.info(Fore.GREEN + f"✅ Trade proposal generated: {trade_proposal['lots']} lots, "
-                                          f"Credit: ₹{trade_proposal['net_credit_total']:.2f}")
+                                strategy_name = trade_proposal.get('strategy', 'UNKNOWN')
+                                lots = trade_proposal.get('lots', 0)
+                                
+                                if strategy_name == 'CALL_BACKSPREAD':
+                                    logger.info(Fore.GREEN + f"✅ Convex Backspread trade proposal generated: {lots} lots, "
+                                              f"Debit: ₹{trade_proposal.get('net_debit_total', 0):.2f}")
+                                    logger.info(f"   Max Loss: ₹{trade_proposal.get('max_loss', 0):.2f}")
+                                else:
+                                    logger.info(Fore.GREEN + f"✅ Iron Condor trade proposal generated: {lots} lots, "
+                                              f"Credit: ₹{trade_proposal.get('net_credit_total', 0):.2f}")
+                                    if trade_proposal.get('margin_used'):
+                                        logger.info(f"   Margin used: ₹{trade_proposal['margin_used']:.2f}, "
+                                                  f"Profit target: ₹{trade_proposal.get('profit_target_margin', 0):.2f}")
                             else:
                                 logger.debug("No valid trade proposal generated")
                         except Exception as e:
                             logger.error(f"Error running Iron Condor strategy: {str(e)}", exc_info=True)
                     
                     last_strategy_check = current_time
+                
+                # Monitor open positions for profit taking
+                time_since_position_check = (current_time - last_position_check).total_seconds()
+                
+                if time_since_position_check >= POSITION_CHECK_INTERVAL:
+                    if is_market_hours():
+                        try:
+                            active_positions = position_tracker.get_active_positions()
+                            
+                            if active_positions:
+                                logger.info(f"Checking {len(active_positions)} open position(s) for profit target...")
+                                
+                                # Get current spot price
+                                spot_price = get_nifty_spot_price(api, symbol_manager)
+                                if spot_price:
+                                    # Check each position
+                                    for position in active_positions[:]:  # Use slice to allow removal
+                                        try:
+                                            # Get expiry date
+                                            expiry_date = datetime.strptime(position['expiry'], '%Y-%m-%d').date()
+                                            
+                                            # Get current option prices
+                                            option_chain = get_option_chain_data(
+                                                api, symbol_manager, spot_price, expiry_date, count=50
+                                            )
+                                            
+                                            if option_chain.empty:
+                                                logger.debug(f"No option chain for position {position['trade_id']}")
+                                                continue
+                                            
+                                            # Build current prices dict
+                                            current_prices = {}
+                                            for leg in position['legs']:
+                                                strike = int(leg['strike'])
+                                                option_type = leg['option_type']
+                                                
+                                                # Find price in option chain
+                                                leg_data = option_chain[
+                                                    (option_chain['strike'] == strike) &
+                                                    (option_chain['option_type'] == option_type)
+                                                ]
+                                                
+                                                if not leg_data.empty:
+                                                    current_prices[f"{option_type}{strike}"] = leg_data.iloc[0]['mid_price']
+                                                else:
+                                                    # Use entry price as fallback
+                                                    current_prices[f"{option_type}{strike}"] = leg['price']
+                                            
+                                            # Calculate current P&L
+                                            current_pnl = position_tracker.calculate_current_pnl(
+                                                position, current_prices
+                                            )
+                                            
+                                            # Check profit target (1% of margin)
+                                            if position_tracker.check_profit_target(position, current_pnl):
+                                                logger.info(
+                                                    f"✅ Profit target reached for position {position['trade_id']}: "
+                                                    f"P&L=₹{current_pnl:.2f}, "
+                                                    f"Target=₹{position.get('profit_target_margin', 0):.2f}"
+                                                )
+                                                
+                                                # Close position
+                                                position_tracker.close_position(
+                                                    position, 
+                                                    "profit_target_margin", 
+                                                    current_pnl
+                                                )
+                                                
+                                                # TODO: Execute actual exit orders via API
+                                                # For now, just log and mark as closed
+                                                logger.info(f"Position {position['trade_id']} marked for exit")
+                                            else:
+                                                # Log current status
+                                                margin_used = position.get('margin_used', 0)
+                                                profit_target = margin_used * 0.01 if margin_used else 0
+                                                logger.debug(
+                                                    f"Position {position['trade_id']}: "
+                                                    f"P&L=₹{current_pnl:.2f}, "
+                                                    f"Target=₹{profit_target:.2f}"
+                                                )
+                                                
+                                        except Exception as e:
+                                            logger.error(f"Error checking position {position.get('trade_id', 'unknown')}: {e}")
+                                            continue
+                                            
+                        except Exception as e:
+                            logger.error(f"Error in position monitoring: {e}")
+                    
+                    last_position_check = current_time
                 
                 time.sleep(1)
                 

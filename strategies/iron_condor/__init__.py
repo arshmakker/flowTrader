@@ -12,10 +12,12 @@ from .payoff_validator import validate_payoff, StrategyRejectedError
 from .position_sizer import calculate_lots
 from .exit_rules import (
     PROFIT_TARGET_PCT,
+    PROFIT_TARGET_MARGIN_PCT,
     STOP_LOSS_MULTIPLIER,
     MANDATORY_EXIT_DTE,
     MANDATORY_EXIT_TIME
 )
+from .position_tracker import IronCondorPositionTracker
 
 __all__ = [
     'generate_iron_condor_trade',
@@ -25,9 +27,11 @@ __all__ = [
     'StrategyRejectedError',
     'calculate_lots',
     'PROFIT_TARGET_PCT',
+    'PROFIT_TARGET_MARGIN_PCT',
     'STOP_LOSS_MULTIPLIER',
     'MANDATORY_EXIT_DTE',
     'MANDATORY_EXIT_TIME',
+    'IronCondorPositionTracker',
 ]
 
 

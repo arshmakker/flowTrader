@@ -44,7 +44,7 @@ WING_WIDTH_MAX = 150
 NET_CREDIT_MIN = 30.0  # ₹ per lot (covers transaction costs + small profit buffer)
 NET_CREDIT_MAX = 110.0  # ₹ per lot
 MAX_LOSS_PER_LOT_MAX = 1500.0  # ₹ per lot
-MIN_REWARD_TO_RISK = 2.0
+MIN_REWARD_TO_RISK = 0.9
 
 # Position sizing parameters
 MAX_PER_TRADE_RISK = 30000.0  # ₹

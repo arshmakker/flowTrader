@@ -10,7 +10,7 @@ from .config import (
     MAX_LOSS_PER_LOT_MAX,
     MIN_REWARD_TO_RISK
 )
-from technical_indicators import calculate_probability_of_profit, calculate_atm_iv
+from technical_indicators import calculate_probability_of_profit
 
 logger = logging.getLogger(__name__)
 
@@ -91,19 +91,10 @@ def validate_payoff(legs: Dict, spot_price: Optional[float] = None,
         # Calculate Probability of Profit (PoP)
         probability_of_profit = None
         if spot_price and days_to_expiry and days_to_expiry > 0:
-            # Get IV if not provided
+            # Use provided IV (should be calculated upstream with API)
             calculated_iv = iv
-            if calculated_iv is None and option_chain is not None:
-                try:
-                    import pandas as pd
-                    if isinstance(option_chain, pd.DataFrame) and not option_chain.empty:
-                        calculated_iv = calculate_atm_iv(option_chain, spot_price, days_to_expiry)
-                        if calculated_iv:
-                            # Convert from percentage to decimal if needed
-                            if calculated_iv > 1:
-                                calculated_iv = calculated_iv / 100.0
-                except Exception as e:
-                    logger.debug(f"Could not calculate IV for PoP: {str(e)}")
+            if calculated_iv is None:
+                logger.debug("IV not provided for PoP calculation - skipping PoP")
             
             if calculated_iv and calculated_iv > 0:
                 try:

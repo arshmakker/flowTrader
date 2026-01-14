@@ -2,9 +2,10 @@
 Technical Indicators Module
 
 Provides calculations for:
-- Implied Volatility (IV) from option prices using Black-Scholes
+- Implied Volatility (IV) from Shoonya API option_greek function
 - IV Percentile from historical IV data
 - ADX (Average Directional Index) from price data
+- Probability of Profit (PoP) calculations
 """
 
 import pandas as pd
@@ -12,7 +13,6 @@ import numpy as np
 import logging
 from datetime import datetime, timedelta
 from scipy.stats import norm
-from scipy.optimize import brentq
 import os
 import json
 
@@ -21,35 +21,6 @@ logger = logging.getLogger('TechnicalIndicators')
 
 # Risk-free rate (approximate for Indian market, can be updated)
 RISK_FREE_RATE = 0.06  # 6% annual
-
-
-def black_scholes_price(S, K, T, r, sigma, option_type='call'):
-    """
-    Calculate Black-Scholes option price.
-    
-    Args:
-        S: Current stock/index price
-        K: Strike price
-        T: Time to expiration (in years)
-        r: Risk-free rate (annual)
-        sigma: Volatility (annual)
-        option_type: 'call' or 'put'
-    
-    Returns:
-        float: Option price
-    """
-    if T <= 0:
-        return max(S - K, 0) if option_type == 'call' else max(K - S, 0)
-    
-    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
-    d2 = d1 - sigma * np.sqrt(T)
-    
-    if option_type == 'call':
-        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
-    else:  # put
-        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
-    
-    return max(price, 0)
 
 
 def calculate_probability_of_profit(spot_price: float, short_call_strike: float, 
@@ -61,9 +32,9 @@ def calculate_probability_of_profit(spot_price: float, short_call_strike: float,
     PoP is the probability that the underlying price stays between the short strikes
     at expiration, resulting in maximum profit.
     
-    Uses Black-Scholes normal distribution approach:
+    Uses normal distribution approach based on option pricing theory:
     PoP = N(d2_put) - N(d2_call)
-    where N is cumulative normal distribution and d2 is from Black-Scholes formula.
+    where N is cumulative normal distribution and d2 uses the provided IV.
     
     Args:
         spot_price: Current spot price of underlying
@@ -91,7 +62,7 @@ def calculate_probability_of_profit(spot_price: float, short_call_strike: float,
         # Convert days to years
         T = days_to_expiry / 365.0
         
-        # Calculate d2 for both strikes using Black-Scholes formula
+        # Calculate d2 for both strikes using option pricing formula
         # d2 = (ln(S/K) + (r - 0.5*sigma^2)*T) / (sigma * sqrt(T))
         
         # For short put strike (lower bound)
@@ -125,121 +96,56 @@ def calculate_probability_of_profit(spot_price: float, short_call_strike: float,
         return 50.0  # Default to 50% on error
 
 
-def calculate_implied_volatility(option_price, S, K, T, r, option_type='call', max_iter=100):
-    """
-    Calculate implied volatility from option price using Black-Scholes.
-    
-    Uses binary search to find IV that matches the option price.
-    
-    Args:
-        option_price: Current option market price
-        S: Current stock/index price
-        K: Strike price
-        T: Time to expiration (in years)
-        r: Risk-free rate (annual)
-        option_type: 'call' or 'put'
-        max_iter: Maximum iterations for search
-    
-    Returns:
-        float: Implied volatility (annual), or None if calculation fails
-    """
-    if option_price <= 0 or S <= 0 or K <= 0 or T <= 0:
-        return None
-    
-    # Intrinsic value check
-    if option_type == 'call':
-        intrinsic = max(S - K, 0)
-    else:
-        intrinsic = max(K - S, 0)
-    
-    if option_price < intrinsic:
-        logger.debug(f"Option price {option_price} < intrinsic {intrinsic}")
-        return None
-    
-    # Bounds for IV search (0.01% to 500%)
-    iv_low = 0.0001
-    iv_high = 5.0
-    
-    try:
-        def price_diff(sigma):
-            bs_price = black_scholes_price(S, K, T, r, sigma, option_type)
-            return bs_price - option_price
-        
-        # Use Brent's method for root finding
-        iv = brentq(price_diff, iv_low, iv_high, maxiter=max_iter)
-        return iv
-        
-    except (ValueError, RuntimeError) as e:
-        logger.debug(f"IV calculation failed for K={K}, price={option_price}: {str(e)}")
-        return None
-
-
-def calculate_atm_iv(option_chain_df, spot_price, days_to_expiry, risk_free_rate=RISK_FREE_RATE):
+def calculate_atm_iv(option_chain_df, spot_price, days_to_expiry, risk_free_rate=RISK_FREE_RATE, 
+                     expiry_date_str=None, api=None):
     """
     Calculate ATM (At-The-Money) implied volatility from option chain.
+    
+    Uses Shoonya API option_greek function to calculate IV iteratively.
+    Falls back to default IV (18%) if Shoonya API fails.
     
     Args:
         option_chain_df: DataFrame with option chain data
         spot_price: Current spot price
         days_to_expiry: Days to expiration
         risk_free_rate: Risk-free rate (default: 6%)
+        expiry_date_str: Expiry date in format 'DD-MMM-YYYY' (e.g., '25-JAN-2024')
+        api: ShoonyaApiPy instance (required for accurate IV calculation)
     
     Returns:
-        float: ATM IV (annual), or None if calculation fails
+        float: ATM IV (annual percentage, e.g., 18.0 for 18%). 
+               Returns default 18.0% if Shoonya API fails.
     """
-    if option_chain_df.empty:
-        return None
-    
-    # Convert days to years
-    T = days_to_expiry / 365.0
-    
-    # Find ATM strikes (closest to spot)
-    option_chain_df = option_chain_df.copy()
-    option_chain_df['strike_diff'] = abs(option_chain_df['strike'] - spot_price)
-    
-    # Get ATM call and put
-    atm_call = option_chain_df[
-        (option_chain_df['option_type'] == 'CE') &
-        (option_chain_df['strike_diff'] == option_chain_df[option_chain_df['option_type'] == 'CE']['strike_diff'].min())
-    ]
-    
-    atm_put = option_chain_df[
-        (option_chain_df['option_type'] == 'PE') &
-        (option_chain_df['strike_diff'] == option_chain_df[option_chain_df['option_type'] == 'PE']['strike_diff'].min())
-    ]
-    
-    ivs = []
-    
-    # Calculate IV for ATM call
-    if not atm_call.empty:
-        call_row = atm_call.iloc[0]
-        call_price = call_row.get('mid_price', call_row.get('ltp', 0))
-        if call_price > 0:
-            call_iv = calculate_implied_volatility(
-                call_price, spot_price, call_row['strike'], T, risk_free_rate, 'call'
+    # Shoonya API option_greek is the only method for IV calculation
+    if api is not None:
+        try:
+            from shoonya_iv_fetcher import get_atm_iv_from_shoonya
+            shoonya_iv = get_atm_iv_from_shoonya(
+                api=api,
+                option_chain_df=option_chain_df,
+                spot_price=spot_price,
+                expiry_date=expiry_date_str,
+                days_to_expiry=days_to_expiry,
+                risk_free_rate=risk_free_rate
             )
-            if call_iv:
-                ivs.append(call_iv)
+            if shoonya_iv is not None and shoonya_iv > 0:
+                logger.info(f"✅ Using Shoonya API IV: {shoonya_iv:.2f}%")
+                return shoonya_iv
+            else:
+                logger.debug("Shoonya API IV calculation returned None or invalid value")
+        except ImportError:
+            logger.debug("Shoonya IV fetcher not available - cannot calculate IV")
+        except Exception as e:
+            logger.debug(f"Shoonya API IV calculation failed: {e}")
+    else:
+        logger.debug("API instance not provided - using default IV")
     
-    # Calculate IV for ATM put
-    if not atm_put.empty:
-        put_row = atm_put.iloc[0]
-        put_price = put_row.get('mid_price', put_row.get('ltp', 0))
-        if put_price > 0:
-            put_iv = calculate_implied_volatility(
-                put_price, spot_price, put_row['strike'], T, risk_free_rate, 'put'
-            )
-            if put_iv:
-                ivs.append(put_iv)
-    
-    if not ivs:
-        logger.warning("Could not calculate ATM IV from option chain")
-        return None
-    
-    # Return average of call and put IV (or single value if only one available)
-    atm_iv = np.mean(ivs) * 100  # Convert to percentage
-    logger.debug(f"Calculated ATM IV: {atm_iv:.2f}%")
-    return atm_iv
+    # No IV available from Shoonya API - use default fallback
+    # Default IV for NIFTY is typically 15-20%, using 18% as a reasonable default
+    # This allows the system to continue functioning when API fails
+    default_iv = 18.0
+    logger.debug(f"Using default fallback IV: {default_iv}%")
+    return default_iv
 
 
 def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv', exclude_current_timestamp=None):
@@ -443,6 +349,7 @@ def calculate_iv_percentile(option_chain_df, spot_price, days_to_expiry, data_di
 def calculate_adx(high_prices, low_prices, close_prices, period=14):
     """
     Calculate ADX (Average Directional Index) from price data.
+    Works with available data, adjusting period if needed (similar to IV percentile).
     
     Args:
         high_prices: Series of high prices
@@ -454,9 +361,20 @@ def calculate_adx(high_prices, low_prices, close_prices, period=14):
         float: ADX value, or None if calculation fails
     """
     try:
-        if len(high_prices) < period + 1:
-            logger.warning(f"Not enough data for ADX calculation (need {period + 1}, have {len(high_prices)})")
+        data_length = len(high_prices)
+        
+        # Adjust period if we don't have enough data (similar to IV percentile approach)
+        # Minimum 2 data points needed for any calculation
+        if data_length < 2:
+            logger.debug(f"Not enough data for ADX calculation (need at least 2, have {data_length})")
             return None
+        
+        # If we have less than period+1 data points, use a shorter period
+        # This allows calculation with whatever data we have
+        adjusted_period = min(period, max(1, data_length - 1))
+        
+        if adjusted_period < period:
+            logger.info(f"Using adjusted ADX period {adjusted_period} (have {data_length} days, ideal is {period + 1}+). This is normal for new systems.")
         
         # Convert to numpy arrays
         high = np.array(high_prices)
@@ -484,9 +402,9 @@ def calculate_adx(high_prices, low_prices, close_prices, period=14):
         minus_di_smooth = minus_dm.copy()
         
         for i in range(1, len(tr)):
-            atr[i] = (atr[i-1] * (period - 1) + tr[i]) / period
-            plus_di_smooth[i] = (plus_di_smooth[i-1] * (period - 1) + plus_dm[i]) / period
-            minus_di_smooth[i] = (minus_di_smooth[i-1] * (period - 1) + minus_dm[i]) / period
+            atr[i] = (atr[i-1] * (adjusted_period - 1) + tr[i]) / adjusted_period
+            plus_di_smooth[i] = (plus_di_smooth[i-1] * (adjusted_period - 1) + plus_dm[i]) / adjusted_period
+            minus_di_smooth[i] = (minus_di_smooth[i-1] * (adjusted_period - 1) + minus_dm[i]) / adjusted_period
         
         # Calculate +DI and -DI
         plus_di = 100 * (plus_di_smooth / atr)
@@ -498,12 +416,22 @@ def calculate_adx(high_prices, low_prices, close_prices, period=14):
         
         # Calculate ADX (smoothed DX)
         adx = dx.copy()
-        for i in range(period, len(dx)):
-            adx[i] = (adx[i-1] * (period - 1) + dx[i]) / period
+        for i in range(adjusted_period, len(dx)):
+            adx[i] = (adx[i-1] * (adjusted_period - 1) + dx[i]) / adjusted_period
         
         # Return the latest ADX value
-        adx_value = adx[-1]
-        logger.debug(f"Calculated ADX({period}): {adx_value:.2f}")
+        # If we have less data than ideal, use the last calculated value
+        # For very short periods, we might not have a smoothed ADX yet, so use DX
+        if len(adx) > adjusted_period:
+            adx_value = adx[-1]
+        elif len(dx) > 0:
+            # Use the last DX value as approximation if ADX not yet available
+            adx_value = dx[-1]
+            logger.debug(f"Using DX as ADX approximation (period {adjusted_period}, have {data_length} days)")
+        else:
+            return None
+        
+        logger.info(f"Calculated ADX(period={adjusted_period}, ideal={period}): {adx_value:.2f} from {data_length} days of data")
         
         return adx_value
         
@@ -612,15 +540,21 @@ def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days
         daily_bars.columns = ['date', 'high', 'low', 'close']
         daily_bars = daily_bars.sort_values('date')
         
-        if len(daily_bars) < 15:
-            logger.info(f"Only {len(daily_bars)} days of stored data available (need at least 15 for ADX). System will accumulate more data over time.")
+        # Return whatever data we have (similar to IV percentile approach)
+        # The calculate_adx function will adjust the period based on available data
+        if len(daily_bars) < 2:
+            logger.debug(f"Only {len(daily_bars)} days of stored data available (need at least 2 for ADX)")
             return None, None, None
         
         highs = daily_bars['high'].tolist()
         lows = daily_bars['low'].tolist()
         closes = daily_bars['close'].tolist()
         
-        logger.info(f"Using {len(daily_bars)} days of stored NIFTY futures data for ADX calculation")
+        if len(daily_bars) < 15:
+            logger.info(f"Using {len(daily_bars)} days of stored NIFTY futures data for ADX calculation (ideal is 15+ days). ADX will use adjusted period.")
+        else:
+            logger.info(f"Using {len(daily_bars)} days of stored NIFTY futures data for ADX calculation")
+        
         return highs, lows, closes
         
     except Exception as e:

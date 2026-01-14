@@ -2,7 +2,10 @@
 Exit rules configuration for Iron Condor strategy
 """
 
-# Profit target: exit at 50-60% of max profit
+# Profit target: exit at 1% of margin used (primary target)
+PROFIT_TARGET_MARGIN_PCT = 0.01  # 1% of margin
+
+# Profit target: exit at 50-60% of max profit (fallback/legacy)
 PROFIT_TARGET_PCT = (0.50, 0.60)
 
 # Stop loss: exit if loss exceeds 1.2x of max loss

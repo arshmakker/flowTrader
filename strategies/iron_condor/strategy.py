@@ -13,6 +13,7 @@ from .payoff_validator import validate_payoff, StrategyRejectedError
 from .position_sizer import calculate_lots
 from .exit_rules import (
     PROFIT_TARGET_PCT,
+    PROFIT_TARGET_MARGIN_PCT,
     STOP_LOSS_MULTIPLIER,
     MANDATORY_EXIT_DTE,
     MANDATORY_EXIT_TIME
@@ -23,7 +24,10 @@ logger = logging.getLogger(__name__)
 
 def generate_iron_condor_trade(
     market_state: dict,
-    option_chain: pd.DataFrame
+    option_chain: pd.DataFrame,
+    api=None,
+    userid=None,
+    symbol_manager=None
 ) -> Optional[Dict]:
     """
     Generate Iron Condor trade proposal.
@@ -134,7 +138,73 @@ def generate_iron_condor_trade(
             logger.info("Position sizing resulted in 0 lots, rejecting trade")
             return None
         
-        # Step 5: Build trade proposal
+        # Step 5: Get lot size from option chain or symbol_manager
+        lot_size = None
+        if 'lot_size' in option_chain.columns and not option_chain.empty:
+            lot_size = int(option_chain.iloc[0]['lot_size'])
+            logger.debug(f"Got lot size from option chain: {lot_size}")
+        elif symbol_manager is not None:
+            # Look up from symbol_manager
+            try:
+                nifty_options = symbol_manager.nse_fo[
+                    (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
+                    (symbol_manager.nse_fo['instrument'] == 'OPTIDX')
+                ]
+                if not nifty_options.empty:
+                    lot_size = int(nifty_options.iloc[0]['lotsize'])
+                    logger.debug(f"Got lot size from symbol_manager: {lot_size}")
+            except Exception as e:
+                logger.warning(f"Error getting lot size from symbol_manager: {e}")
+        
+        if lot_size is None or lot_size <= 0:
+            logger.warning("Could not determine lot size, using fallback 50")
+            lot_size = 50
+        
+        # Step 6: Calculate margin if API available
+        margin_used = None
+        if api is not None:
+            try:
+                from .margin_calculator import calculate_iron_condor_margin
+                
+                margin_used = calculate_iron_condor_margin(
+                    api=api,
+                    legs=[
+                        {
+                            'position': 'SHORT',
+                            'option_type': legs['short_call']['option_type'],
+                            'strike': legs['short_call']['strike'],
+                            'price': legs['short_call'].get('mid_price', legs['short_call'].get('ltp', 0))
+                        },
+                        {
+                            'position': 'SHORT',
+                            'option_type': legs['short_put']['option_type'],
+                            'strike': legs['short_put']['strike'],
+                            'price': legs['short_put'].get('mid_price', legs['short_put'].get('ltp', 0))
+                        },
+                        {
+                            'position': 'LONG',
+                            'option_type': legs['long_call']['option_type'],
+                            'strike': legs['long_call']['strike'],
+                            'price': legs['long_call'].get('mid_price', legs['long_call'].get('ltp', 0))
+                        },
+                        {
+                            'position': 'LONG',
+                            'option_type': legs['long_put']['option_type'],
+                            'strike': legs['long_put']['strike'],
+                            'price': legs['long_put'].get('mid_price', legs['long_put'].get('ltp', 0))
+                        }
+                    ],
+                    lots=lots,
+                    expiry_date=expiry,
+                    symbol_name='NIFTY',
+                    userid=userid,
+                    lot_size=lot_size,
+                    symbol_manager=symbol_manager
+                )
+            except Exception as e:
+                logger.warning(f"Margin calculation failed: {e}")
+        
+        # Step 7: Build trade proposal
         trade_proposal = {
             "strategy": "IRON_CONDOR_WEEKLY",
             "expiry": expiry,
@@ -198,7 +268,11 @@ def generate_iron_condor_trade(
             "probability_of_profit": payoff.get('probability_of_profit'),
             "spot_price": spot_price,
             "generated_at": datetime.now().isoformat(),
+            "lot_size": lot_size,
+            "margin_used": margin_used,
+            "profit_target_margin": margin_used * PROFIT_TARGET_MARGIN_PCT if margin_used else None,
             "exit_rules": {
+                "profit_target_margin_pct": PROFIT_TARGET_MARGIN_PCT,
                 "profit_target_pct": PROFIT_TARGET_PCT,
                 "stop_loss_multiplier": STOP_LOSS_MULTIPLIER,
                 "mandatory_exit_dte": MANDATORY_EXIT_DTE,
