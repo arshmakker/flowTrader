@@ -346,6 +346,31 @@ def calculate_iv_percentile(option_chain_df, spot_price, days_to_expiry, data_di
         return None
 
 
+def calculate_ema(prices, period: int):
+    """
+    Calculate Exponential Moving Average (EMA)
+    
+    Args:
+        prices: List of closing prices (most recent last)
+        period: EMA period
+    
+    Returns:
+        EMA value or None if insufficient data
+    """
+    try:
+        if len(prices) < period:
+            return None
+        
+        # Use pandas for EMA calculation (more reliable)
+        import pandas as pd
+        df = pd.DataFrame({'close': prices})
+        ema = df['close'].ewm(span=period, adjust=False).mean().iloc[-1]
+        return float(ema)
+    except Exception as e:
+        logger.error(f"Error calculating EMA: {str(e)}")
+        return None
+
+
 def calculate_adx(high_prices, low_prices, close_prices, period=14):
     """
     Calculate ADX (Average Directional Index) from price data.
@@ -560,6 +585,232 @@ def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days
     except Exception as e:
         logger.debug(f"Error getting historical data from stored files: {str(e)}")
         return None, None, None
+
+
+def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
+    """
+    Get 15-minute candle data for EMA calculation.
+    
+    Args:
+        api: ShoonyaApiPy instance
+        symbol_manager: SymbolManager instance
+        symbol_name: Symbol name (e.g., 'Nifty 50')
+        lookback_hours: Hours to look back (default: 30 hours = ~100 candles for EMA(100))
+    
+    Returns:
+        List of close prices (15-minute candles) or None if error
+    """
+    # #region agent log
+    import json
+    try:
+        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({"location":"technical_indicators.py:590","message":"get_15min_candle_data entry","data":{"symbol_name":symbol_name,"lookback_hours":lookback_hours,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H"})+"\n")
+    except: pass
+    # #endregion
+    
+    try:
+        # Check if symbol_manager has nse_cash loaded
+        # #region agent log
+        try:
+            has_nse_cash = hasattr(symbol_manager, 'nse_cash') and symbol_manager.nse_cash is not None
+            nse_cash_shape = symbol_manager.nse_cash.shape if has_nse_cash else None
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:613","message":"Checking symbol_manager state","data":{"has_nse_cash":has_nse_cash,"nse_cash_shape":list(nse_cash_shape) if nse_cash_shape is not None else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I1"})+"\n")
+        except Exception as e:
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:613","message":"Error checking symbol_manager","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I1"})+"\n")
+            except: pass
+        # #endregion
+        
+        # Get symbol token
+        symbol_info = None
+        try:
+            symbol_info = symbol_manager.get_token_info(symbol_name, exchange='NSE')
+        except Exception as e:
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:625","message":"Exception in get_token_info","data":{"symbol_name":symbol_name,"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I2"})+"\n")
+            except: pass
+            # #endregion
+            logger.error(f"Exception getting token info for {symbol_name}: {str(e)}")
+        
+        if not symbol_info:
+            # Try fallback: 'NIFTY' instead of 'Nifty 50'
+            if symbol_name.lower() == 'nifty 50':
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"technical_indicators.py:635","message":"Trying fallback symbol 'NIFTY'","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I3"})+"\n")
+                except: pass
+                # #endregion
+                try:
+                    symbol_info = symbol_manager.get_token_info('NIFTY', exchange='NSE')
+                except Exception as e:
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"technical_indicators.py:640","message":"Exception in get_token_info for NIFTY","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I4"})+"\n")
+                    except: pass
+                    # #endregion
+            
+            # If still not found, use direct token 26000 (NIFTY INDEX)
+            if not symbol_info:
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"technical_indicators.py:648","message":"Using fallback token 26000","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I5"})+"\n")
+                except: pass
+                # #endregion
+                symbol_info = {
+                    'token': '26000',
+                    'exchange': 'NSE',
+                    'symbol': 'NIFTY'
+                }
+        
+        if not symbol_info:
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:658","message":"Could not find token after all attempts","data":{"symbol_name":symbol_name},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I"})+"\n")
+            except: pass
+            # #endregion
+            logger.debug(f"Could not find token for {symbol_name}")
+            return None
+        
+        token = symbol_info['token']
+        
+        # #region agent log
+        try:
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:665","message":"Got token, calculating time range","data":{"token":token,"symbol_info":symbol_info},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"J"})+"\n")
+        except: pass
+        # #endregion
+        
+        # Calculate time range
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=lookback_hours)
+        
+        # #region agent log
+        try:
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:612","message":"Calling API get_time_price_series","data":{"start_time":int(start_time.timestamp()),"end_time":int(end_time.timestamp()),"interval":15},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"K"})+"\n")
+        except: pass
+        # #endregion
+        
+        # Fetch 15-minute candles from API
+        try:
+            price_data = api.get_time_price_series(
+                exchange='NSE',
+                token=token,
+                starttime=int(start_time.timestamp()),
+                endtime=int(end_time.timestamp()),
+                interval=15  # 15-minute interval
+            )
+            
+            # #region agent log
+            try:
+                price_data_keys = list(price_data.keys()) if isinstance(price_data, dict) else None
+                price_data_len = len(price_data) if price_data else 0
+                price_data_str = str(price_data)[:200] if price_data else "None"  # First 200 chars
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:680","message":"API response received","data":{"price_data_is_none":price_data is None,"price_data_type":type(price_data).__name__ if price_data else "None","price_data_keys":price_data_keys,"price_data_len":price_data_len,"price_data_preview":price_data_str},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"L"})+"\n")
+            except Exception as e:
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"technical_indicators.py:680","message":"Error logging API response","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"L"})+"\n")
+                except: pass
+            # #endregion
+            
+            if not price_data:
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"technical_indicators.py:630","message":"No price data returned","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"M"})+"\n")
+                except: pass
+                # #endregion
+                logger.debug("No 15-minute price data returned from API")
+                return None
+            
+            # Handle different response formats
+            candles = None
+            if isinstance(price_data, dict):
+                # Response might be {'stat': 'Ok', 'values': [...]} or just {'values': [...]}
+                if 'values' in price_data:
+                    candles = price_data['values']
+                elif isinstance(price_data, list):
+                    candles = price_data
+            elif isinstance(price_data, list):
+                candles = price_data
+            
+            if not candles:
+                logger.debug("No candle data in API response")
+                return None
+            
+            # Extract close prices - try different field names
+            closes = []
+            for candle in candles:
+                close_price = None
+                # Try different possible field names for close price
+                if isinstance(candle, dict):
+                    close_price = candle.get('c') or candle.get('close') or candle.get('ltp') or candle.get('last_price')
+                elif isinstance(candle, (list, tuple)) and len(candle) >= 4:
+                    # If it's a list/tuple, close is typically at index 3 (OHLC format)
+                    close_price = candle[3]
+                
+                if close_price:
+                    try:
+                        closes.append(float(close_price))
+                    except (ValueError, TypeError):
+                        continue
+            
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:655","message":"Extracted closes from candles","data":{"closes_count":len(closes)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"N"})+"\n")
+            except: pass
+            # #endregion
+            
+            if len(closes) < 50:
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"technical_indicators.py:660","message":"Insufficient candles","data":{"closes_count":len(closes),"needs":50},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"O"})+"\n")
+                except: pass
+                # #endregion
+                logger.debug(f"Insufficient 15-minute candles: {len(closes)} (need at least 50 for EMA(50))")
+                return None
+            
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:668","message":"Successfully fetched 15-minute candles","data":{"closes_count":len(closes)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"P"})+"\n")
+            except: pass
+            # #endregion
+            
+            logger.debug(f"Fetched {len(closes)} 15-minute candles for EMA calculation")
+            return closes
+            
+        except Exception as e:
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"technical_indicators.py:675","message":"Exception in API call","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"Q"})+"\n")
+            except: pass
+            # #endregion
+            logger.debug(f"Error fetching 15-minute candles from API: {str(e)}")
+            return None
+            
+    except Exception as e:
+        # #region agent log
+        try:
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:682","message":"Exception in get_15min_candle_data","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"R"})+"\n")
+        except: pass
+        # #endregion
+        logger.debug(f"Error getting 15-minute candle data: {str(e)}")
+        return None
 
 
 def get_historical_price_data(api, symbol_manager, symbol_name, days=30):

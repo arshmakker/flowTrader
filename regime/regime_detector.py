@@ -1,9 +1,10 @@
 """
 Regime Detector for Market Regime Classification
 
-Detects three market regimes:
+Detects four market regimes:
 - CONVEX: Low IV, compressed volatility, suitable for convex strategies
 - INCOME: High IV, low trend, suitable for income strategies (Iron Condor)
+- TREND_CONTINUATION: Strong trend (ADX >= 30), suitable for trend following
 - NEUTRAL: Transitional state, no new trades
 
 Features:
@@ -18,7 +19,7 @@ import os
 import json
 from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Tuple
-from technical_indicators import get_historical_price_data
+from technical_indicators import get_historical_price_data, calculate_ema, get_15min_candle_data
 
 logger = logging.getLogger(__name__)
 
@@ -309,7 +310,7 @@ class RegimeDetector:
         Returns:
             Dictionary with regime information:
             {
-                "regime": "CONVEX" | "INCOME" | "NEUTRAL",
+                "regime": "CONVEX" | "INCOME" | "TREND_CONTINUATION" | "NEUTRAL",
                 "iv_percentile": float,
                 "adx": float,
                 "atr": float,
@@ -425,6 +426,99 @@ class RegimeDetector:
                   atr_percentile is not None and atr_percentile < 50):  # ATR not expanding
                 detected_regime = "INCOME"
                 logger.info(f"Regime detected: INCOME (IV={iv_percentile:.1f}%, ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%)")
+            
+            # TREND_CONTINUATION regime
+            elif (adx_14 is not None and adx_14 >= 30 and
+                  atr_percentile is not None and atr_percentile >= 50):
+                # #region agent log
+                import json
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"regime_detector.py:431","message":"TREND_CONTINUATION criteria met, checking EMA structure","data":{"adx":adx_14,"atr_percentile":atr_percentile,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"has_closes":closes is not None,"closes_len":len(closes) if closes else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"A"})+"\n")
+                except: pass
+                # #endregion
+                
+                # Check directional bias using EMA structure
+                # Use 15-minute candles for EMA calculation (same timeframe as ADX/ATR)
+                # EMA(50) = 50 × 15min = 12.5 hours, EMA(100) = 100 × 15min = 25 hours
+                directional_bias_stable = False
+                direction = None
+                
+                # Fetch 15-minute candle data for EMA calculation
+                if api and symbol_manager:
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"regime_detector.py:437","message":"Fetching 15-minute candles for EMA","data":{"lookback_hours":30},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"F"})+"\n")
+                    except: pass
+                    # #endregion
+                    
+                    # Fetch 30 hours of 15-minute candles (120 candles = enough for EMA(100))
+                    ema_closes = get_15min_candle_data(api, symbol_manager, 'Nifty 50', lookback_hours=30)
+                    
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"regime_detector.py:444","message":"15-minute candles fetch result","data":{"ema_closes_is_none":ema_closes is None,"ema_closes_len":len(ema_closes) if ema_closes else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"G"})+"\n")
+                    except: pass
+                    # #endregion
+                else:
+                    ema_closes = None
+                
+                if api and symbol_manager and ema_closes and len(ema_closes) >= 100:
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"regime_detector.py:450","message":"Starting EMA calculation","data":{"closes_count":len(ema_closes),"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B"})+"\n")
+                    except: pass
+                    # #endregion
+                    
+                    # Calculate EMAs
+                    ema_50 = calculate_ema(ema_closes, period=50)
+                    ema_100 = calculate_ema(ema_closes, period=100)
+                    current_price = ema_closes[-1] if ema_closes else spot_price
+                    
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"regime_detector.py:455","message":"EMA calculation results","data":{"ema_50":ema_50,"ema_100":ema_100,"current_price":current_price,"has_all_values":ema_50 is not None and ema_100 is not None and current_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"C"})+"\n")
+                    except: pass
+                    # #endregion
+                    
+                    if ema_50 and ema_100 and current_price:
+                        # Check if EMA structure is aligned (trending)
+                        # LONG: price > EMA50 > EMA100
+                        # SHORT: price < EMA50 < EMA100
+                        long_structure = current_price > ema_50 > ema_100
+                        short_structure = current_price < ema_50 < ema_100
+                        directional_bias_stable = long_structure or short_structure
+                        
+                        # #region agent log
+                        try:
+                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({"location":"regime_detector.py:461","message":"EMA structure check","data":{"long_structure":long_structure,"short_structure":short_structure,"directional_bias_stable":directional_bias_stable,"price_ema50":current_price > ema_50,"ema50_ema100":ema_50 > ema_100,"price_ema50_val":current_price - ema_50,"ema50_ema100_val":ema_50 - ema_100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"D"})+"\n")
+                        except: pass
+                        # #endregion
+                        
+                        if long_structure:
+                            direction = "LONG"
+                        elif short_structure:
+                            direction = "SHORT"
+                else:
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"regime_detector.py:468","message":"EMA check skipped - insufficient data","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"has_ema_closes":ema_closes is not None if 'ema_closes' in locals() else False,"ema_closes_len":len(ema_closes) if 'ema_closes' in locals() and ema_closes else 0,"needs_100":len(ema_closes) >= 100 if 'ema_closes' in locals() and ema_closes else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"E"})+"\n")
+                    except: pass
+                    # #endregion
+                
+                if directional_bias_stable:
+                    detected_regime = "TREND_CONTINUATION"
+                    logger.info(f"Regime detected: TREND_CONTINUATION (ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%, Direction={direction})")
+                else:
+                    # ADX and ATR meet criteria but EMA structure not stable
+                    detected_regime = "NEUTRAL"
+                    logger.debug(f"Regime: NEUTRAL (ADX={adx_14:.1f}>=30, ATR%={atr_percentile:.1f}>=50, but EMA structure not stable)")
             
             else:
                 detected_regime = "NEUTRAL"
