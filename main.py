@@ -174,6 +174,36 @@ def main():
         position_tracker = IronCondorPositionTracker()
         logger.info("Position tracker initialized")
         
+        # Run synthetic regime tests if enabled
+        enable_synthetic_tests = os.getenv('ENABLE_SYNTHETIC_TESTS', 'False').lower() == 'true'
+        enable_replay_mode = os.getenv('ENABLE_REPLAY_MODE', 'False').lower() == 'true'
+        
+        if enable_synthetic_tests or enable_replay_mode:
+            try:
+                logger.info("=" * 60)
+                logger.info("Running Synthetic Regime Detection Tests")
+                logger.info("=" * 60)
+                from diagnostics.synthetic_regime_tests import run_synthetic_regime_tests
+                test_summary = run_synthetic_regime_tests()
+                
+                logger.info("=" * 60)
+                logger.info("Synthetic Tests Summary:")
+                logger.info(f"  Total Cases: {test_summary['total_cases']}")
+                logger.info(f"  Passed: {test_summary['passed']}")
+                logger.info(f"  Failed: {test_summary['failed']}")
+                if test_summary.get('sanity_errors', 0) > 0:
+                    logger.info(f"  Sanity Errors: {test_summary['sanity_errors']}")
+                logger.info("=" * 60)
+                
+                if test_summary['failed'] > 0 or test_summary.get('sanity_errors', 0) > 0:
+                    logger.warning("Some synthetic tests failed, but continuing execution...")
+                else:
+                    logger.info("All synthetic tests passed!")
+                
+            except Exception as e:
+                logger.error(f"Error running synthetic tests: {str(e)}", exc_info=True)
+                logger.warning("Continuing execution despite test errors...")
+        
         # Start data collection
         collector.start_collection()
         logger.info("Data collection started")

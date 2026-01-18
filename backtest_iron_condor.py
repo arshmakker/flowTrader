@@ -30,6 +30,10 @@ class IronCondorBacktester:
         self.trades = []
         self.open_positions = []
         self.daily_pnl = []
+        # Backtest-only: allow using last-known quotes to build a usable option chain.
+        # Real tick streams often have sparse/unaligned timestamps across strikes; requiring
+        # a quote within ±1 minute per strike can lead to empty/one-strike chains.
+        self.max_quote_staleness_minutes = 10
         
     def load_historical_data(self, date_str: str) -> Dict:
         """
@@ -128,19 +132,16 @@ class IronCondorBacktester:
             elif expiry_str not in symbol:
                 continue
             
-            # Get data closest to timestamp (within 1 minute)
+            # Backtest-friendly quote selection:
+            # take the last-known quote at or before `timestamp`, but not older than a staleness window.
+            staleness = timedelta(minutes=self.max_quote_staleness_minutes)
             df_filtered = df[
-                (df['timestamp'] >= timestamp - timedelta(minutes=1)) &
-                (df['timestamp'] <= timestamp + timedelta(minutes=1))
+                (df['timestamp'] <= timestamp) &
+                (df['timestamp'] >= timestamp - staleness)
             ]
-            
             if df_filtered.empty:
                 continue
-            
-            # Get the closest row
-            df_filtered = df_filtered.copy()
-            df_filtered['time_diff'] = abs((df_filtered['timestamp'] - timestamp).dt.total_seconds())
-            closest_row = df_filtered.loc[df_filtered['time_diff'].idxmin()]
+            closest_row = df_filtered.sort_values('timestamp').iloc[-1]
             
             # Extract option details
             try:
@@ -178,11 +179,12 @@ class IronCondorBacktester:
         """Get spot price at a specific timestamp"""
         # First try futures data
         if data['spot_prices']:
-            closest_ts = min(data['spot_prices'].keys(), 
-                            key=lambda x: abs((x - timestamp).total_seconds()))
-            
-            if abs((closest_ts - timestamp).total_seconds()) < 300:  # Within 5 minutes
-                return data['spot_prices'][closest_ts]
+            # Prefer last-known futures price at/before timestamp (more realistic than nearest).
+            eligible = [ts for ts in data['spot_prices'].keys() if ts <= timestamp]
+            if eligible:
+                closest_ts = max(eligible)
+                if abs((timestamp - closest_ts).total_seconds()) < 600:  # Within 10 minutes
+                    return data['spot_prices'][closest_ts]
         
         # Fallback: estimate from ATM options
         # Find ATM call and put, average their strikes adjusted by premium

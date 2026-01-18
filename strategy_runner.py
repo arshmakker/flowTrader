@@ -16,7 +16,8 @@ from typing import Dict, Optional, List
 from strategies.iron_condor import generate_iron_condor_trade
 from strategies.convex import generate_nifty_call_backspread
 from strategies.neutral import generate_neutral_call_calendar
-from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX, STRATEGY_CALENDAR
+from strategies.trend import generate_trend_follow_trade
+from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX, STRATEGY_CALENDAR, STRATEGY_TREND
 from strategies.neutral.config import ENABLE_NEUTRAL_CALENDAR
 from regime import RegimeDetector
 from technical_indicators import (
@@ -931,6 +932,23 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
         
+        elif regime == "TREND_CONTINUATION":
+            strategy_allowed.append("TREND_FOLLOW_FUTURE")
+            # Check mutual exclusion
+            if not can_enter_strategy(STRATEGY_TREND, position_tracker):
+                no_trade_reason = "MUTUAL_EXCLUSION"
+                logger.info("Trend strategy blocked by mutual exclusion")
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
+                return None
+            
+            # Run Trend Following Futures strategy
+            trade_proposal = _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_state, capital)
+            strategy_executed = "TREND_FOLLOW_FUTURE" if trade_proposal else None
+            if not trade_proposal:
+                no_trade_reason = "NO_VALID_TRADE"
+            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
+            return trade_proposal
+        
         else:  # NEUTRAL
             # Check if calendar is allowed in NEUTRAL_ACTIVE
             if neutral_sub_state == "NEUTRAL_ACTIVE" and ENABLE_NEUTRAL_CALENDAR:
@@ -1119,6 +1137,44 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
         
     except Exception as e:
         logger.error(f"Error running Convex Backspread strategy: {str(e)}", exc_info=True)
+        return None
+
+
+def _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_state, capital):
+    """Run Trend Following Futures strategy"""
+    try:
+        logger.info("=== Running Trend Following Futures Strategy (TREND_CONTINUATION regime) ===")
+        
+        # Generate trade proposal
+        trade_proposal = generate_trend_follow_trade(market_state, capital, api, symbol_manager)
+        
+        if trade_proposal:
+            logger.info("✅ Valid Trend Follow trade found!")
+            logger.info(f"   Strategy: {trade_proposal['strategy']}")
+            logger.info(f"   Direction: {trade_proposal['direction']}")
+            logger.info(f"   Instrument: {trade_proposal['instrument']}")
+            logger.info(f"   Entry Price: ₹{trade_proposal['entry_price']:.2f}")
+            logger.info(f"   Quantity: {trade_proposal['quantity']} ({trade_proposal['lots']} lots)")
+            logger.info(f"   Stop Loss: ₹{trade_proposal['stop_loss_price']:.2f}")
+            logger.info(f"   Risk Amount: ₹{trade_proposal['risk_amount']:.2f} ({trade_proposal['risk_pct_of_capital']:.2f}%)")
+            logger.info(f"   EMA 50: ₹{trade_proposal['ema_50']:.2f}")
+            logger.info(f"   EMA 100: ₹{trade_proposal['ema_100']:.2f}")
+            
+            # Save proposal
+            save_trade_proposal(trade_proposal)
+            
+            # Add to position tracker if provided
+            if position_tracker is not None:
+                position_tracker.add_position(trade_proposal)
+                logger.info(f"Position added to tracker: {trade_proposal['lots']} lots")
+            
+            return trade_proposal
+        else:
+            logger.info("❌ No valid Trend Follow trade found")
+            return None
+        
+    except Exception as e:
+        logger.error(f"Error running Trend Follow strategy: {str(e)}", exc_info=True)
         return None
 
 
