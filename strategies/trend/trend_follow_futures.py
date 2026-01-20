@@ -18,7 +18,8 @@ Exit Rules:
 """
 
 import logging
-from datetime import datetime
+import re
+from datetime import datetime, date
 from typing import Dict, Optional
 from .config import (
     MAX_RISK_PCT_OF_CAPITAL,
@@ -28,10 +29,59 @@ from .config import (
     EMA_FAST_PERIOD,
     EMA_SLOW_PERIOD,
     EXIT_ON_REGIME_CHANGE,
-    EXIT_ON_EMA_BREAK
+    EXIT_ON_EMA_BREAK,
+    EXIT_DAYS_BEFORE_EXPIRY
 )
 
 logger = logging.getLogger(__name__)
+
+
+def parse_futures_expiry(futures_symbol: str) -> Optional[date]:
+    """
+    Parse expiry date from futures trading symbol.
+    
+    Examples:
+        NIFTY27JAN26F -> 2026-01-27
+        BANKNIFTY30DEC25F -> 2025-12-30
+        
+    Args:
+        futures_symbol: Trading symbol (e.g., "NIFTY27JAN26F")
+    
+    Returns:
+        date: Expiry date or None if parsing fails
+    """
+    try:
+        # Pattern: INDEX_NAME + DDMMMYY + F
+        # Examples: NIFTY27JAN26F, BANKNIFTY30DEC25F
+        # Match: DD (2 digits) + MMM (3 letters) + YY (2 digits) + F
+        match = re.search(r'(\d{2})([A-Z]{3})(\d{2})F$', futures_symbol)
+        if not match:
+            logger.warning(f"Could not parse expiry from symbol: {futures_symbol}")
+            return None
+        
+        day = int(match.group(1))
+        month_str = match.group(2)
+        year_2digit = int(match.group(3))
+        
+        # Convert 2-digit year to 4-digit (assuming 20xx for years 00-99)
+        year = 2000 + year_2digit
+        
+        # Parse month
+        month_map = {
+            'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+            'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12
+        }
+        month = month_map.get(month_str)
+        if not month:
+            logger.warning(f"Invalid month in symbol: {futures_symbol}")
+            return None
+        
+        expiry_date = date(year, month, day)
+        return expiry_date
+        
+    except Exception as e:
+        logger.error(f"Error parsing expiry from symbol {futures_symbol}: {str(e)}")
+        return None
 
 
 def get_nifty_futures_price(api, symbol_manager) -> Optional[float]:
@@ -377,7 +427,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             logger.debug("API or symbol_manager not provided")
             return None
         
-        # Get futures price
+        # Get futures price and symbol
         # #region agent log
         try:
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
@@ -387,16 +437,32 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         
         futures_price = get_nifty_futures_price(api, symbol_manager)
         
+        # Get the actual futures symbol from symbol_manager
+        futures_symbol = None
+        futures_info = None
+        try:
+            futures_list = symbol_manager.get_index_futures()
+            nifty_future = next((f for f in futures_list if f.get('index_name') == 'NIFTY'), None)
+            if nifty_future:
+                futures_symbol = nifty_future.get('symbol')  # This is the tradingsymbol from CSV (e.g., "NIFTY27JAN26F")
+                futures_info = nifty_future
+        except Exception as e:
+            logger.warning(f"Could not get futures symbol from symbol_manager: {str(e)}")
+        
         # #region agent log
         try:
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"trend_follow_futures.py:275","message":"Futures price result","data":{"futures_price":futures_price,"has_price":futures_price is not None and futures_price > 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T5"})+"\n")
+                f.write(json.dumps({"location":"trend_follow_futures.py:275","message":"Futures price result","data":{"futures_price":futures_price,"has_price":futures_price is not None and futures_price > 0,"futures_symbol":futures_symbol,"has_futures_info":futures_info is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T5"})+"\n")
         except: pass
         # #endregion
         
         if not futures_price:
             logger.debug("Could not get NIFTY futures price")
             return None
+        
+        if not futures_symbol:
+            logger.warning("Could not get NIFTY futures symbol from CSV, using fallback")
+            futures_symbol = "NIFTY_FUTURE"  # Fallback if symbol lookup fails
         
         # Get EMA structure
         # #region agent log
@@ -434,7 +500,11 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             return None
         
         # Calculate position size
-        lot_size = 50  # NIFTY futures lot size
+        # Get lot size from futures info if available, otherwise use default
+        if futures_info and 'lot_size' in futures_info:
+            lot_size = futures_info['lot_size']
+        else:
+            lot_size = 50  # Default NIFTY futures lot size
         
         # #region agent log
         try:
@@ -467,13 +537,22 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         risk_amount = position_info['risk_amount']
         risk_pct_of_capital = (risk_amount / capital) * 100 if capital > 0 else 0
         
+        # Parse expiry date from futures symbol
+        expiry_date = None
+        days_to_expiry = None
+        if futures_symbol:
+            expiry_date = parse_futures_expiry(futures_symbol)
+            if expiry_date:
+                days_to_expiry = (expiry_date - datetime.now().date()).days
+                logger.debug(f"Futures expiry: {expiry_date.strftime('%d-%b-%Y')}, Days to expiry: {days_to_expiry}")
+        
         # Build trade proposal
         trade_proposal = {
             "strategy": "TREND_FOLLOW_FUTURE",
             "book": "TREND",
             "regime_at_entry": "TREND_CONTINUATION",
             "direction": direction,
-            "instrument": "NIFTY_FUTURE",
+            "instrument": futures_symbol,  # Use actual symbol from CSV (e.g., "NIFTY27JAN26F")
             "entry_price": futures_price,
             "quantity": position_info['quantity'],
             "lots": position_info['lots'],
@@ -487,6 +566,8 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             "spot_price": spot_price,
             "atr": atr,
             "adx": market_state.get('adx_14'),
+            "expiry": expiry_date.isoformat() if expiry_date else None,  # Add expiry date
+            "days_to_expiry": days_to_expiry,  # Days to expiry at entry
             "generated_at": datetime.now().isoformat()
         }
         

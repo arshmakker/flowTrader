@@ -15,3 +15,4 @@ EMA_SLOW_PERIOD = 100
 # Exit conditions
 EXIT_ON_REGIME_CHANGE = True  # Exit if regime != TREND_CONTINUATION
 EXIT_ON_EMA_BREAK = True  # Exit if EMA structure breaks
+EXIT_DAYS_BEFORE_EXPIRY = 2  # Exit if expiry is within N days

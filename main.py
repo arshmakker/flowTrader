@@ -351,29 +351,85 @@ def main():
                                                 from strategy_runner import build_market_state_from_chain
                                                 from regime import RegimeDetector
                                                 
+                                                # #region agent log
+                                                import json
+                                                try:
+                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        f.write(json.dumps({"location":"main.py:347","message":"Entering futures position monitoring","data":{"position_id":position.get('trade_id'),"strategy":strategy,"is_futures_strategy":is_futures_strategy},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
+                                                except: pass
+                                                # #endregion
+                                                
                                                 # Get current futures price
                                                 current_futures_price = get_nifty_futures_price(api, symbol_manager)
+                                                # #region agent log
+                                                try:
+                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        f.write(json.dumps({"location":"main.py:356","message":"Futures price result","data":{"current_futures_price":current_futures_price,"is_none":current_futures_price is None,"type":type(current_futures_price).__name__,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H1"})+"\n")
+                                                except: pass
+                                                # #endregion
                                                 if not current_futures_price:
                                                     logger.debug(f"Could not get futures price for position {position['trade_id']}")
+                                                    # #region agent log
+                                                    try:
+                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            f.write(json.dumps({"location":"main.py:360","message":"Skipping position - no futures price","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H1"})+"\n")
+                                                    except: pass
+                                                    # #endregion
                                                     continue
                                                 
                                                 # Get current market state for regime and indicators
                                                 # Use a dummy expiry for market state (futures don't have expiry)
                                                 # We'll use the first available expiry just for market state calculation
                                                 available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=1)
+                                                # #region agent log
+                                                try:
+                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        f.write(json.dumps({"location":"main.py:363","message":"Available expiries result","data":{"available_expiries":available_expiries,"is_empty":not available_expiries,"len":len(available_expiries) if available_expiries else 0,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H2"})+"\n")
+                                                except: pass
+                                                # #endregion
                                                 if not available_expiries:
                                                     logger.debug(f"Could not get expiry for market state calculation")
+                                                    # #region agent log
+                                                    try:
+                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            f.write(json.dumps({"location":"main.py:368","message":"Skipping position - no available expiries","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H2"})+"\n")
+                                                    except: pass
+                                                    # #endregion
                                                     continue
                                                 
                                                 expiry_date = available_expiries[0]
                                                 option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
+                                                # #region agent log
+                                                try:
+                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        f.write(json.dumps({"location":"main.py:375","message":"Option chain result","data":{"option_chain_empty":option_chain.empty if hasattr(option_chain, 'empty') else True,"option_chain_len":len(option_chain) if hasattr(option_chain, '__len__') else 0,"expiry_date":str(expiry_date),"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H3"})+"\n")
+                                                except: pass
+                                                # #endregion
                                                 if option_chain.empty:
                                                     logger.debug(f"Could not get option chain for market state")
+                                                    # #region agent log
+                                                    try:
+                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            f.write(json.dumps({"location":"main.py:380","message":"Skipping position - empty option chain","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H3"})+"\n")
+                                                    except: pass
+                                                    # #endregion
                                                     continue
                                                 
                                                 market_state = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain)
+                                                # #region agent log
+                                                try:
+                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        f.write(json.dumps({"location":"main.py:386","message":"Market state result","data":{"market_state_is_none":market_state is None,"has_market_state":market_state is not None,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H4"})+"\n")
+                                                except: pass
+                                                # #endregion
                                                 if not market_state:
                                                     logger.debug(f"Could not build market state for futures position")
+                                                    # #region agent log
+                                                    try:
+                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            f.write(json.dumps({"location":"main.py:392","message":"Skipping position - no market state","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H4"})+"\n")
+                                                    except: pass
+                                                    # #endregion
                                                     continue
                                                 
                                                 # Get regime
@@ -448,7 +504,27 @@ def main():
                                                 except: pass
                                                 # #endregion
                                                 
-                                                # Exit condition 3: EMA structure breaks
+                                                # Exit condition 3: Expiry date approaching
+                                                if not should_exit:
+                                                    from strategies.trend.config import EXIT_DAYS_BEFORE_EXPIRY
+                                                    expiry_str = position.get('expiry')
+                                                    if expiry_str:
+                                                        try:
+                                                            expiry_date = datetime.fromisoformat(expiry_str).date() if isinstance(expiry_str, str) else expiry_str
+                                                            today = datetime.now().date()
+                                                            days_to_expiry = (expiry_date - today).days
+                                                            
+                                                            if days_to_expiry <= EXIT_DAYS_BEFORE_EXPIRY:
+                                                                should_exit = True
+                                                                exit_reason = f'EXPIRY_APPROACHING (expires in {days_to_expiry} days)'
+                                                                logger.info(
+                                                                    f"Futures position {position['trade_id']}: "
+                                                                    f"Expiry approaching ({days_to_expiry} days), closing position"
+                                                                )
+                                                        except Exception as e:
+                                                            logger.debug(f"Error parsing expiry date: {str(e)}")
+                                                
+                                                # Exit condition 4: EMA structure breaks
                                                 # #region agent log
                                                 try:
                                                     with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
@@ -569,13 +645,30 @@ def main():
                                                     logger.info(f"Position {position['trade_id']} marked for exit (futures)")
                                                 else:
                                                     # Log current status
-                                                    logger.debug(
+                                                    ema_status = ""
+                                                    if ema_structure and EXIT_ON_EMA_BREAK:
+                                                        ema_50 = ema_structure.get('ema_50')
+                                                        ema_100 = ema_structure.get('ema_100')
+                                                        if ema_50 and ema_100:
+                                                            if direction == 'LONG':
+                                                                structure_valid = current_futures_price > ema_50 > ema_100
+                                                                ema_status = f", EMA50=₹{ema_50:.2f}, EMA100=₹{ema_100:.2f}, EMA_Structure={'VALID' if structure_valid else 'BROKEN'}"
+                                                            else:  # SHORT
+                                                                structure_valid = current_futures_price < ema_50 < ema_100
+                                                                ema_status = f", EMA50=₹{ema_50:.2f}, EMA100=₹{ema_100:.2f}, EMA_Structure={'VALID' if structure_valid else 'BROKEN'}"
+                                                    logger.info(
                                                         f"Futures position {position['trade_id']}: "
                                                         f"Price=₹{current_futures_price:.2f}, "
                                                         f"P&L=₹{current_pnl:.2f}, "
                                                         f"Stop=₹{current_stop:.2f}, "
-                                                        f"Regime={current_regime}"
+                                                        f"Regime={current_regime}{ema_status}"
                                                     )
+                                                    # #region agent log
+                                                    try:
+                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            f.write(json.dumps({"location":"main.py:609","message":"Position status logged successfully","data":{"position_id":position.get('trade_id'),"current_futures_price":current_futures_price,"current_pnl":current_pnl,"current_stop":current_stop,"current_regime":current_regime},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
+                                                    except: pass
+                                                    # #endregion
                                                 
                                                 continue
                                             
@@ -766,6 +859,13 @@ def main():
                                                 
                                         except Exception as e:
                                             logger.error(f"Error checking position {position.get('trade_id', 'unknown')}: {e}")
+                                            # #region agent log
+                                            import json
+                                            try:
+                                                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    f.write(json.dumps({"location":"main.py:800","message":"Exception in position monitoring","data":{"position_id":position.get('trade_id', 'unknown'),"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
+                                            except: pass
+                                            # #endregion
                                             continue
                                             
                         except Exception as e:

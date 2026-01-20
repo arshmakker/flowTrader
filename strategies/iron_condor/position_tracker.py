@@ -59,8 +59,19 @@ class IronCondorPositionTracker:
         
         if is_futures_strategy:
             # Futures-specific fields
+            # Parse expiry if it's a string (ISO format) or use directly if it's already a date
+            expiry = trade_proposal.get('expiry', None)
+            if expiry and isinstance(expiry, str):
+                try:
+                    from datetime import datetime
+                    expiry = datetime.fromisoformat(expiry).date()
+                except:
+                    pass
+            
             position.update({
-                'expiry': trade_proposal.get('expiry', None),  # Futures may have expiry date
+                'symbol': trade_proposal.get('instrument', 'NIFTY_FUTURE'),  # Add symbol field from instrument
+                'expiry': expiry.isoformat() if expiry and hasattr(expiry, 'isoformat') else (expiry if expiry else None),  # Store expiry date
+                'days_to_expiry': trade_proposal.get('days_to_expiry', None),  # Days to expiry at entry
                 'legs': [],  # Futures don't have legs
                 'entry_credit': 0,  # Futures don't have credit/debit
                 'margin_used': trade_proposal.get('margin_used'),
