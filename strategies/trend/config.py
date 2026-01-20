@@ -3,7 +3,7 @@ Configuration for Trend Following Futures Strategy
 """
 
 # Risk limits
-MAX_RISK_PCT_OF_CAPITAL = 0.005  # 0.5% of total capital per trade
+MAX_RISK_PCT_OF_CAPITAL = 0.015  # 1.5% of total capital per trade (increased from 0.5% to allow at least 1 lot)
 MAX_POSITION_SIZE = 1  # Maximum 1 lot
 INITIAL_STOP_LOSS_ATR_MULTIPLIER = 1.5  # Initial SL = 1.5 × ATR(14)
 TRAILING_STOP_LOSS_ATR_MULTIPLIER = 2.0  # Trailing SL = 2 × ATR (Chandelier)

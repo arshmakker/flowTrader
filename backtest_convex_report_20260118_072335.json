@@ -1,0 +1,24 @@
+{
+  "total_trades": 1,
+  "winning_trades": 1,
+  "losing_trades": 0,
+  "win_rate": 100.0,
+  "total_pnl": 309.4999999999999,
+  "avg_pnl": 309.4999999999999,
+  "initial_capital": 100000,
+  "final_capital": 100309.5,
+  "total_return_pct": 0.3095,
+  "trades": [
+    {
+      "entry_time": "2025-12-29 14:15:00",
+      "exit_time": "2025-12-29 15:30:00",
+      "strike_atm": 25950.0,
+      "strike_otm": 26000.0,
+      "lots": 1,
+      "entry_debit": 754.9999999999998,
+      "exit_pnl": 309.4999999999999,
+      "exit_reason": "end_of_day",
+      "regime_at_entry": "CONVEX"
+    }
+  ]
+}

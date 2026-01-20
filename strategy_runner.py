@@ -443,28 +443,30 @@ def calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
     """
     Calculate IV percentile from option chain data.
     
+    NOTE: Shoonya API does not provide IV calculations, so this will return None.
+    
     Args:
         option_chain_df: Option chain DataFrame
         spot_price: Current spot price
         days_to_expiry: Days to expiration
     
     Returns:
-        float: IV percentile (0-100), or fallback value if calculation fails
+        float: IV percentile (0-100), or None if IV cannot be calculated
     """
     try:
         iv_percentile = calculate_iv_percentile(
             option_chain_df, spot_price, days_to_expiry
         )
-        # Handle None return value
+        # Return None if IV cannot be calculated (Shoonya API doesn't provide IV)
         if iv_percentile is None:
-            logger.warning("IV percentile calculation returned None, using fallback value (65.0)")
-            return 65.0
+            logger.debug("IV percentile not available (Shoonya API does not provide IV)")
+            return None
         return iv_percentile
     except Exception as e:
         logger.error(f"Error calculating IV percentile: {str(e)}", exc_info=True)
-        # Fallback to default value if calculation fails
-        logger.warning("Using fallback IV percentile value (65.0)")
-        return 65.0
+        # Return None instead of fallback - IV is not available
+        logger.debug("IV percentile calculation failed - returning None")
+        return None
 
 
 def calculate_adx_wrapper(api, symbol_manager, period=14):
@@ -882,6 +884,13 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         neutral_sub_state = None
         if regime == "NEUTRAL":
             neutral_sub_state = _determine_neutral_sub_state(market_state, regime_info)
+            # #region agent log
+            import json
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"strategy_runner.py:884","message":"NEUTRAL sub-state determined","data":{"neutral_sub_state":neutral_sub_state,"adx_14":market_state.get('adx_14'),"iv_percentile":market_state.get('iv_percentile'),"atr_percentile":regime_info.get('atr_percentile'),"range_state":regime_info.get('range_state')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S2"})+"\n")
+            except: pass
+            # #endregion
         
         logger.info(f"Regime: {regime} (detected: {detected_regime})")
         if neutral_sub_state:
@@ -893,10 +902,32 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         if regime_info.get('confirmation_count', 0) > 0:
             logger.info(f"  Regime confirmation: {regime_info.get('confirmation_count')}/{regime_detector.confirmation_count}")
         
+        # Step 5b: Add regime and regime_info to market_state for strategy use
+        market_state['regime'] = regime
+        market_state['atr'] = regime_info.get('atr')
+        market_state['atr_percentile'] = regime_info.get('atr_percentile')
+        market_state['adx_14'] = regime_info.get('adx', market_state.get('adx_14'))
+        
+        # #region agent log
+        import json
+        try:
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"strategy_runner.py:896","message":"Added regime to market_state","data":{"regime":regime,"market_state_regime":market_state.get('regime'),"atr":market_state.get('atr'),"atr_percentile":market_state.get('atr_percentile')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"S1"})+"\n")
+        except: pass
+        # #endregion
+        
         # Step 6: Route based on regime
         no_trade_reason = None
         strategy_allowed = []
         strategy_executed = None
+        
+        # #region agent log
+        import json
+        try:
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"strategy_runner.py:910","message":"Strategy routing decision","data":{"regime":regime,"neutral_sub_state":neutral_sub_state,"has_position_tracker":position_tracker is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S3"})+"\n")
+        except: pass
+        # #endregion
         
         if regime == "INCOME":
             strategy_allowed.append("IRON_CONDOR")
@@ -912,6 +943,12 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             strategy_executed = "IRON_CONDOR" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"strategy_runner.py:925","message":"Iron Condor strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S4"})+"\n")
+            except: pass
+            # #endregion
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
         
@@ -929,6 +966,12 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             strategy_executed = "CALL_BACKSPREAD" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"strategy_runner.py:942","message":"Convex Backspread strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S5"})+"\n")
+            except: pass
+            # #endregion
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
         
@@ -946,6 +989,12 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             strategy_executed = "TREND_FOLLOW_FUTURE" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
+            # #region agent log
+            try:
+                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"strategy_runner.py:959","message":"Trend Follow strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S6"})+"\n")
+            except: pass
+            # #endregion
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
         
@@ -965,6 +1014,12 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 strategy_executed = "ATM_CALL_CALENDAR" if trade_proposal else None
                 if not trade_proposal:
                     no_trade_reason = "NO_VALID_TRADE"
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
+                except: pass
+                # #endregion
                 _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
                 return trade_proposal
             else:
@@ -1027,10 +1082,24 @@ def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, ma
             )
             
             if trade_proposal:
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:1082","message":"Trade proposal received from generate_iron_condor_trade","data":{"has_trade_proposal":trade_proposal is not None,"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"has_net_credit_total":'net_credit_total' in trade_proposal if trade_proposal else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C5"})+"\n")
+                except: pass
+                # #endregion
+                
                 # Add regime info to trade proposal
                 trade_proposal['regime_at_entry'] = 'INCOME'
                 trade_proposal['book'] = 'INCOME'
                 # Note: entry_range_state not needed for Iron Condor (only for Convex)
+                
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:1090","message":"Trade proposal after adding regime info","data":{"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"regime_at_entry":trade_proposal.get('regime_at_entry')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C6"})+"\n")
+                except: pass
+                # #endregion
                 
                 logger.info("✅ Valid Iron Condor trade found!")
                 logger.info(f"   Strategy: {trade_proposal['strategy']}")

@@ -1,0 +1,101 @@
+{
+  "total_trades": 6,
+  "winning_trades": 4,
+  "losing_trades": 2,
+  "win_rate": 66.66666666666666,
+  "total_pnl": 9404.999999999927,
+  "avg_pnl": 1567.499999999988,
+  "max_profit": 8410.000000000036,
+  "max_loss": -15250.0,
+  "initial_capital": 1000000,
+  "final_capital": 1009404.9999999999,
+  "total_return_pct": 0.9404999999999883,
+  "long_trades": 2,
+  "short_trades": 4,
+  "long_pnl": 8500.0,
+  "short_pnl": 904.9999999999272,
+  "exit_reasons": {
+    "STOP_LOSS_HIT": {
+      "count": 5,
+      "pnl": 994.9999999998909
+    },
+    "REGIME_CHANGE": {
+      "count": 1,
+      "pnl": 8410.000000000036
+    }
+  },
+  "trades": [
+    {
+      "entry_time": "2025-12-30 09:45:00",
+      "exit_time": "2025-12-30 13:45:00",
+      "direction": "SHORT",
+      "entry_price": 25939.3,
+      "exit_price": 25949.0,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": -485.0000000000364,
+      "exit_reason": "STOP_LOSS_HIT",
+      "regime_at_entry": "TREND_CONTINUATION"
+    },
+    {
+      "entry_time": "2025-12-30 13:45:00",
+      "exit_time": "2025-12-31 12:00:00",
+      "direction": "SHORT",
+      "entry_price": 25949.0,
+      "exit_price": 26254.0,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": -15250.0,
+      "exit_reason": "STOP_LOSS_HIT",
+      "regime_at_entry": "TREND_CONTINUATION"
+    },
+    {
+      "entry_time": "2025-12-31 12:00:00",
+      "exit_time": "2026-01-01 12:00:00",
+      "direction": "LONG",
+      "entry_price": 26254.0,
+      "exit_price": 26276.3,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": 1114.9999999999636,
+      "exit_reason": "STOP_LOSS_HIT",
+      "regime_at_entry": "TREND_CONTINUATION"
+    },
+    {
+      "entry_time": "2026-01-01 12:00:00",
+      "exit_time": "2026-01-05 13:00:00",
+      "direction": "LONG",
+      "entry_price": 26276.3,
+      "exit_price": 26424.0,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": 7385.000000000036,
+      "exit_reason": "STOP_LOSS_HIT",
+      "regime_at_entry": "TREND_CONTINUATION"
+    },
+    {
+      "entry_time": "2026-01-08 10:15:00",
+      "exit_time": "2026-01-09 10:00:00",
+      "direction": "SHORT",
+      "entry_price": 26147.8,
+      "exit_price": 25979.6,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": 8410.000000000036,
+      "exit_reason": "REGIME_CHANGE",
+      "regime_at_entry": "TREND_CONTINUATION"
+    },
+    {
+      "entry_time": "2026-01-09 10:45:00",
+      "exit_time": "2026-01-13 09:45:00",
+      "direction": "SHORT",
+      "entry_price": 25940.3,
+      "exit_price": 25775.7,
+      "quantity": 50,
+      "lots": 1,
+      "pnl": 8229.999999999927,
+      "exit_reason": "STOP_LOSS_HIT",
+      "regime_at_entry": "TREND_CONTINUATION"
+    }
+  ]
+}

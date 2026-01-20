@@ -41,31 +41,61 @@ class IronCondorPositionTracker:
     
     def add_position(self, trade_proposal: Dict):
         """Add a new position to track"""
+        strategy = trade_proposal.get('strategy', 'UNKNOWN').upper()
+        is_futures_strategy = 'FUTURE' in strategy or trade_proposal.get('instrument', '').upper() == 'NIFTY_FUTURE'
+        
+        # Build position based on strategy type
         position = {
             'trade_id': trade_proposal.get('generated_at', datetime.now().isoformat()),
             'entry_time': datetime.now().isoformat(),
-            'expiry': trade_proposal['expiry'],
-            'legs': trade_proposal['legs'],
-            'lots': trade_proposal['lots'],
+            'lots': trade_proposal.get('lots', 0),
             'lot_size': trade_proposal.get('lot_size', 50),
-            'entry_credit': trade_proposal.get('net_credit_total', trade_proposal.get('net_debit_total', 0)),
-            'margin_used': trade_proposal.get('margin_used'),
-            'profit_target_margin': trade_proposal.get('profit_target_margin'),
-            'max_loss': trade_proposal['max_loss'],
-            'entry_spot': trade_proposal['spot_price'],
+            'entry_spot': trade_proposal.get('spot_price'),
             'strategy': trade_proposal.get('strategy', 'UNKNOWN'),
             'book': trade_proposal.get('book', 'UNKNOWN'),
             'regime_at_entry': trade_proposal.get('regime_at_entry', 'UNKNOWN'),
-            'days_to_expiry': trade_proposal.get('days_to_expiry'),  # Store for convex exit checks
-            'days_to_expiry_short': trade_proposal.get('days_to_expiry_short'),  # Store for calendar exit checks
-            'entry_range_state': None,  # Will be set from regime_info if available
-            'entry_iv_percentile': trade_proposal.get('entry_iv_percentile'),  # Store for calendar exit checks
-            'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])},  # Store entry prices for calendar exit checks
             'status': 'OPEN'
         }
+        
+        if is_futures_strategy:
+            # Futures-specific fields
+            position.update({
+                'expiry': trade_proposal.get('expiry', None),  # Futures may have expiry date
+                'legs': [],  # Futures don't have legs
+                'entry_credit': 0,  # Futures don't have credit/debit
+                'margin_used': trade_proposal.get('margin_used'),
+                'profit_target_margin': trade_proposal.get('profit_target_margin'),
+                'max_loss': trade_proposal.get('risk_amount', 0),  # Use risk_amount as max_loss for futures
+                'entry_price': trade_proposal.get('entry_price'),
+                'stop_loss_price': trade_proposal.get('stop_loss_price'),
+                'current_stop_price': trade_proposal.get('stop_loss_price'),  # Initialize with initial stop, will be updated for trailing
+                'direction': trade_proposal.get('direction'),
+                'quantity': trade_proposal.get('quantity'),
+                'days_to_expiry': trade_proposal.get('days_to_expiry'),
+                'days_to_expiry_short': None,
+                'entry_range_state': None,
+                'entry_iv_percentile': None,
+                'entry_prices': {}
+            })
+        else:
+            # Options-specific fields
+            position.update({
+                'expiry': trade_proposal.get('expiry'),
+                'legs': trade_proposal.get('legs', []),
+                'entry_credit': trade_proposal.get('net_credit_total', trade_proposal.get('net_debit_total', 0)),
+                'margin_used': trade_proposal.get('margin_used'),
+                'profit_target_margin': trade_proposal.get('profit_target_margin'),
+                'max_loss': trade_proposal.get('max_loss', 0),
+                'days_to_expiry': trade_proposal.get('days_to_expiry'),
+                'days_to_expiry_short': trade_proposal.get('days_to_expiry_short'),
+                'entry_range_state': None,  # Will be set from regime_info if available
+                'entry_iv_percentile': trade_proposal.get('entry_iv_percentile'),
+                'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])}
+            })
+        
         self.active_positions.append(position)
         self._save_active_positions()
-        logger.info(f"Added position to tracker: {position['trade_id']}")
+        logger.info(f"Added position to tracker: {position['trade_id']} ({strategy})")
     
     def get_active_positions(self) -> List[Dict]:
         """Get all active positions"""

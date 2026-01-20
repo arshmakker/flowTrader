@@ -2,7 +2,7 @@
 Technical Indicators Module
 
 Provides calculations for:
-- Implied Volatility (IV) from Shoonya API option_greek function
+- Implied Volatility (IV) calculated from option prices using Black-Scholes model
 - IV Percentile from historical IV data
 - ADX (Average Directional Index) from price data
 - Probability of Profit (PoP) calculations
@@ -13,6 +13,8 @@ import numpy as np
 import logging
 from datetime import datetime, timedelta
 from scipy.stats import norm
+from scipy.optimize import brentq
+from typing import Optional
 import os
 import json
 
@@ -96,56 +98,219 @@ def calculate_probability_of_profit(spot_price: float, short_call_strike: float,
         return 50.0  # Default to 50% on error
 
 
+def black_scholes_price(spot_price: float, strike: float, time_to_expiry: float, 
+                        risk_free_rate: float, volatility: float, option_type: str = 'CE') -> float:
+    """
+    Calculate Black-Scholes option price.
+    
+    Args:
+        spot_price: Current spot price
+        strike: Strike price
+        time_to_expiry: Time to expiration in years
+        risk_free_rate: Risk-free rate (annual, as decimal, e.g., 0.06 for 6%)
+        volatility: Volatility (annual, as decimal, e.g., 0.20 for 20%)
+        option_type: 'CE' for call, 'PE' for put
+    
+    Returns:
+        float: Option price
+    """
+    if time_to_expiry <= 0:
+        # Option expired - return intrinsic value
+        if option_type.upper() in ['CE', 'C', 'CALL']:
+            return max(0, spot_price - strike)
+        else:
+            return max(0, strike - spot_price)
+    
+    S = spot_price
+    K = strike
+    T = time_to_expiry
+    r = risk_free_rate
+    sigma = volatility
+    
+    # Calculate d1 and d2
+    d1 = (np.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * np.sqrt(T))
+    d2 = d1 - sigma * np.sqrt(T)
+    
+    if option_type.upper() in ['CE', 'C', 'CALL']:
+        # Call option
+        price = S * norm.cdf(d1) - K * np.exp(-r * T) * norm.cdf(d2)
+    else:
+        # Put option
+        price = K * np.exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+    
+    return max(0, price)  # Option price cannot be negative
+
+
+def calculate_iv_from_price(option_price: float, spot_price: float, strike: float,
+                            days_to_expiry: int, risk_free_rate: float = RISK_FREE_RATE,
+                            option_type: str = 'CE') -> Optional[float]:
+    """
+    Calculate implied volatility from option price using Black-Scholes and root finding.
+    
+    Args:
+        option_price: Current market option price
+        spot_price: Current spot price
+        strike: Strike price
+        days_to_expiry: Days to expiration
+        risk_free_rate: Risk-free rate (annual, as decimal)
+        option_type: 'CE' for call, 'PE' for put
+    
+    Returns:
+        float: Implied volatility as percentage (e.g., 18.5 for 18.5%), or None if calculation fails
+    """
+    try:
+        # Convert days to years
+        time_to_expiry = days_to_expiry / 365.0
+        
+        if time_to_expiry <= 0:
+            logger.debug("Option expired, cannot calculate IV")
+            return None
+        
+        # Calculate intrinsic value
+        if option_type.upper() in ['CE', 'C', 'CALL']:
+            intrinsic = max(0, spot_price - strike)
+        else:
+            intrinsic = max(0, strike - spot_price)
+        
+        # If market price is less than intrinsic, IV cannot be calculated
+        if option_price < intrinsic:
+            logger.debug(f"Option price {option_price} < intrinsic {intrinsic}, cannot calculate IV")
+            return None
+        
+        # Define error function: BS_price(sigma) - market_price
+        def price_error(sigma):
+            bs_price = black_scholes_price(spot_price, strike, time_to_expiry, risk_free_rate, sigma, option_type)
+            return bs_price - option_price
+        
+        # Try to find IV using Brent's method
+        # IV bounds: 0.1% to 500% (as decimal: 0.001 to 5.0)
+        iv_low = 0.001
+        iv_high = 5.0
+        
+        # Check bounds
+        error_low = price_error(iv_low)
+        error_high = price_error(iv_high)
+        
+        # If both errors have same sign, solution may not be bracketed
+        if error_low * error_high > 0:
+            # Try narrower bounds
+            iv_low = 0.05  # 5%
+            iv_high = 2.0   # 200%
+            error_low = price_error(iv_low)
+            error_high = price_error(iv_high)
+            
+            if error_low * error_high > 0:
+                logger.debug(f"IV search bounds don't bracket solution (low_error={error_low:.4f}, high_error={error_high:.4f})")
+                return None
+        
+        # Use Brent's method to find root
+        iv_decimal = brentq(price_error, iv_low, iv_high, maxiter=100, xtol=1e-6)
+        
+        # Convert to percentage
+        iv_percent = iv_decimal * 100
+        
+        logger.debug(f"Calculated IV: {iv_percent:.2f}% (strike={strike}, price={option_price}, DTE={days_to_expiry})")
+        return iv_percent
+        
+    except Exception as e:
+        logger.debug(f"Error calculating IV from price: {str(e)}")
+        return None
+
+
 def calculate_atm_iv(option_chain_df, spot_price, days_to_expiry, risk_free_rate=RISK_FREE_RATE, 
                      expiry_date_str=None, api=None):
     """
     Calculate ATM (At-The-Money) implied volatility from option chain.
     
-    Uses Shoonya API option_greek function to calculate IV iteratively.
-    Falls back to default IV (18%) if Shoonya API fails.
+    Calculates IV from option prices using Black-Scholes model and root finding.
+    Since Shoonya API doesn't provide IV, we calculate it from market prices.
     
     Args:
-        option_chain_df: DataFrame with option chain data
+        option_chain_df: DataFrame with option chain data (must have 'strike', 'option_type', 'mid_price' or 'ltp')
         spot_price: Current spot price
         days_to_expiry: Days to expiration
-        risk_free_rate: Risk-free rate (default: 6%)
-        expiry_date_str: Expiry date in format 'DD-MMM-YYYY' (e.g., '25-JAN-2024')
-        api: ShoonyaApiPy instance (required for accurate IV calculation)
+        risk_free_rate: Risk-free rate (annual, as decimal, default: 6%)
+        expiry_date_str: Expiry date (not used, kept for compatibility)
+        api: ShoonyaApiPy instance (not used, kept for compatibility)
     
     Returns:
-        float: ATM IV (annual percentage, e.g., 18.0 for 18%). 
-               Returns default 18.0% if Shoonya API fails.
+        float: ATM IV as percentage (e.g., 18.5 for 18.5%), or None if calculation fails
     """
-    # Shoonya API option_greek is the only method for IV calculation
-    if api is not None:
-        try:
-            from shoonya_iv_fetcher import get_atm_iv_from_shoonya
-            shoonya_iv = get_atm_iv_from_shoonya(
-                api=api,
-                option_chain_df=option_chain_df,
-                spot_price=spot_price,
-                expiry_date=expiry_date_str,
-                days_to_expiry=days_to_expiry,
-                risk_free_rate=risk_free_rate
-            )
-            if shoonya_iv is not None and shoonya_iv > 0:
-                logger.info(f"✅ Using Shoonya API IV: {shoonya_iv:.2f}%")
-                return shoonya_iv
-            else:
-                logger.debug("Shoonya API IV calculation returned None or invalid value")
-        except ImportError:
-            logger.debug("Shoonya IV fetcher not available - cannot calculate IV")
-        except Exception as e:
-            logger.debug(f"Shoonya API IV calculation failed: {e}")
-    else:
-        logger.debug("API instance not provided - using default IV")
+    import pandas as pd
+    import numpy as np
     
-    # No IV available from Shoonya API - use default fallback
-    # Default IV for NIFTY is typically 15-20%, using 18% as a reasonable default
-    # This allows the system to continue functioning when API fails
-    default_iv = 18.0
-    logger.debug(f"Using default fallback IV: {default_iv}%")
-    return default_iv
+    try:
+        if option_chain_df.empty:
+            logger.debug("Option chain is empty, cannot calculate IV")
+            return None
+        
+        # Make a copy to avoid modifying original
+        df = option_chain_df.copy()
+        
+        # Find ATM strikes (closest to spot)
+        df['strike_diff'] = abs(df['strike'] - spot_price)
+        
+        # Get ATM call and put
+        atm_call = df[
+            (df['option_type'] == 'CE') &
+            (df['strike_diff'] == df[df['option_type'] == 'CE']['strike_diff'].min())
+        ]
+        
+        atm_put = df[
+            (df['option_type'] == 'PE') &
+            (df['strike_diff'] == df[df['option_type'] == 'PE']['strike_diff'].min())
+        ]
+        
+        ivs = []
+        
+        # Calculate IV for ATM call
+        if not atm_call.empty:
+            call_row = atm_call.iloc[0]
+            call_price = call_row.get('mid_price', call_row.get('ltp', 0))
+            if call_price > 0:
+                call_iv = calculate_iv_from_price(
+                    option_price=call_price,
+                    spot_price=spot_price,
+                    strike=call_row['strike'],
+                    days_to_expiry=days_to_expiry,
+                    risk_free_rate=risk_free_rate,
+                    option_type='CE'
+                )
+                if call_iv is not None:
+                    ivs.append(call_iv)
+                else:
+                    logger.debug(f"Failed to calculate IV for ATM call at strike {call_row['strike']}")
+        
+        # Calculate IV for ATM put
+        if not atm_put.empty:
+            put_row = atm_put.iloc[0]
+            put_price = put_row.get('mid_price', put_row.get('ltp', 0))
+            if put_price > 0:
+                put_iv = calculate_iv_from_price(
+                    option_price=put_price,
+                    spot_price=spot_price,
+                    strike=put_row['strike'],
+                    days_to_expiry=days_to_expiry,
+                    risk_free_rate=risk_free_rate,
+                    option_type='PE'
+                )
+                if put_iv is not None:
+                    ivs.append(put_iv)
+                else:
+                    logger.debug(f"Failed to calculate IV for ATM put at strike {put_row['strike']}")
+        
+        if not ivs:
+            logger.debug("Could not calculate ATM IV - no valid IV values from call/put calculations")
+            return None
+        
+        # Return average of call and put IV
+        atm_iv = np.mean(ivs)
+        logger.info(f"✅ Calculated ATM IV: {atm_iv:.2f}% (from {len(ivs)} option(s))")
+        return atm_iv
+        
+    except Exception as e:
+        logger.error(f"Error calculating ATM IV: {str(e)}", exc_info=True)
+        return None
 
 
 def load_historical_iv(spot_price, days_to_expiry, data_dir='market_data_iv', exclude_current_timestamp=None):
@@ -295,7 +460,7 @@ def calculate_iv_percentile(option_chain_df, spot_price, days_to_expiry, data_di
         # Calculate current ATM IV
         current_iv = calculate_atm_iv(option_chain_df, spot_price, days_to_expiry)
         if current_iv is None:
-            logger.warning("Could not calculate current IV")
+            logger.debug("IV calculation not available (Shoonya API does not provide IV) - skipping IV percentile calculation")
             return None
         
         # Get current timestamp before saving (to exclude it from historical data)
@@ -590,226 +755,163 @@ def get_historical_price_data_from_stored(api, symbol_manager, symbol_name, days
 def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
     """
     Get 15-minute candle data for EMA calculation.
+    Builds candles from stored tick data since Shoonya API doesn't provide 15-minute intervals.
     
     Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
+        api: ShoonyaApiPy instance (not used, kept for compatibility)
+        symbol_manager: SymbolManager instance (not used, kept for compatibility)
         symbol_name: Symbol name (e.g., 'Nifty 50')
-        lookback_hours: Hours to look back (default: 30 hours = ~100 candles for EMA(100))
+        lookback_hours: Hours to look back (default: 30 hours = ~120 candles, need 100+ for EMA(100))
     
     Returns:
         List of close prices (15-minute candles) or None if error
+        Requires minimum 100 candles for EMA(100) calculation
     """
-    # #region agent log
-    import json
     try:
-        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({"location":"technical_indicators.py:590","message":"get_15min_candle_data entry","data":{"symbol_name":symbol_name,"lookback_hours":lookback_hours,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"H"})+"\n")
-    except: pass
-    # #endregion
-    
-    try:
-        # Check if symbol_manager has nse_cash loaded
+        # Find NIFTY futures symbol for data collection
+        # We'll use NIFTY futures data as proxy for NIFTY index
+        # Need to read multiple days to get enough candles (100+ for EMA(100))
+        today = datetime.now()
+        all_tick_data = []
+        
+        # Calculate how many days we need (100 candles / ~23 candles per day = ~4-5 trading days)
+        # Account for weekends - need to check more calendar days to get enough trading days
+        # Check up to 20 calendar days to ensure we get enough trading days with data
+        days_to_check = 20  # Check last 20 calendar days to account for weekends and holidays
+        
         # #region agent log
+        import json
         try:
-            has_nse_cash = hasattr(symbol_manager, 'nse_cash') and symbol_manager.nse_cash is not None
-            nse_cash_shape = symbol_manager.nse_cash.shape if has_nse_cash else None
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:613","message":"Checking symbol_manager state","data":{"has_nse_cash":has_nse_cash,"nse_cash_shape":list(nse_cash_shape) if nse_cash_shape is not None else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I1"})+"\n")
-        except Exception as e:
-            try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:613","message":"Error checking symbol_manager","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I1"})+"\n")
-            except: pass
+                f.write(json.dumps({"location":"technical_indicators.py:614","message":"Starting multi-day 15min candle build","data":{"days_to_check":days_to_check,"lookback_hours":lookback_hours,"today":today.strftime('%Y%m%d')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"A"})+"\n")
+        except: pass
         # #endregion
         
-        # Get symbol token
-        symbol_info = None
-        try:
-            symbol_info = symbol_manager.get_token_info(symbol_name, exchange='NSE')
-        except Exception as e:
-            # #region agent log
+        # Read data from multiple days (most recent first)
+        days_found = 0
+        for days_back in range(days_to_check):
+            check_date = today - timedelta(days=days_back)
+            date_str = check_date.strftime('%Y%m%d')
+            data_dir = f"market_data_{date_str}"
+            futures_dir = os.path.join(data_dir, 'raw_data', 'futures')
+            
+            if not os.path.exists(futures_dir):
+                continue
+            
+            # Find NIFTY futures file for this date
+            futures_files = [f for f in os.listdir(futures_dir) 
+                            if f.startswith('NIFTY') and f.endswith('F_' + date_str + '.csv')]
+            
+            if not futures_files:
+                continue
+            
+            # Use the first matching file (typically current month expiry)
+            futures_file = futures_files[0]
+            futures_path = os.path.join(futures_dir, futures_file)
+            
+            # Read tick data for this day
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:625","message":"Exception in get_token_info","data":{"symbol_name":symbol_name,"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I2"})+"\n")
-            except: pass
-            # #endregion
-            logger.error(f"Exception getting token info for {symbol_name}: {str(e)}")
-        
-        if not symbol_info:
-            # Try fallback: 'NIFTY' instead of 'Nifty 50'
-            if symbol_name.lower() == 'nifty 50':
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"technical_indicators.py:635","message":"Trying fallback symbol 'NIFTY'","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I3"})+"\n")
-                except: pass
-                # #endregion
-                try:
-                    symbol_info = symbol_manager.get_token_info('NIFTY', exchange='NSE')
-                except Exception as e:
+                day_data = pd.read_csv(futures_path)
+                if not day_data.empty:
+                    day_data['timestamp'] = pd.to_datetime(day_data['timestamp'])
+                    # Set timestamp as index for this day's data
+                    day_data = day_data.set_index('timestamp')
+                    all_tick_data.append(day_data)
+                    days_found += 1
                     # #region agent log
                     try:
                         with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"technical_indicators.py:640","message":"Exception in get_token_info for NIFTY","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I4"})+"\n")
+                            f.write(json.dumps({"location":"technical_indicators.py:644","message":"Loaded day data","data":{"date_str":date_str,"tick_count":len(day_data),"futures_file":futures_file},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"B"})+"\n")
                     except: pass
                     # #endregion
-            
-            # If still not found, use direct token 26000 (NIFTY INDEX)
-            if not symbol_info:
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"technical_indicators.py:648","message":"Using fallback token 26000","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I5"})+"\n")
-                except: pass
-                # #endregion
-                symbol_info = {
-                    'token': '26000',
-                    'exchange': 'NSE',
-                    'symbol': 'NIFTY'
-                }
-        
-        if not symbol_info:
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:658","message":"Could not find token after all attempts","data":{"symbol_name":symbol_name},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"I"})+"\n")
-            except: pass
-            # #endregion
-            logger.debug(f"Could not find token for {symbol_name}")
-            return None
-        
-        token = symbol_info['token']
-        
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:665","message":"Got token, calculating time range","data":{"token":token,"symbol_info":symbol_info},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"J"})+"\n")
-        except: pass
-        # #endregion
-        
-        # Calculate time range
-        end_time = datetime.now()
-        start_time = end_time - timedelta(hours=lookback_hours)
-        
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:612","message":"Calling API get_time_price_series","data":{"start_time":int(start_time.timestamp()),"end_time":int(end_time.timestamp()),"interval":15},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"K"})+"\n")
-        except: pass
-        # #endregion
-        
-        # Fetch 15-minute candles from API
-        try:
-            price_data = api.get_time_price_series(
-                exchange='NSE',
-                token=token,
-                starttime=int(start_time.timestamp()),
-                endtime=int(end_time.timestamp()),
-                interval=15  # 15-minute interval
-            )
-            
-            # #region agent log
-            try:
-                price_data_keys = list(price_data.keys()) if isinstance(price_data, dict) else None
-                price_data_len = len(price_data) if price_data else 0
-                price_data_str = str(price_data)[:200] if price_data else "None"  # First 200 chars
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:680","message":"API response received","data":{"price_data_is_none":price_data is None,"price_data_type":type(price_data).__name__ if price_data else "None","price_data_keys":price_data_keys,"price_data_len":price_data_len,"price_data_preview":price_data_str},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"L"})+"\n")
             except Exception as e:
-                try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"technical_indicators.py:680","message":"Error logging API response","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"L"})+"\n")
-                except: pass
-            # #endregion
-            
-            if not price_data:
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"technical_indicators.py:630","message":"No price data returned","data":{},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"M"})+"\n")
-                except: pass
-                # #endregion
-                logger.debug("No 15-minute price data returned from API")
-                return None
-            
-            # Handle different response formats
-            candles = None
-            if isinstance(price_data, dict):
-                # Response might be {'stat': 'Ok', 'values': [...]} or just {'values': [...]}
-                if 'values' in price_data:
-                    candles = price_data['values']
-                elif isinstance(price_data, list):
-                    candles = price_data
-            elif isinstance(price_data, list):
-                candles = price_data
-            
-            if not candles:
-                logger.debug("No candle data in API response")
-                return None
-            
-            # Extract close prices - try different field names
-            closes = []
-            for candle in candles:
-                close_price = None
-                # Try different possible field names for close price
-                if isinstance(candle, dict):
-                    close_price = candle.get('c') or candle.get('close') or candle.get('ltp') or candle.get('last_price')
-                elif isinstance(candle, (list, tuple)) and len(candle) >= 4:
-                    # If it's a list/tuple, close is typically at index 3 (OHLC format)
-                    close_price = candle[3]
-                
-                if close_price:
-                    try:
-                        closes.append(float(close_price))
-                    except (ValueError, TypeError):
-                        continue
-            
+                logger.debug(f"Error reading futures file {futures_path}: {str(e)}")
+                continue
+        
+        if not all_tick_data:
             # #region agent log
             try:
                 with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:655","message":"Extracted closes from candles","data":{"closes_count":len(closes)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"N"})+"\n")
+                    f.write(json.dumps({"location":"technical_indicators.py:650","message":"No data found","data":{"days_to_check":days_to_check,"days_found":days_found},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"C"})+"\n")
             except: pass
             # #endregion
-            
-            if len(closes) < 50:
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"technical_indicators.py:660","message":"Insufficient candles","data":{"closes_count":len(closes),"needs":50},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"O"})+"\n")
-                except: pass
-                # #endregion
-                logger.debug(f"Insufficient 15-minute candles: {len(closes)} (need at least 50 for EMA(50))")
-                return None
-            
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:668","message":"Successfully fetched 15-minute candles","data":{"closes_count":len(closes)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"P"})+"\n")
-            except: pass
-            # #endregion
-            
-            logger.debug(f"Fetched {len(closes)} 15-minute candles for EMA calculation")
-            return closes
-            
-        except Exception as e:
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:675","message":"Exception in API call","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"Q"})+"\n")
-            except: pass
-            # #endregion
-            logger.debug(f"Error fetching 15-minute candles from API: {str(e)}")
+            logger.debug(f"No NIFTY futures data found in last {days_to_check} days")
             return None
-            
-    except Exception as e:
+        
+        # #region agent log
+        try:
+            total_ticks = sum(len(df) for df in all_tick_data)
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:653","message":"Combining multi-day data","data":{"days_found":days_found,"total_ticks":total_ticks,"days_to_check":days_to_check},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"D"})+"\n")
+        except: pass
+        # #endregion
+        
+        # Combine all days' data (all already have timestamp as index)
+        tick_data = pd.concat(all_tick_data, axis=0)
+        tick_data = tick_data.sort_index()  # Sort by timestamp index
+        
+        # #region agent log
+        try:
+            total_ticks = len(tick_data)
+            time_range_hours = (tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:655","message":"Combined all days data","data":{"total_ticks":total_ticks,"time_range_hours":time_range_hours,"days_combined":len(all_tick_data)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"H"})+"\n")
+        except: pass
+        # #endregion
+        
+        if tick_data.empty:
+            logger.debug(f"No tick data available across {days_to_check} days")
+            return None
+        
+        # Resample to 15-minute candles
+        candles = tick_data['ltp'].resample('15min').agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last'
+        })
+        
+        # Remove rows with NaN (incomplete candles)
+        candles = candles.dropna()
+        
+        # #region agent log
+        try:
+            candles_before_limit = len(candles)
+            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"technical_indicators.py:668","message":"After resampling","data":{"candles_count":candles_before_limit,"tick_data_points":len(tick_data),"time_range_hours":(tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"E"})+"\n")
+        except: pass
+        # #endregion
+        
+        if candles.empty:
+            logger.debug("No complete 15-minute candles after resampling")
+            return None
+        
+        # Take the most recent candles (prioritize recent data)
+        # If we have more than 100, take last 100 (most recent)
+        # If we have less than 100, use what we have (but will fail check below)
+        if len(candles) > 100:
+            candles = candles.tail(100)  # Take last 100 candles (most recent)
+            logger.debug(f"Taking last 100 candles from {candles_before_limit} total candles")
+        
+        # Extract close prices
+        closes = candles['close'].tolist()
+        
         # #region agent log
         try:
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:682","message":"Exception in get_15min_candle_data","data":{"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"R"})+"\n")
+                f.write(json.dumps({"location":"technical_indicators.py:695","message":"Final candle count check","data":{"candles_count":len(closes),"needs_100":len(closes) >= 100,"needs_50":len(closes) >= 50,"can_ema50":len(closes) >= 50,"can_ema100":len(closes) >= 100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"F"})+"\n")
         except: pass
         # #endregion
-        logger.debug(f"Error getting 15-minute candle data: {str(e)}")
+        
+        if len(closes) < 100:
+            logger.debug(f"Insufficient 15-minute candles: {len(closes)} (need at least 100 for EMA(100))")
+            return None
+        
+        logger.debug(f"Built {len(closes)} 15-minute candles from stored tick data for EMA calculation")
+        return closes
+        
+    except Exception as e:
+        logger.debug(f"Error building 15-minute candles from stored data: {str(e)}", exc_info=True)
         return None
 
 

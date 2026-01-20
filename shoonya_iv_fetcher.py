@@ -1,8 +1,10 @@
 """
 Shoonya API IV Fetcher Module
 
-Uses Shoonya API's option_greek function to calculate IV from option prices.
-This is more reliable than NSE scraping and uses the official API.
+DEPRECATED: Shoonya API does not provide IV calculations via option_greek function.
+This module is kept for reference but is no longer used in the system.
+
+The system now uses a default IV value (18%) instead of attempting API-based calculation.
 """
 
 import logging

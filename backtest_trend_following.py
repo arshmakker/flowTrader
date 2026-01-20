@@ -328,6 +328,7 @@ class TrendFollowingBacktester:
         
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
+        last_processed_price = None  # Track last candle close price for end-of-backtest closing
         
         # Load all historical data for regime detection (across multiple days)
         historical_candles = []
@@ -379,6 +380,7 @@ class TrendFollowingBacktester:
             for idx, candle in candles.iterrows():
                 timestamp = candle['timestamp']
                 current_price = candle['close']
+                last_processed_price = current_price  # Track last processed price
                 
                 # Calculate indicators from recent candles
                 recent_candles_df = pd.DataFrame(historical_candles[-100:])
@@ -488,8 +490,14 @@ class TrendFollowingBacktester:
         # Close any remaining positions at end
         logger.info("Closing remaining positions...")
         for position in self.open_positions:
-            # Use last known price (simplified)
-            last_price = position['entry_price']  # Simplified - in real backtest, use last candle
+            # Use last processed candle close price (last candle of last processed day)
+            if last_processed_price is not None:
+                last_price = last_processed_price
+                logger.info(f"Closing position with last candle price: {last_price:.2f}")
+            else:
+                # Fallback: use entry price if no candles were processed (shouldn't happen)
+                last_price = position['entry_price']
+                logger.warning(f"Using entry_price for end-of-backtest close (no last price available): {position['entry_time']}")
             
             if position['direction'] == 'LONG':
                 pnl = (last_price - position['entry_price']) * position['quantity']
