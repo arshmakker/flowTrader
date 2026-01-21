@@ -8,3 +8,4 @@ requests>=2.26.0
 PyYAML>=5.4.1
 psutil>=5.8.0
 colorama>=0.4.4
+flask>=2.0.0

@@ -171,6 +171,24 @@ shoonyapythonmod/
 - Monitor logs for system behavior
 - Check data files for collection quality
 
+## Web Dashboard
+
+A simple web dashboard to monitor your trading system from your mobile device.
+
+### Quick Start
+
+```bash
+# Install Flask (if not already installed)
+pip install flask
+
+# Run the dashboard
+python web_dashboard.py
+```
+
+Then access from your mobile browser at `http://YOUR_COMPUTER_IP:5000`
+
+See [`WEB_DASHBOARD_README.md`](WEB_DASHBOARD_README.md) for detailed instructions.
+
 ## Note
 
 This is a data collection system designed for market analysis. The collected data can be used for backtesting, research, and strategy development. Always validate data quality before using for analysis.
