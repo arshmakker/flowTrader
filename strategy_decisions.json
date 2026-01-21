@@ -4044,5 +4044,23 @@
       "detected_regime": "TREND_CONTINUATION",
       "confirmation_count": 0
     }
+  },
+  {
+    "timestamp": "2026-01-21T11:13:58.727090",
+    "regime": "TREND_CONTINUATION",
+    "sub_state": null,
+    "strategy_allowed": [
+      "TREND_FOLLOW_FUTURE"
+    ],
+    "strategy_executed": null,
+    "no_trade_reason": "NO_VALID_TRADE",
+    "regime_details": {
+      "iv_percentile": 42.857142857142854,
+      "adx": 69.63951418587551,
+      "atr_percentile": 71.42857142857143,
+      "range_state": "NORMAL",
+      "detected_regime": "TREND_CONTINUATION",
+      "confirmation_count": 1
+    }
   }
 ]
