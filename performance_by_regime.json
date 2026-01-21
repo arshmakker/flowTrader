@@ -1,0 +1,13 @@
+[
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-01-19T12:30:02.955866",
+    "exit_time": "2026-01-21T09:28:18.279345",
+    "pnl": 15210.000000000036,
+    "max_loss": 14774.99999999998,
+    "lots": 1,
+    "trade_id": "2026-01-19T12:30:02.953223"
+  }
+]

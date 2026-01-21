@@ -259,30 +259,32 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         except: pass
         # #endregion
         
-        # Calculate maximum quantity based on risk
-        max_quantity_by_risk_raw = max_risk_amount / risk_per_share if risk_per_share > 0 else 0
-        max_quantity_by_risk = int(max_quantity_by_risk_raw)
+        # Calculate risk per lot (not per share)
+        risk_per_lot = risk_per_share * lot_size
+        
+        # Calculate maximum lots based on risk
+        max_lots_by_risk_raw = max_risk_amount / risk_per_lot if risk_per_lot > 0 else 0
+        max_lots_by_risk = int(max_lots_by_risk_raw)
         
         # #region agent log
         try:
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"trend_follow_futures.py:203","message":"Max quantity by risk calculated","data":{"max_quantity_by_risk_raw":max_quantity_by_risk_raw,"max_quantity_by_risk":max_quantity_by_risk,"max_risk_amount":max_risk_amount,"risk_per_share":risk_per_share},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H2,H5"})+"\n")
+                f.write(json.dumps({"location":"trend_follow_futures.py:203","message":"Max lots by risk calculated","data":{"max_lots_by_risk_raw":max_lots_by_risk_raw,"max_lots_by_risk":max_lots_by_risk,"max_risk_amount":max_risk_amount,"risk_per_lot":risk_per_lot,"risk_per_share":risk_per_share,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H2,H5"})+"\n")
         except: pass
         # #endregion
         
-        # Limit to max position size
-        max_position_size_limit = MAX_POSITION_SIZE * lot_size
-        max_quantity = min(max_quantity_by_risk, max_position_size_limit)
+        # Limit to max position size (in lots)
+        max_lots = min(max_lots_by_risk, MAX_POSITION_SIZE)
         
         # #region agent log
         try:
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"trend_follow_futures.py:210","message":"Max quantity after limit","data":{"max_quantity":max_quantity,"max_quantity_by_risk":max_quantity_by_risk,"max_position_size_limit":max_position_size_limit,"MAX_POSITION_SIZE":MAX_POSITION_SIZE,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H3"})+"\n")
+                f.write(json.dumps({"location":"trend_follow_futures.py:210","message":"Max lots after limit","data":{"max_lots":max_lots,"max_lots_by_risk":max_lots_by_risk,"MAX_POSITION_SIZE":MAX_POSITION_SIZE,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H3"})+"\n")
         except: pass
         # #endregion
         
-        # Round down to lot size
-        lots = max_quantity // lot_size
+        # Calculate quantity from lots
+        lots = max_lots
         quantity = lots * lot_size
         
         # #region agent log

@@ -8,7 +8,7 @@
     "strategy": "TREND_FOLLOW_FUTURE",
     "book": "TREND",
     "regime_at_entry": "TREND_CONTINUATION",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": null,
     "legs": [],
     "entry_credit": 0,
@@ -24,6 +24,9 @@
     "entry_range_state": null,
     "entry_iv_percentile": null,
     "entry_prices": {},
-    "current_stop_price": 25663.62857142857
+    "current_stop_price": 25663.62857142857,
+    "exit_time": "2026-01-21T09:28:18.279345",
+    "exit_reason": "futures_exit_REGIME_CHANGE",
+    "final_pnl": 15210.000000000036
   }
 ]
