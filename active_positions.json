@@ -33,7 +33,7 @@
     "trade_id": "2026-01-21T11:32:51.491750",
     "entry_time": "2026-01-21T11:32:51.493247",
     "lots": 1,
-    "lot_size": 50,
+    "lot_size": 65,
     "entry_spot": 25069.4,
     "strategy": "TREND_FOLLOW_FUTURE",
     "book": "TREND",

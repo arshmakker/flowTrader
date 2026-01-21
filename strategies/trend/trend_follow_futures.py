@@ -558,6 +558,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             "entry_price": futures_price,
             "quantity": position_info['quantity'],
             "lots": position_info['lots'],
+            "lot_size": lot_size,  # Include lot_size from futures info
             "stop_loss_price": stop_loss_price,
             "initial_stop_loss_atr": stop_loss_atr,
             "trailing_stop_loss_atr": atr * TRAILING_STOP_LOSS_ATR_MULTIPLIER,
