@@ -63,7 +63,6 @@ class IronCondorPositionTracker:
             expiry = trade_proposal.get('expiry', None)
             if expiry and isinstance(expiry, str):
                 try:
-                    from datetime import datetime
                     expiry = datetime.fromisoformat(expiry).date()
                 except:
                     pass

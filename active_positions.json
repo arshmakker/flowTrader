@@ -28,5 +28,33 @@
     "exit_time": "2026-01-21T09:28:18.279345",
     "exit_reason": "futures_exit_REGIME_CHANGE",
     "final_pnl": 15210.000000000036
+  },
+  {
+    "trade_id": "2026-01-21T11:32:51.491750",
+    "entry_time": "2026-01-21T11:32:51.493247",
+    "lots": 1,
+    "lot_size": 50,
+    "entry_spot": 25069.4,
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "status": "OPEN",
+    "symbol": "NIFTY27JAN26F",
+    "expiry": "2026-01-27",
+    "days_to_expiry": 6,
+    "legs": [],
+    "entry_credit": 0,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "max_loss": 41528.03571428567,
+    "entry_price": 25116.2,
+    "stop_loss_price": 25755.092857142856,
+    "current_stop_price": 25519.328571428574,
+    "direction": "SHORT",
+    "quantity": 65,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {}
   }
 ]
