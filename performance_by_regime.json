@@ -9,5 +9,38 @@
     "max_loss": 14774.99999999998,
     "lots": 1,
     "trade_id": "2026-01-19T12:30:02.953223"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-01-21T11:32:51.493247",
+    "exit_time": "2026-01-22T09:43:55.204062",
+    "pnl": -19200.999999999858,
+    "max_loss": 41528.03571428567,
+    "lots": 1,
+    "trade_id": "2026-01-21T11:32:51.491750"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-01-22T10:37:49.229696",
+    "exit_time": "2026-01-22T10:38:32.876320",
+    "pnl": -71.49999999990541,
+    "max_loss": 44905.71428571424,
+    "lots": 1,
+    "trade_id": "2026-01-22T10:37:49.228353"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-01-22T10:42:28.167135",
+    "exit_time": "2026-01-22T14:32:30.874703",
+    "pnl": 936.0000000000946,
+    "max_loss": 44905.71428571424,
+    "lots": 1,
+    "trade_id": "2026-01-22T10:42:28.165730"
   }
 ]
