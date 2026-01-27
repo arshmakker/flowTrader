@@ -22,6 +22,142 @@ except ImportError:
     print("colorama module not found. Please install it using 'pip install colorama'")
     exit(1)
 
+import json
+
+def generate_daily_trade_summary(logger):
+    """
+    Generate end-of-day trade summary from active_positions.json
+    
+    Returns a summary dict with today's trade statistics
+    """
+    try:
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        
+        # Load positions
+        positions_file = 'active_positions.json'
+        if not os.path.exists(positions_file):
+            logger.info("No positions file found for summary")
+            return None
+        
+        with open(positions_file, 'r') as f:
+            all_positions = json.load(f)
+        
+        # Filter today's closed trades
+        todays_trades = []
+        for pos in all_positions:
+            exit_time = pos.get('exit_time', '')
+            if exit_time and exit_time.startswith(today_str) and pos.get('status') == 'CLOSED':
+                todays_trades.append(pos)
+        
+        if not todays_trades:
+            logger.info(f"\n{'='*60}")
+            logger.info(Fore.YELLOW + "END OF DAY SUMMARY")
+            logger.info(f"{'='*60}")
+            logger.info("No trades were executed today")
+            logger.info(f"{'='*60}\n")
+            return None
+        
+        # Calculate statistics
+        total_pnl = sum(t.get('final_pnl', 0) for t in todays_trades)
+        winning_trades = [t for t in todays_trades if t.get('final_pnl', 0) > 0]
+        losing_trades = [t for t in todays_trades if t.get('final_pnl', 0) < 0]
+        breakeven_trades = [t for t in todays_trades if t.get('final_pnl', 0) == 0]
+        
+        win_rate = (len(winning_trades) / len(todays_trades)) * 100 if todays_trades else 0
+        
+        avg_winner = sum(t.get('final_pnl', 0) for t in winning_trades) / len(winning_trades) if winning_trades else 0
+        avg_loser = sum(t.get('final_pnl', 0) for t in losing_trades) / len(losing_trades) if losing_trades else 0
+        
+        max_profit = max((t.get('final_pnl', 0) for t in todays_trades), default=0)
+        max_loss = min((t.get('final_pnl', 0) for t in todays_trades), default=0)
+        
+        # Group by strategy
+        by_strategy = {}
+        for t in todays_trades:
+            strat = t.get('strategy', 'UNKNOWN')
+            if strat not in by_strategy:
+                by_strategy[strat] = {'count': 0, 'pnl': 0}
+            by_strategy[strat]['count'] += 1
+            by_strategy[strat]['pnl'] += t.get('final_pnl', 0)
+        
+        # Group by exit reason
+        by_exit_reason = {}
+        for t in todays_trades:
+            reason = t.get('exit_reason', 'UNKNOWN')
+            # Clean up the reason for display
+            if 'futures_exit_' in reason:
+                reason = reason.replace('futures_exit_', '')
+            if reason not in by_exit_reason:
+                by_exit_reason[reason] = {'count': 0, 'pnl': 0}
+            by_exit_reason[reason]['count'] += 1
+            by_exit_reason[reason]['pnl'] += t.get('final_pnl', 0)
+        
+        # Print summary
+        logger.info(f"\n{'='*60}")
+        logger.info(Fore.CYAN + Style.BRIGHT + "END OF DAY TRADE SUMMARY")
+        logger.info(f"Date: {today_str}")
+        logger.info(f"{'='*60}")
+        
+        # Overall stats
+        pnl_color = Fore.GREEN if total_pnl >= 0 else Fore.RED
+        logger.info(f"\n{Fore.WHITE}Overall Performance:")
+        logger.info(f"  Total Trades:    {len(todays_trades)}")
+        logger.info(f"  Winning:         {len(winning_trades)}")
+        logger.info(f"  Losing:          {len(losing_trades)}")
+        logger.info(f"  Breakeven:       {len(breakeven_trades)}")
+        logger.info(f"  Win Rate:        {win_rate:.1f}%")
+        logger.info(f"  {pnl_color}Total P&L:       ₹{total_pnl:,.2f}")
+        
+        if winning_trades:
+            logger.info(f"  {Fore.GREEN}Avg Winner:      ₹{avg_winner:,.2f}")
+        if losing_trades:
+            logger.info(f"  {Fore.RED}Avg Loser:       ₹{avg_loser:,.2f}")
+        logger.info(f"  Max Profit:      ₹{max_profit:,.2f}")
+        logger.info(f"  Max Loss:        ₹{max_loss:,.2f}")
+        
+        # By strategy
+        logger.info(f"\n{Fore.WHITE}By Strategy:")
+        for strat, stats in by_strategy.items():
+            strat_color = Fore.GREEN if stats['pnl'] >= 0 else Fore.RED
+            logger.info(f"  {strat}: {stats['count']} trades, {strat_color}₹{stats['pnl']:,.2f}")
+        
+        # By exit reason
+        logger.info(f"\n{Fore.WHITE}By Exit Reason:")
+        for reason, stats in by_exit_reason.items():
+            reason_color = Fore.GREEN if stats['pnl'] >= 0 else Fore.RED
+            logger.info(f"  {reason}: {stats['count']} trades, {reason_color}₹{stats['pnl']:,.2f}")
+        
+        logger.info(f"\n{'='*60}")
+        
+        # Final verdict
+        if total_pnl > 0:
+            logger.info(Fore.GREEN + Style.BRIGHT + f"✅ PROFITABLE DAY: +₹{total_pnl:,.2f}")
+        elif total_pnl < 0:
+            logger.info(Fore.RED + Style.BRIGHT + f"❌ LOSS DAY: ₹{total_pnl:,.2f}")
+        else:
+            logger.info(Fore.YELLOW + Style.BRIGHT + "➖ BREAKEVEN DAY")
+        
+        logger.info(f"{'='*60}\n")
+        
+        return {
+            'date': today_str,
+            'total_trades': len(todays_trades),
+            'winning_trades': len(winning_trades),
+            'losing_trades': len(losing_trades),
+            'win_rate': win_rate,
+            'total_pnl': total_pnl,
+            'avg_winner': avg_winner,
+            'avg_loser': avg_loser,
+            'max_profit': max_profit,
+            'max_loss': max_loss,
+            'by_strategy': by_strategy,
+            'by_exit_reason': by_exit_reason
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating trade summary: {str(e)}")
+        return None
+
 def setup_logging():
     """Setup logging configuration"""
     log_dir = 'logs'
@@ -251,6 +387,10 @@ def main():
                 # If it's past 3:30 PM on a weekday, stop the system
                 if current_time.weekday() < 5 and current_time >= market_close_time:
                     logger.info(Fore.YELLOW + "Market has closed (3:30 PM). Stopping system...")
+                    
+                    # Generate end-of-day trade summary
+                    generate_daily_trade_summary(logger)
+                    
                     # Stop data collection before exiting
                     if collector:
                         logger.info("Stopping data collection...")
