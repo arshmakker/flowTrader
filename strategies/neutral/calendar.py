@@ -23,7 +23,8 @@ from .config import (
     IV_PERCENTILE_MIN,
     IV_PERCENTILE_MAX,
     ADX_MIN,
-    ADX_MAX
+    ADX_MAX,
+    MIN_DAYS_TO_EXPIRY_SHORT
 )
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,15 @@ def generate_neutral_call_calendar(market_state: Dict, option_chain_weekly: pd.D
             logger.debug("Calendar rejected: ATR expanding")
             return None
         
-        # Entry condition 6: No major events (placeholder - assume false for now)
+        # Entry condition 6: Short leg must have sufficient days to expiry
+        if days_to_expiry_weekly is not None and days_to_expiry_weekly <= MIN_DAYS_TO_EXPIRY_SHORT:
+            logger.info(
+                f"Calendar rejected: Short leg expires in {days_to_expiry_weekly} days "
+                f"(minimum: {MIN_DAYS_TO_EXPIRY_SHORT + 1} days)"
+            )
+            return None
+        
+        # Entry condition 7: No major events (placeholder - assume false for now)
         has_major_event = market_state.get('has_major_event', False)
         if has_major_event:
             logger.debug("Calendar rejected: Major event in next 48 hours")

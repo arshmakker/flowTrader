@@ -473,8 +473,30 @@ def main():
                                                 else:  # SHORT
                                                     current_pnl = (entry_price - current_futures_price) * position.get('quantity', 0)
                                                 
+                                                # Calculate position age (for logging and minimum duration check)
+                                                entry_time = datetime.fromisoformat(position['entry_time'])
+                                                current_time = datetime.now()
+                                                position_age = current_time - entry_time
+                                                position_age_minutes = position_age.total_seconds() / 60
+                                                
                                                 should_exit = False
                                                 exit_reason = None
+                                                
+                                                # Exit condition 0: Market close approaching (overnight position management)
+                                                if not should_exit:
+                                                    from strategies.trend.config import EXIT_BEFORE_MARKET_CLOSE, MARKET_CLOSE_EXIT_MINUTES
+                                                    if EXIT_BEFORE_MARKET_CLOSE:
+                                                        market_close_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+                                                        exit_before_close_time = market_close_time - timedelta(minutes=MARKET_CLOSE_EXIT_MINUTES)
+                                                        
+                                                        # Exit all futures positions N minutes before market close
+                                                        if current_time.weekday() < 5 and current_time >= exit_before_close_time:
+                                                            should_exit = True
+                                                            exit_reason = 'MARKET_CLOSE_APPROACHING'
+                                                            logger.info(
+                                                                f"Closing futures position {position['trade_id']} before market close "
+                                                                f"({MARKET_CLOSE_EXIT_MINUTES} minutes remaining)"
+                                                            )
                                                 
                                                 # Exit condition 1: Stop loss hit
                                                 if direction == 'LONG':
@@ -524,7 +546,7 @@ def main():
                                                         except Exception as e:
                                                             logger.debug(f"Error parsing expiry date: {str(e)}")
                                                 
-                                                # Exit condition 4: EMA structure breaks
+                                                # Exit condition 4: EMA structure breaks (with confirmation and smart logic)
                                                 # #region agent log
                                                 try:
                                                     with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
@@ -532,6 +554,13 @@ def main():
                                                 except: pass
                                                 # #endregion
                                                 if not should_exit and EXIT_ON_EMA_BREAK and ema_structure:
+                                                    from strategies.trend.config import (
+                                                        EMA_BREAK_CONFIRMATION_CHECKS, 
+                                                        EMA_BREAK_TOLERANCE_PCT,
+                                                        PRIORITIZE_TRAILING_STOP_IN_PROFIT,
+                                                        TRAILING_STOP_PRIORITY_DISTANCE_ATR
+                                                    )
+                                                    
                                                     ema_50 = ema_structure.get('ema_50')
                                                     ema_100 = ema_structure.get('ema_100')
                                                     # #region agent log
@@ -542,28 +571,82 @@ def main():
                                                     # #endregion
                                                     
                                                     if ema_50 and ema_100:
+                                                        # Initialize EMA break count if not present
+                                                        if 'ema_break_count' not in position:
+                                                            position['ema_break_count'] = 0
+                                                            position_tracker._save_active_positions()
+                                                        
+                                                        # Check EMA structure with tolerance
                                                         if direction == 'LONG':
-                                                            structure_valid = current_futures_price > ema_50 > ema_100
-                                                            # #region agent log
-                                                            try:
-                                                                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                                                                    f.write(json.dumps({"location":"main.py:436","message":"LONG EMA structure check","data":{"structure_valid":structure_valid,"price":current_futures_price,"ema_50":ema_50,"ema_100":ema_100,"price_gt_ema50":current_futures_price > ema_50,"ema50_gt_ema100":ema_50 > ema_100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H3"})+"\n")
-                                                            except: pass
-                                                            # #endregion
-                                                            if not structure_valid:
-                                                                should_exit = True
-                                                                exit_reason = 'EMA_STRUCTURE_BROKEN'
+                                                            price_above_ema50 = current_futures_price > ema_50 * (1 - EMA_BREAK_TOLERANCE_PCT / 100)
+                                                            ema50_above_ema100 = ema_50 > ema_100 * (1 - EMA_BREAK_TOLERANCE_PCT / 100)
+                                                            structure_valid = price_above_ema50 and ema50_above_ema100
                                                         else:  # SHORT
-                                                            structure_valid = current_futures_price < ema_50 < ema_100
-                                                            # #region agent log
-                                                            try:
-                                                                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                                                                    f.write(json.dumps({"location":"main.py:443","message":"SHORT EMA structure check","data":{"structure_valid":structure_valid,"price":current_futures_price,"ema_50":ema_50,"ema_100":ema_100,"price_lt_ema50":current_futures_price < ema_50,"ema50_lt_ema100":ema_50 < ema_100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H3"})+"\n")
-                                                            except: pass
-                                                            # #endregion
-                                                            if not structure_valid:
+                                                            price_below_ema50 = current_futures_price < ema_50 * (1 + EMA_BREAK_TOLERANCE_PCT / 100)
+                                                            ema50_below_ema100 = ema_50 < ema_100 * (1 + EMA_BREAK_TOLERANCE_PCT / 100)
+                                                            structure_valid = price_below_ema50 and ema50_below_ema100
+                                                        
+                                                        # #region agent log
+                                                        try:
+                                                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                                f.write(json.dumps({"location":"main.py:436","message":"EMA structure check with tolerance","data":{"structure_valid":structure_valid,"price":current_futures_price,"ema_50":ema_50,"ema_100":ema_100,"direction":direction,"tolerance_pct":EMA_BREAK_TOLERANCE_PCT},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H3"})+"\n")
+                                                        except: pass
+                                                        # #endregion
+                                                        
+                                                        if not structure_valid:
+                                                            # Increment break count
+                                                            position['ema_break_count'] = position.get('ema_break_count', 0) + 1
+                                                            position_tracker._save_active_positions()
+                                                            
+                                                            # Smart exit logic: Check if we should exit based on profit and distance to stop
+                                                            in_profit = current_pnl > 0
+                                                            distance_to_stop = 0
+                                                            if direction == 'LONG':
+                                                                distance_to_stop = current_futures_price - current_stop
+                                                            else:  # SHORT
+                                                                distance_to_stop = current_stop - current_futures_price
+                                                            
+                                                            close_to_stop = distance_to_stop < (current_atr * TRAILING_STOP_PRIORITY_DISTANCE_ATR) if current_atr > 0 else False
+                                                            
+                                                            # Decision logic:
+                                                            # - If in profit AND far from stop AND prioritizing trailing stop: ignore EMA break
+                                                            # - Otherwise: check confirmation count
+                                                            should_exit_on_ema = False
+                                                            
+                                                            if PRIORITIZE_TRAILING_STOP_IN_PROFIT and in_profit and not close_to_stop:
+                                                                # In profit and far from stop - ignore EMA break, let trailing stop handle it
+                                                                logger.debug(
+                                                                    f"EMA structure broken but position in profit (₹{current_pnl:.2f}) "
+                                                                    f"and far from stop (₹{distance_to_stop:.2f}), letting trailing stop handle exit. "
+                                                                    f"Break count: {position['ema_break_count']}/{EMA_BREAK_CONFIRMATION_CHECKS}"
+                                                                )
+                                                                # Reset break count since we're ignoring it
+                                                                position['ema_break_count'] = 0
+                                                                position_tracker._save_active_positions()
+                                                            else:
+                                                                # In loss OR close to stop - check confirmation count
+                                                                if position['ema_break_count'] >= EMA_BREAK_CONFIRMATION_CHECKS:
+                                                                    should_exit_on_ema = True
+                                                                    logger.info(
+                                                                        f"EMA structure broken for {position['ema_break_count']} consecutive checks, "
+                                                                        f"exiting position {position['trade_id']}. "
+                                                                        f"P&L=₹{current_pnl:.2f}, Distance to stop=₹{distance_to_stop:.2f}"
+                                                                    )
+                                                                else:
+                                                                    logger.debug(
+                                                                        f"EMA structure broken (count: {position['ema_break_count']}/{EMA_BREAK_CONFIRMATION_CHECKS}), "
+                                                                        f"waiting for confirmation. P&L=₹{current_pnl:.2f}"
+                                                                    )
+                                                            
+                                                            if should_exit_on_ema:
                                                                 should_exit = True
                                                                 exit_reason = 'EMA_STRUCTURE_BROKEN'
+                                                        else:
+                                                            # Structure is valid - reset break count
+                                                            if position.get('ema_break_count', 0) > 0:
+                                                                position['ema_break_count'] = 0
+                                                                position_tracker._save_active_positions()
+                                                                logger.debug(f"EMA structure restored, reset break count for position {position['trade_id']}")
                                                     # #region agent log
                                                     try:
                                                         with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
@@ -580,24 +663,94 @@ def main():
                                                 
                                                 # Update trailing stop loss (if not exiting)
                                                 if not should_exit and current_atr > 0:
-                                                    trailing_stop_atr = current_atr * TRAILING_STOP_LOSS_ATR_MULTIPLIER
+                                                    # Import hybrid trailing stop config
+                                                    from strategies.trend.config import (
+                                                        USE_HYBRID_TRAILING_STOP,
+                                                        HYBRID_BREAKEVEN_THRESHOLD_ATR,
+                                                        HYBRID_PHASE2_THRESHOLD_ATR,
+                                                        HYBRID_PHASE3_THRESHOLD_ATR,
+                                                        HYBRID_PHASE1_MULTIPLIER,
+                                                        HYBRID_PHASE2_MULTIPLIER,
+                                                        HYBRID_PHASE3_MULTIPLIER
+                                                    )
+                                                    
+                                                    # Calculate unrealized P&L in points
                                                     if direction == 'LONG':
-                                                        new_trailing_stop = current_futures_price - trailing_stop_atr
+                                                        unrealized_pnl_points = current_futures_price - entry_price
+                                                    else:  # SHORT
+                                                        unrealized_pnl_points = entry_price - current_futures_price
+                                                    
+                                                    # Determine trailing multiplier based on profit phase
+                                                    if USE_HYBRID_TRAILING_STOP:
+                                                        # HYBRID mode: Profit-protection trailing
+                                                        if unrealized_pnl_points <= 0:
+                                                            # Phase 1: Not in profit - use standard trailing
+                                                            trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                                                            trail_phase = 'PHASE1'
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_BREAKEVEN_THRESHOLD_ATR):
+                                                            # Not yet at breakeven threshold - standard trailing
+                                                            trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                                                            trail_phase = 'PHASE1_NEAR_BE'
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE2_THRESHOLD_ATR):
+                                                            # Phase 2: Small profit - ensure breakeven
+                                                            trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                                                            trail_phase = 'PHASE2_BREAKEVEN'
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE3_THRESHOLD_ATR):
+                                                            # Phase 3: Medium profit - tighter 1.5× ATR
+                                                            trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
+                                                            trail_phase = 'PHASE3_TIGHT'
+                                                        else:
+                                                            # Phase 4: Large profit - very tight 1× ATR
+                                                            trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
+                                                            trail_phase = 'PHASE4_VERY_TIGHT'
+                                                    else:
+                                                        # FIXED mode: Standard 2× ATR trailing
+                                                        trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
+                                                        trail_phase = 'FIXED'
+                                                    
+                                                    trailing_stop_distance = current_atr * trailing_multiplier
+                                                    
+                                                    if direction == 'LONG':
+                                                        new_trailing_stop = current_futures_price - trailing_stop_distance
+                                                        
+                                                        # In profit phases, ensure stop is at least at breakeven
+                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT']:
+                                                            new_trailing_stop = max(new_trailing_stop, entry_price)
+                                                        
                                                         # Trailing stop only moves up (tightens) for LONG
                                                         updated_stop = max(current_stop, new_trailing_stop)
                                                     else:  # SHORT
-                                                        new_trailing_stop = current_futures_price + trailing_stop_atr
+                                                        new_trailing_stop = current_futures_price + trailing_stop_distance
+                                                        
+                                                        # In profit phases, ensure stop is at least at breakeven
+                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT']:
+                                                            new_trailing_stop = min(new_trailing_stop, entry_price)
+                                                        
                                                         # Trailing stop only moves down (tightens) for SHORT
                                                         updated_stop = min(current_stop, new_trailing_stop)
                                                     
                                                     # Update position with new trailing stop
                                                     if updated_stop != current_stop:
+                                                        # Check if we moved to breakeven
+                                                        moved_to_breakeven = False
+                                                        if direction == 'LONG' and current_stop < entry_price and updated_stop >= entry_price:
+                                                            moved_to_breakeven = True
+                                                        elif direction == 'SHORT' and current_stop > entry_price and updated_stop <= entry_price:
+                                                            moved_to_breakeven = True
+                                                        
                                                         position['current_stop_price'] = updated_stop
                                                         position_tracker._save_active_positions()
-                                                        logger.debug(
-                                                            f"Updated trailing stop for position {position['trade_id']}: "
-                                                            f"₹{current_stop:.2f} → ₹{updated_stop:.2f}"
-                                                        )
+                                                        
+                                                        if moved_to_breakeven:
+                                                            logger.info(
+                                                                f"🛡️ Moved to BREAKEVEN for position {position['trade_id']}: "
+                                                                f"Stop ₹{current_stop:.2f} → ₹{updated_stop:.2f} (entry: ₹{entry_price:.2f})"
+                                                            )
+                                                        else:
+                                                            logger.debug(
+                                                                f"Updated trailing stop [{trail_phase}] for position {position['trade_id']}: "
+                                                                f"₹{current_stop:.2f} → ₹{updated_stop:.2f} (mult: {trailing_multiplier}×ATR)"
+                                                            )
                                                 
                                                 # Close position if exit condition met
                                                 # #region agent log
@@ -656,11 +809,19 @@ def main():
                                                             else:  # SHORT
                                                                 structure_valid = current_futures_price < ema_50 < ema_100
                                                                 ema_status = f", EMA50=₹{ema_50:.2f}, EMA100=₹{ema_100:.2f}, EMA_Structure={'VALID' if structure_valid else 'BROKEN'}"
+                                                    
+                                                    # Add position age and EMA break count to status
+                                                    age_str = f", Age={position_age_minutes:.1f} min"
+                                                    ema_break_count = position.get('ema_break_count', 0)
+                                                    if ema_break_count > 0 and EXIT_ON_EMA_BREAK:
+                                                        from strategies.trend.config import EMA_BREAK_CONFIRMATION_CHECKS
+                                                        age_str += f", EMA_Break_Count={ema_break_count}/{EMA_BREAK_CONFIRMATION_CHECKS}"
+                                                    
                                                     logger.info(
                                                         f"Futures position {position['trade_id']}: "
                                                         f"Price=₹{current_futures_price:.2f}, "
                                                         f"P&L=₹{current_pnl:.2f}, "
-                                                        f"Stop=₹{current_stop:.2f}, "
+                                                        f"Stop=₹{current_stop:.2f}{age_str}, "
                                                         f"Regime={current_regime}{ema_status}"
                                                     )
                                                     # #region agent log

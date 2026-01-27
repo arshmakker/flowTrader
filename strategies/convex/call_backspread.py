@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 MAX_NET_DEBIT_PCT = 0.0025  # 0.25% of spot value
 MAX_LOSS_PCT_OF_CAPITAL = 0.01  # 1% of total capital
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
+MIN_DAYS_TO_EXPIRY = 2  # Don't enter if expiry within 2 days (OTM calls need time)
 
 
 def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFrame, 
@@ -79,6 +80,15 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         if expiry is None:
             logger.error("Missing expiry in market_state")
+            return None
+        
+        # Entry guard: Don't enter if too close to expiry
+        # OTM calls need time for the asymmetric payoff to work
+        if days_to_expiry is not None and days_to_expiry <= MIN_DAYS_TO_EXPIRY:
+            logger.info(
+                f"Call Backspread rejected: Expires in {days_to_expiry} days "
+                f"(minimum: {MIN_DAYS_TO_EXPIRY + 1} days). OTM calls need time value."
+            )
             return None
         
         if option_chain.empty:

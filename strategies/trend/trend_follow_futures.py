@@ -429,42 +429,68 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             logger.debug("API or symbol_manager not provided")
             return None
         
-        # Get futures price and symbol
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"trend_follow_futures.py:272","message":"Getting futures price","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T4"})+"\n")
-        except: pass
-        # #endregion
-        
-        futures_price = get_nifty_futures_price(api, symbol_manager)
-        
-        # Get the actual futures symbol from symbol_manager
+        # Get all available futures contracts and select appropriate one
+        # This implements automatic series rolling when current month is too close to expiry
         futures_symbol = None
         futures_info = None
+        futures_price = None
+        rolled_to_next_series = False
+        
         try:
-            futures_list = symbol_manager.get_index_futures()
-            nifty_future = next((f for f in futures_list if f.get('index_name') == 'NIFTY'), None)
-            if nifty_future:
-                futures_symbol = nifty_future.get('symbol')  # This is the tradingsymbol from CSV (e.g., "NIFTY27JAN26F")
-                futures_info = nifty_future
+            # Get all available NIFTY futures contracts sorted by expiry
+            all_contracts = symbol_manager.get_index_futures_all_expiries('NIFTY')
+            
+            if not all_contracts:
+                logger.warning("No NIFTY futures contracts available")
+                return None
+            
+            # Find the first contract with sufficient days to expiry
+            selected_contract = None
+            skipped_contracts = []
+            
+            for contract in all_contracts:
+                days_to_expiry = contract.get('days_to_expiry', 0)
+                
+                if days_to_expiry > EXIT_DAYS_BEFORE_EXPIRY:
+                    selected_contract = contract
+                    break
+                else:
+                    skipped_contracts.append(f"{contract['symbol']} ({days_to_expiry}d)")
+            
+            if not selected_contract:
+                logger.info(
+                    f"Entry rejected: No viable futures contracts available. "
+                    f"All contracts too close to expiry: {skipped_contracts}"
+                )
+                return None
+            
+            # Log if we rolled to next series
+            if skipped_contracts:
+                rolled_to_next_series = True
+                logger.info(
+                    f"Series roll: Skipping {skipped_contracts} (too close to expiry), "
+                    f"using {selected_contract['symbol']} ({selected_contract['days_to_expiry']}d to expiry)"
+                )
+            
+            futures_symbol = selected_contract['symbol']
+            futures_info = selected_contract
+            
+            # Get quote for the selected contract
+            quote = api.get_quotes(exchange='NFO', token=selected_contract['token'])
+            if quote and 'lp' in quote:
+                futures_price = float(quote['lp'])
+                logger.debug(f"NIFTY futures price ({futures_symbol}): {futures_price}")
+            else:
+                logger.warning(f"Could not get quote for {futures_symbol}")
+                return None
+                
         except Exception as e:
-            logger.warning(f"Could not get futures symbol from symbol_manager: {str(e)}")
-        
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"trend_follow_futures.py:275","message":"Futures price result","data":{"futures_price":futures_price,"has_price":futures_price is not None and futures_price > 0,"futures_symbol":futures_symbol,"has_futures_info":futures_info is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T5"})+"\n")
-        except: pass
-        # #endregion
-        
-        if not futures_price:
-            logger.debug("Could not get NIFTY futures price")
+            logger.error(f"Error selecting futures contract: {str(e)}")
             return None
         
-        if not futures_symbol:
-            logger.warning("Could not get NIFTY futures symbol from CSV, using fallback")
-            futures_symbol = "NIFTY_FUTURE"  # Fallback if symbol lookup fails
+        if not futures_price or futures_price <= 0:
+            logger.debug("Could not get valid NIFTY futures price")
+            return None
         
         # Get EMA structure
         # #region agent log
@@ -571,6 +597,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             "adx": market_state.get('adx_14'),
             "expiry": expiry_date.isoformat() if expiry_date else None,  # Add expiry date
             "days_to_expiry": days_to_expiry,  # Days to expiry at entry
+            "rolled_to_next_series": rolled_to_next_series,  # True if we skipped current month
             "generated_at": datetime.now().isoformat()
         }
         

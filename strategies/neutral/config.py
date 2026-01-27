@@ -14,6 +14,7 @@ IV_PERCENTILE_MIN = 40
 IV_PERCENTILE_MAX = 60
 ADX_MIN = 18
 ADX_MAX = 25
+MIN_DAYS_TO_EXPIRY_SHORT = 2  # Don't enter if short leg expires within 2 days
 
 # Exit conditions
 SHORT_DECAY_THRESHOLD = 0.65  # Exit if short option decayed ≥ 65%

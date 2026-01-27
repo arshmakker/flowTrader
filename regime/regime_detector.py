@@ -158,45 +158,62 @@ class RegimeDetector:
     
     def calculate_atr_percentile(self, current_atr: float, historical_atrs: List[float] = None) -> Optional[float]:
         """
-        Calculate ATR percentile relative to historical ATR values
+        Calculate ATR percentile relative to historical daily ATR values
         
-        Uses stored ATR history (10-15 sessions) for robust calculation.
-        Falls back to provided historical_atrs if available.
+        Uses stored daily ATR history (excludes today's entry for comparison).
+        Only uses stored history - does NOT use intraday rolling ATR values.
         
         Args:
-            current_atr: Current ATR value
-            historical_atrs: Optional list of historical ATR values (fallback)
+            current_atr: Current ATR value (today's intraday ATR)
+            historical_atrs: DEPRECATED - ignored. Only stored daily history is used.
         
         Returns:
             ATR percentile (0-100) or None if calculation fails
         """
         try:
-            # Try to load from stored history first (more robust)
-            stored_history = self.load_atr_history()
-            if stored_history and len(stored_history) >= 10:
-                # Extract ATR values from stored history
-                stored_atrs = [h['atr'] for h in stored_history if h.get('atr') and h['atr'] > 0]
-                if len(stored_atrs) >= 10:
-                    historical_atrs = stored_atrs
-                    logger.debug(f"Using stored ATR history: {len(stored_atrs)} sessions")
-            
-            # Fallback to provided historical_atrs if stored history insufficient
-            if not historical_atrs or len(historical_atrs) < 10:
-                if historical_atrs and len(historical_atrs) >= 2:
-                    logger.debug(f"Using provided ATR history: {len(historical_atrs)} values (minimum: 10 for robustness)")
-                else:
-                    logger.debug(f"Insufficient ATR history: {len(historical_atrs) if historical_atrs else 0} values (need at least 10 for robustness)")
-                    return None
-            
             if current_atr <= 0:
                 return None
             
+            # Load stored daily ATR history
+            stored_history = self.load_atr_history()
+            if not stored_history:
+                logger.debug("No stored ATR history available")
+                return None
+            
+            # Get today's date to exclude it from historical comparison
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            
+            # Extract ATR values from stored history, excluding today's entry
+            historical_daily_atrs = []
+            for entry in stored_history:
+                entry_date = entry.get('date', '')
+                entry_atr = entry.get('atr', 0)
+                # Only include historical entries (not today) with valid ATR
+                if entry_atr > 0 and entry_date != today_str:
+                    historical_daily_atrs.append(entry_atr)
+            
+            if not historical_daily_atrs:
+                logger.debug("No historical ATR values available (excluding today)")
+                return None
+            
+            # Warn if we have less than 10 entries (less robust)
+            if len(historical_daily_atrs) < 10:
+                logger.warning(
+                    f"ATR percentile using only {len(historical_daily_atrs)} historical daily values "
+                    f"(recommended: 10+ for robustness)"
+                )
+            else:
+                logger.debug(f"Using stored daily ATR history: {len(historical_daily_atrs)} sessions")
+            
             # Calculate percentile
-            sorted_atrs = sorted(historical_atrs)
+            sorted_atrs = sorted(historical_daily_atrs)
             count_below = sum(1 for atr in sorted_atrs if atr < current_atr)
             percentile = (count_below / len(sorted_atrs)) * 100.0
             
-            logger.debug(f"ATR percentile: {percentile:.1f}% (current: {current_atr:.2f}, samples: {len(sorted_atrs)})")
+            logger.debug(
+                f"ATR percentile: {percentile:.1f}% (current: {current_atr:.2f}, "
+                f"historical daily samples: {len(sorted_atrs)})"
+            )
             
             return percentile
             
@@ -434,20 +451,9 @@ class RegimeDetector:
                     atr = self.calculate_atr(highs, lows, closes, period=14)
                     
                     if atr:
-                        # Calculate historical ATRs for percentile
-                        historical_atrs = []
-                        for i in range(14, len(highs)):
-                            # Slice to get 15 elements (period + 1) for ATR(14) calculation
-                            # When i=14, we need indices 0-14 (15 elements), so slice is [i-14:i+1]
-                            period_highs = highs[i-14:i+1]
-                            period_lows = lows[i-14:i+1]
-                            period_closes = closes[i-14:i+1]
-                            period_atr = self.calculate_atr(period_highs, period_lows, period_closes, period=14)
-                            if period_atr:
-                                historical_atrs.append(period_atr)
-                        
-                        # Use stored ATR history for percentile (more robust)
-                        atr_percentile = self.calculate_atr_percentile(atr, historical_atrs)
+                        # Calculate percentile using stored daily ATR history only
+                        # (NOT using intraday rolling ATR values - those are incorrect for percentile)
+                        atr_percentile = self.calculate_atr_percentile(atr)
                         
                         # #region agent log
                         try:
