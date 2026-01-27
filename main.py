@@ -204,9 +204,15 @@ def main():
                 logger.error(f"Error running synthetic tests: {str(e)}", exc_info=True)
                 logger.warning("Continuing execution despite test errors...")
         
-        # Start data collection
-        collector.start_collection()
-        logger.info("Data collection started")
+        # Data collection will start only during market hours (no API calls before 9:15 AM)
+        collection_started = False
+        if is_market_hours():
+            collector.start_collection()
+            collection_started = True
+            logger.info("Data collection started (market is open)")
+        else:
+            logger.info(Fore.YELLOW + "Waiting for market to open (9:15 AM) before starting data collection...")
+            logger.info("No API calls will be made until market hours")
         
         # Strategy check timing
         STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
@@ -250,6 +256,13 @@ def main():
                     runtime = datetime.now() - start_time
                     logger.info(f"Total Runtime: {runtime}")
                     break
+                
+                # Start data collection when market opens (if not already started)
+                if not collection_started and is_market_hours():
+                    logger.info(Fore.GREEN + "Market is now open! Starting data collection...")
+                    collector.start_collection()
+                    collection_started = True
+                    logger.info("Data collection started")
                 
                 # Calculate IV more frequently to build historical data (independent of strategy checks)
                 time_since_iv_calc = (current_time - last_iv_calculation).total_seconds()
