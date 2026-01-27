@@ -226,6 +226,10 @@ def main():
         IV_CALCULATION_INTERVAL = 120  # Calculate IV every 2 minutes (120 seconds)
         last_iv_calculation = datetime.now()
         
+        # Flag to prevent re-entry after market close exit
+        # Once we exit a position due to MARKET_CLOSE_APPROACHING, don't enter new trades for the rest of the day
+        market_close_exit_triggered = False
+        
         logger.info(Fore.CYAN + "Iron Condor strategy integration enabled")
         logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
         logger.info(f"IV calculations will run every {IV_CALCULATION_INTERVAL // 60} minutes to build historical data")
@@ -304,7 +308,10 @@ def main():
                 time_since_last_check = (current_time - last_strategy_check).total_seconds()
                 
                 if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
-                    if is_market_hours():
+                    # Skip strategy checks if we already exited for market close
+                    if market_close_exit_triggered:
+                        logger.debug("Skipping strategy check - market close exit already triggered, no new entries today")
+                    elif is_market_hours():
                         try:
                             logger.info(Fore.CYAN + "Running strategy check with regime detection...")
                             trade_proposal = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=1000000.0)
@@ -506,9 +513,12 @@ def main():
                                                         if current_time.weekday() < 5 and current_time >= exit_before_close_time:
                                                             should_exit = True
                                                             exit_reason = 'MARKET_CLOSE_APPROACHING'
+                                                            # Set flag to prevent re-entry for rest of day
+                                                            market_close_exit_triggered = True
                                                             logger.info(
                                                                 f"Closing futures position {position['trade_id']} before market close "
-                                                                f"({MARKET_CLOSE_EXIT_MINUTES} minutes remaining)"
+                                                                f"({MARKET_CLOSE_EXIT_MINUTES} minutes remaining). "
+                                                                f"No new entries will be made today."
                                                             )
                                                 
                                                 # Exit condition 1: Stop loss hit
