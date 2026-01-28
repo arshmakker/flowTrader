@@ -757,6 +757,9 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
     Get 15-minute candle data for EMA calculation.
     Builds candles from stored tick data since Shoonya API doesn't provide 15-minute intervals.
     
+    Includes contract rollover adjustment to handle price discontinuities when
+    switching between different futures contracts (e.g., Jan to Feb expiry).
+    
     Args:
         api: ShoonyaApiPy instance (not used, kept for compatibility)
         symbol_manager: SymbolManager instance (not used, kept for compatibility)
@@ -772,7 +775,10 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # We'll use NIFTY futures data as proxy for NIFTY index
         # Need to read multiple days to get enough candles (100+ for EMA(100))
         today = datetime.now()
-        all_tick_data = []
+        
+        # Store day data with contract info for rollover adjustment
+        # List of tuples: (date_str, contract_symbol, dataframe, first_price, last_price)
+        day_data_list = []
         
         # Calculate how many days we need (100 candles / ~23 candles per day = ~4-5 trading days)
         # Account for weekends - need to check more calendar days to get enough trading days
@@ -809,26 +815,44 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
             futures_file = futures_files[0]
             futures_path = os.path.join(futures_dir, futures_file)
             
+            # Extract contract symbol from filename (e.g., "NIFTY24FEB26F" from "NIFTY24FEB26F_20260128.csv")
+            contract_symbol = futures_file.split('_')[0]
+            
             # Read tick data for this day
             try:
                 day_data = pd.read_csv(futures_path)
                 if not day_data.empty:
                     day_data['timestamp'] = pd.to_datetime(day_data['timestamp'])
-                    # Set timestamp as index for this day's data
+                    day_data = day_data.sort_values('timestamp')
+                    
+                    # Get first and last prices for rollover calculation
+                    first_price = day_data['ltp'].iloc[0]
+                    last_price = day_data['ltp'].iloc[-1]
+                    
+                    # Set timestamp as index
                     day_data = day_data.set_index('timestamp')
-                    all_tick_data.append(day_data)
+                    
+                    # Store with contract info (most recent first)
+                    day_data_list.append({
+                        'date_str': date_str,
+                        'contract': contract_symbol,
+                        'data': day_data,
+                        'first_price': first_price,
+                        'last_price': last_price
+                    })
                     days_found += 1
+                    
                     # #region agent log
                     try:
                         with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"technical_indicators.py:644","message":"Loaded day data","data":{"date_str":date_str,"tick_count":len(day_data),"futures_file":futures_file},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"B"})+"\n")
+                            f.write(json.dumps({"location":"technical_indicators.py:644","message":"Loaded day data","data":{"date_str":date_str,"tick_count":len(day_data),"futures_file":futures_file,"contract":contract_symbol,"first_price":first_price,"last_price":last_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"B"})+"\n")
                     except: pass
                     # #endregion
             except Exception as e:
                 logger.debug(f"Error reading futures file {futures_path}: {str(e)}")
                 continue
         
-        if not all_tick_data:
+        if not day_data_list:
             # #region agent log
             try:
                 with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
@@ -838,11 +862,64 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
             logger.debug(f"No NIFTY futures data found in last {days_to_check} days")
             return None
         
+        # Apply contract rollover adjustment (back-adjustment)
+        # Adjust older data to align with the most recent contract's price level
+        # day_data_list is ordered most recent first
+        
+        cumulative_adjustment = 0.0
+        rollover_adjustments = []
+        
+        for i in range(len(day_data_list)):
+            if i == 0:
+                # Most recent day - no adjustment needed
+                rollover_adjustments.append(0.0)
+            else:
+                # Check if contract changed from this day to the more recent day
+                current_contract = day_data_list[i]['contract']
+                newer_contract = day_data_list[i-1]['contract']
+                
+                if current_contract != newer_contract:
+                    # Contract rollover detected!
+                    # Gap = first price of newer contract - last price of older contract
+                    # This captures the premium difference between contracts
+                    newer_first_price = day_data_list[i-1]['first_price']
+                    older_last_price = day_data_list[i]['last_price']
+                    rollover_gap = newer_first_price - older_last_price
+                    cumulative_adjustment += rollover_gap
+                    
+                    logger.info(f"Contract rollover detected: {current_contract} -> {newer_contract}, "
+                               f"adjustment: {rollover_gap:.2f} pts (cumulative: {cumulative_adjustment:.2f})")
+                    
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"technical_indicators.py:rollover","message":"Contract rollover adjustment","data":{"old_contract":current_contract,"new_contract":newer_contract,"older_last_price":older_last_price,"newer_first_price":newer_first_price,"rollover_gap":rollover_gap,"cumulative_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"R"})+"\n")
+                    except: pass
+                    # #endregion
+                
+                rollover_adjustments.append(cumulative_adjustment)
+        
+        # Apply adjustments and combine data
+        all_tick_data = []
+        for i, day_info in enumerate(day_data_list):
+            adjusted_data = day_info['data'].copy()
+            adjustment = rollover_adjustments[i]
+            
+            if adjustment != 0:
+                # Adjust price columns
+                adjusted_data['ltp'] = adjusted_data['ltp'] + adjustment
+                if 'bid' in adjusted_data.columns:
+                    adjusted_data['bid'] = adjusted_data['bid'] + adjustment
+                if 'ask' in adjusted_data.columns:
+                    adjusted_data['ask'] = adjusted_data['ask'] + adjustment
+            
+            all_tick_data.append(adjusted_data)
+        
         # #region agent log
         try:
             total_ticks = sum(len(df) for df in all_tick_data)
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:653","message":"Combining multi-day data","data":{"days_found":days_found,"total_ticks":total_ticks,"days_to_check":days_to_check},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"D"})+"\n")
+                f.write(json.dumps({"location":"technical_indicators.py:653","message":"Combining multi-day data","data":{"days_found":days_found,"total_ticks":total_ticks,"days_to_check":days_to_check,"total_rollover_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"D"})+"\n")
         except: pass
         # #endregion
         
@@ -855,7 +932,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
             total_ticks = len(tick_data)
             time_range_hours = (tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0
             with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:655","message":"Combined all days data","data":{"total_ticks":total_ticks,"time_range_hours":time_range_hours,"days_combined":len(all_tick_data)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"H"})+"\n")
+                f.write(json.dumps({"location":"technical_indicators.py:655","message":"Combined all days data","data":{"total_ticks":total_ticks,"time_range_hours":time_range_hours,"days_combined":len(all_tick_data),"rollover_adjusted":cumulative_adjustment != 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"H"})+"\n")
         except: pass
         # #endregion
         
