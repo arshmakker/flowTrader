@@ -467,7 +467,7 @@ def main():
                                     # #region agent log
                                     import json
                                     try:
-                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                             f.write(json.dumps({"location":"main.py:307","message":"Iron Condor trade logged","data":{"lots":lots,"net_credit_total":trade_proposal.get('net_credit_total'),"net_credit":trade_proposal.get('net_credit'),"has_net_credit_total":'net_credit_total' in trade_proposal,"trade_proposal_keys":list(trade_proposal.keys())},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C4"})+"\n")
                                     except: pass
                                     # #endregion
@@ -514,7 +514,7 @@ def main():
                                                 # #region agent log
                                                 import json
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:347","message":"Entering futures position monitoring","data":{"position_id":position.get('trade_id'),"strategy":strategy,"is_futures_strategy":is_futures_strategy},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -523,7 +523,7 @@ def main():
                                                 current_futures_price = get_nifty_futures_price(api, symbol_manager)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:356","message":"Futures price result","data":{"current_futures_price":current_futures_price,"is_none":current_futures_price is None,"type":type(current_futures_price).__name__,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H1"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -531,7 +531,7 @@ def main():
                                                     logger.debug(f"Could not get futures price for position {position['trade_id']}")
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:360","message":"Skipping position - no futures price","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H1"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -543,7 +543,7 @@ def main():
                                                 available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=1)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:363","message":"Available expiries result","data":{"available_expiries":available_expiries,"is_empty":not available_expiries,"len":len(available_expiries) if available_expiries else 0,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H2"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -551,7 +551,7 @@ def main():
                                                     logger.debug(f"Could not get expiry for market state calculation")
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:368","message":"Skipping position - no available expiries","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H2"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -561,7 +561,7 @@ def main():
                                                 option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:375","message":"Option chain result","data":{"option_chain_empty":option_chain.empty if hasattr(option_chain, 'empty') else True,"option_chain_len":len(option_chain) if hasattr(option_chain, '__len__') else 0,"expiry_date":str(expiry_date),"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H3"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -569,7 +569,7 @@ def main():
                                                     logger.debug(f"Could not get option chain for market state")
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:380","message":"Skipping position - empty option chain","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H3"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -578,7 +578,7 @@ def main():
                                                 market_state = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:386","message":"Market state result","data":{"market_state_is_none":market_state is None,"has_market_state":market_state is not None,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H4"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -586,7 +586,7 @@ def main():
                                                     logger.debug(f"Could not build market state for futures position")
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:392","message":"Skipping position - no market state","data":{"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H4"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -603,14 +603,14 @@ def main():
                                                 # #region agent log
                                                 import json
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:387","message":"Getting EMA structure for position monitoring","data":{"position_id":position.get('trade_id'),"direction":position.get('direction')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H1"})+"\n")
                                                 except: pass
                                                 # #endregion
                                                 ema_structure = get_ema_structure(api, symbol_manager, spot_price)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:390","message":"EMA structure result","data":{"ema_structure_is_none":ema_structure is None,"has_ema_50":ema_structure.get('ema_50') is not None if ema_structure else False,"has_ema_100":ema_structure.get('ema_100') is not None if ema_structure else False,"ema_50":ema_structure.get('ema_50') if ema_structure else None,"ema_100":ema_structure.get('ema_100') if ema_structure else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H1"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -672,7 +672,7 @@ def main():
                                                         exit_reason = 'STOP_LOSS_HIT'
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:418","message":"After stop loss check","data":{"should_exit":should_exit,"exit_reason":exit_reason,"current_price":current_futures_price,"stop_loss":current_stop,"direction":direction},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H4"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -684,7 +684,7 @@ def main():
                                                         exit_reason = 'REGIME_CHANGE'
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:424","message":"After regime change check","data":{"should_exit":should_exit,"exit_reason":exit_reason,"current_regime":current_regime,"EXIT_ON_REGIME_CHANGE":EXIT_ON_REGIME_CHANGE},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H4"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -712,7 +712,7 @@ def main():
                                                 # Exit condition 4: EMA structure breaks (with confirmation and smart logic)
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:427","message":"Before EMA structure check","data":{"should_exit":should_exit,"EXIT_ON_EMA_BREAK":EXIT_ON_EMA_BREAK,"ema_structure_is_none":ema_structure is None,"will_check_ema":not should_exit and EXIT_ON_EMA_BREAK and ema_structure is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H1"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -728,7 +728,7 @@ def main():
                                                     ema_100 = ema_structure.get('ema_100')
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:432","message":"Inside EMA structure check","data":{"ema_50":ema_50,"ema_100":ema_100,"has_both_values":ema_50 is not None and ema_100 is not None,"direction":direction,"current_futures_price":current_futures_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H2"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -751,7 +751,7 @@ def main():
                                                         
                                                         # #region agent log
                                                         try:
-                                                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                                 f.write(json.dumps({"location":"main.py:436","message":"EMA structure check with tolerance","data":{"structure_valid":structure_valid,"price":current_futures_price,"ema_50":ema_50,"ema_100":ema_100,"direction":direction,"tolerance_pct":EMA_BREAK_TOLERANCE_PCT},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H3"})+"\n")
                                                         except: pass
                                                         # #endregion
@@ -812,14 +812,14 @@ def main():
                                                                 logger.debug(f"EMA structure restored, reset break count for position {position['trade_id']}")
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:449","message":"After EMA structure check","data":{"should_exit":should_exit,"exit_reason":exit_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H3"})+"\n")
                                                     except: pass
                                                     # #endregion
                                                 else:
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:455","message":"EMA structure check skipped","data":{"should_exit":should_exit,"EXIT_ON_EMA_BREAK":EXIT_ON_EMA_BREAK,"ema_structure_is_none":ema_structure is None,"skip_reason":"should_exit=True" if should_exit else ("EXIT_ON_EMA_BREAK=False" if not EXIT_ON_EMA_BREAK else "ema_structure=None")},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H1"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -918,7 +918,7 @@ def main():
                                                 # Close position if exit condition met
                                                 # #region agent log
                                                 try:
-                                                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                         f.write(json.dumps({"location":"main.py:463","message":"Final exit decision","data":{"should_exit":should_exit,"exit_reason":exit_reason,"position_id":position.get('trade_id')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H5"})+"\n")
                                                 except: pass
                                                 # #endregion
@@ -932,7 +932,7 @@ def main():
                                                     
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:472","message":"Calling close_position","data":{"position_id":position.get('trade_id'),"exit_reason":exit_reason,"current_pnl":current_pnl},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H5"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -945,14 +945,14 @@ def main():
                                                         )
                                                         # #region agent log
                                                         try:
-                                                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                                 f.write(json.dumps({"location":"main.py:480","message":"close_position completed","data":{"position_id":position.get('trade_id'),"success":True},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H5"})+"\n")
                                                         except: pass
                                                         # #endregion
                                                     except Exception as e:
                                                         # #region agent log
                                                         try:
-                                                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                                 f.write(json.dumps({"location":"main.py:485","message":"close_position failed","data":{"position_id":position.get('trade_id'),"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H5"})+"\n")
                                                         except: pass
                                                         # #endregion
@@ -989,7 +989,7 @@ def main():
                                                     )
                                                     # #region agent log
                                                     try:
-                                                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                             f.write(json.dumps({"location":"main.py:609","message":"Position status logged successfully","data":{"position_id":position.get('trade_id'),"current_futures_price":current_futures_price,"current_pnl":current_pnl,"current_stop":current_stop,"current_regime":current_regime},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
                                                     except: pass
                                                     # #endregion
@@ -1186,7 +1186,7 @@ def main():
                                             # #region agent log
                                             import json
                                             try:
-                                                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                                                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                                     f.write(json.dumps({"location":"main.py:800","message":"Exception in position monitoring","data":{"position_id":position.get('trade_id', 'unknown'),"error":str(e),"error_type":type(e).__name__},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
                                             except: pass
                                             # #endregion

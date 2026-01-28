@@ -788,7 +788,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"technical_indicators.py:614","message":"Starting multi-day 15min candle build","data":{"days_to_check":days_to_check,"lookback_hours":lookback_hours,"today":today.strftime('%Y%m%d')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"A"})+"\n")
         except: pass
         # #endregion
@@ -844,7 +844,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
                     
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"technical_indicators.py:644","message":"Loaded day data","data":{"date_str":date_str,"tick_count":len(day_data),"futures_file":futures_file,"contract":contract_symbol,"first_price":first_price,"last_price":last_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"B"})+"\n")
                     except: pass
                     # #endregion
@@ -855,7 +855,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         if not day_data_list:
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"technical_indicators.py:650","message":"No data found","data":{"days_to_check":days_to_check,"days_found":days_found},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"C"})+"\n")
             except: pass
             # #endregion
@@ -892,7 +892,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
                     
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"technical_indicators.py:rollover","message":"Contract rollover adjustment","data":{"old_contract":current_contract,"new_contract":newer_contract,"older_last_price":older_last_price,"newer_first_price":newer_first_price,"rollover_gap":rollover_gap,"cumulative_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"R"})+"\n")
                     except: pass
                     # #endregion
@@ -918,7 +918,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # #region agent log
         try:
             total_ticks = sum(len(df) for df in all_tick_data)
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"technical_indicators.py:653","message":"Combining multi-day data","data":{"days_found":days_found,"total_ticks":total_ticks,"days_to_check":days_to_check,"total_rollover_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"D"})+"\n")
         except: pass
         # #endregion
@@ -931,7 +931,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         try:
             total_ticks = len(tick_data)
             time_range_hours = (tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"technical_indicators.py:655","message":"Combined all days data","data":{"total_ticks":total_ticks,"time_range_hours":time_range_hours,"days_combined":len(all_tick_data),"rollover_adjusted":cumulative_adjustment != 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"H"})+"\n")
         except: pass
         # #endregion
@@ -954,7 +954,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # #region agent log
         try:
             candles_before_limit = len(candles)
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"technical_indicators.py:668","message":"After resampling","data":{"candles_count":candles_before_limit,"tick_data_points":len(tick_data),"time_range_hours":(tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"E"})+"\n")
         except: pass
         # #endregion
@@ -975,7 +975,7 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"technical_indicators.py:695","message":"Final candle count check","data":{"candles_count":len(closes),"needs_100":len(closes) >= 100,"needs_50":len(closes) >= 50,"can_ema50":len(closes) >= 50,"can_ema100":len(closes) >= 100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"F"})+"\n")
         except: pass
         # #endregion

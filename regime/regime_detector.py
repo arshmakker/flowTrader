@@ -282,7 +282,7 @@ class RegimeDetector:
             # #region agent log
             import json
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:250","message":"get_recent_candles entry","data":{"lookback_days":lookback_days,"spot_price":spot_price,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3h"})+"\n")
             except: pass
             # #endregion
@@ -294,7 +294,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:266","message":"get_historical_price_data result","data":{"highs_count":len(highs) if highs else 0,"lows_count":len(lows) if lows else 0,"closes_count":len(closes) if closes else 0,"has_data":highs is not None and lows is not None and closes is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3i"})+"\n")
             except: pass
             # #endregion
@@ -304,7 +304,7 @@ class RegimeDetector:
                 logger.debug("No historical data, using spot price as fallback")
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:270","message":"Using fallback synthetic candles","data":{"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3j"})+"\n")
                 except: pass
                 # #endregion
@@ -327,7 +327,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:290","message":"get_recent_candles returning","data":{"candles_count":len(candles),"needs_20_for_rolling_avg":True,"has_enough":len(candles) >= 20},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3k"})+"\n")
             except: pass
             # #endregion
@@ -338,7 +338,7 @@ class RegimeDetector:
             logger.debug(f"Error getting recent candles: {str(e)}")
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:293","message":"get_recent_candles exception","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3l"})+"\n")
             except: pass
             # #endregion
@@ -385,7 +385,7 @@ class RegimeDetector:
             # #region agent log
             import json
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:329","message":"Regime detection inputs","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"spot_price":spot_price,"has_all_inputs":iv_percentile is not None and adx_14 is not None and spot_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R1"})+"\n")
             except: pass
             # #endregion
@@ -394,7 +394,7 @@ class RegimeDetector:
                 logger.warning("Missing required market_state fields for regime detection")
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:334","message":"Missing inputs - returning NEUTRAL","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R1"})+"\n")
                 except: pass
                 # #endregion
@@ -414,7 +414,7 @@ class RegimeDetector:
                 if api and symbol_manager:
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:348","message":"Calling get_recent_candles","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"spot_price":spot_price,"lookback_days":20},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3e"})+"\n")
                     except: pass
                     # #endregion
@@ -422,7 +422,7 @@ class RegimeDetector:
                     recent_candles = self.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:355","message":"get_recent_candles result","data":{"recent_candles_count":len(recent_candles) if recent_candles else 0,"has_candles":recent_candles is not None and len(recent_candles) > 0 if recent_candles else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3f"})+"\n")
                     except: pass
                     # #endregion
@@ -430,7 +430,7 @@ class RegimeDetector:
                     recent_candles = []
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:362","message":"get_recent_candles skipped - no API","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3g"})+"\n")
                     except: pass
                     # #endregion
@@ -457,14 +457,14 @@ class RegimeDetector:
                         
                         # #region agent log
                         try:
-                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                 f.write(json.dumps({"location":"regime_detector.py:383","message":"ATR calculation results","data":{"atr":atr,"atr_percentile":atr_percentile,"historical_atrs_count":len(historical_atrs)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R2"})+"\n")
                         except: pass
                         # #endregion
             else:
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:359","message":"ATR calculation skipped","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R2"})+"\n")
                 except: pass
                 # #endregion
@@ -474,7 +474,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:413","message":"Recent candles for range calculation","data":{"recent_candles_count":len(recent_candles) if recent_candles else 0,"last_range":last_range,"has_recent_candles":recent_candles is not None and len(recent_candles) > 0 if recent_candles else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3a"})+"\n")
             except: pass
             # #endregion
@@ -495,21 +495,21 @@ class RegimeDetector:
                     rolling_avg_range = np.mean(recent_ranges)
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:428","message":"Rolling avg range calculated","data":{"rolling_avg_range":rolling_avg_range,"recent_ranges_count":len(recent_ranges)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3b"})+"\n")
                     except: pass
                     # #endregion
                 else:
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:435","message":"Rolling avg range - no valid ranges","data":{"recent_candles_count":len(recent_candles),"recent_ranges_count":0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3c"})+"\n")
                     except: pass
                     # #endregion
             else:
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:442","message":"Rolling avg range - insufficient candles","data":{"recent_candles_count":len(recent_candles) if recent_candles else 0,"needs_20":True,"has_enough":recent_candles is not None and len(recent_candles) >= 20 if recent_candles else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3d"})+"\n")
                 except: pass
                 # #endregion
@@ -525,7 +525,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:403","message":"Range state calculation","data":{"last_range":last_range,"rolling_avg_range":rolling_avg_range,"range_state":range_state,"compressed_threshold":rolling_avg_range * 0.6 if rolling_avg_range else None,"expanding_threshold":rolling_avg_range * 1.4 if rolling_avg_range else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3"})+"\n")
             except: pass
             # #endregion
@@ -541,7 +541,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:415","message":"CONVEX regime check","data":{"iv_check":convex_iv_check,"iv_value":iv_percentile,"atr_check":convex_atr_check,"atr_value":atr_percentile,"range_check":convex_range_check,"all_met":convex_all_met},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R4"})+"\n")
             except: pass
             # #endregion
@@ -557,7 +557,7 @@ class RegimeDetector:
                 detected_regime = "INCOME"
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:424","message":"INCOME regime detected","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"atr_percentile":atr_percentile},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R5"})+"\n")
                 except: pass
                 # #endregion
@@ -569,7 +569,7 @@ class RegimeDetector:
                 # #region agent log
                 import json
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"regime_detector.py:431","message":"TREND_CONTINUATION criteria met, checking EMA structure","data":{"adx":adx_14,"atr_percentile":atr_percentile,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"has_closes":closes is not None,"closes_len":len(closes) if closes else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"A"})+"\n")
                 except: pass
                 # #endregion
@@ -584,7 +584,7 @@ class RegimeDetector:
                 if api and symbol_manager:
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:437","message":"Fetching 15-minute candles for EMA","data":{"lookback_hours":30},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"F"})+"\n")
                     except: pass
                     # #endregion
@@ -592,7 +592,7 @@ class RegimeDetector:
                     # Fetch 30 hours of 15-minute candles (120 candles = enough for EMA(100))
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:457","message":"Calling get_15min_candle_data","data":{"lookback_hours":30,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"G1"})+"\n")
                     except: pass
                     # #endregion
@@ -601,7 +601,7 @@ class RegimeDetector:
                     
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:462","message":"15-minute candles fetch result","data":{"ema_closes_is_none":ema_closes is None,"ema_closes_len":len(ema_closes) if ema_closes else 0,"has_data":ema_closes is not None and len(ema_closes) > 0 if ema_closes else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"G2"})+"\n")
                     except: pass
                     # #endregion
@@ -611,7 +611,7 @@ class RegimeDetector:
                 if api and symbol_manager and ema_closes and len(ema_closes) >= 100:
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:450","message":"Starting EMA calculation","data":{"closes_count":len(ema_closes),"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B"})+"\n")
                     except: pass
                     # #endregion
@@ -623,7 +623,7 @@ class RegimeDetector:
                     
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:455","message":"EMA calculation results","data":{"ema_50":ema_50,"ema_100":ema_100,"current_price":current_price,"has_all_values":ema_50 is not None and ema_100 is not None and current_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"C"})+"\n")
                     except: pass
                     # #endregion
@@ -638,7 +638,7 @@ class RegimeDetector:
                         
                         # #region agent log
                         try:
-                            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                                 f.write(json.dumps({"location":"regime_detector.py:461","message":"EMA structure check","data":{"long_structure":long_structure,"short_structure":short_structure,"directional_bias_stable":directional_bias_stable,"price_ema50":current_price > ema_50,"ema50_ema100":ema_50 > ema_100,"price_ema50_val":current_price - ema_50,"ema50_ema100_val":ema_50 - ema_100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"D"})+"\n")
                         except: pass
                         # #endregion
@@ -650,7 +650,7 @@ class RegimeDetector:
                 else:
                     # #region agent log
                     try:
-                        with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                             f.write(json.dumps({"location":"regime_detector.py:468","message":"EMA check skipped - insufficient data","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"has_ema_closes":ema_closes is not None if 'ema_closes' in locals() else False,"ema_closes_len":len(ema_closes) if 'ema_closes' in locals() and ema_closes else 0,"needs_100":len(ema_closes) >= 100 if 'ema_closes' in locals() and ema_closes else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"E"})+"\n")
                     except: pass
                     # #endregion
@@ -689,7 +689,7 @@ class RegimeDetector:
             
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"regime_detector.py:592","message":"Final regime result","data":{"regime":confirmed_regime,"detected_regime":detected_regime,"iv_percentile":iv_percentile,"adx":adx_14,"atr":atr,"atr_percentile":atr_percentile,"range_state":range_state,"confirmation_count":RegimeDetector._confirmation_count_current},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R6"})+"\n")
             except: pass
             # #endregion

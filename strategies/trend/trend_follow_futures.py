@@ -143,7 +143,7 @@ def get_ema_structure(api, symbol_manager, spot_price) -> Optional[Dict]:
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:93","message":"Calling get_15min_candle_data for EMA","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"E1"})+"\n")
         except: pass
         # #endregion
@@ -154,7 +154,7 @@ def get_ema_structure(api, symbol_manager, spot_price) -> Optional[Dict]:
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:99","message":"15-minute candle data result","data":{"closes_is_none":closes is None,"closes_len":len(closes) if closes else 0,"has_sufficient_data":closes is not None and len(closes) >= 100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"E2"})+"\n")
         except: pass
         # #endregion
@@ -170,7 +170,7 @@ def get_ema_structure(api, symbol_manager, spot_price) -> Optional[Dict]:
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:108","message":"EMA calculation results","data":{"ema_50":ema_50,"ema_100":ema_100,"current_price":current_price,"has_all_values":ema_50 is not None and ema_100 is not None and current_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"E3"})+"\n")
         except: pass
         # #endregion
@@ -186,7 +186,7 @@ def get_ema_structure(api, symbol_manager, spot_price) -> Optional[Dict]:
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:120","message":"EMA structure check","data":{"long_structure":long_structure,"short_structure":short_structure,"price_ema50":current_price > ema_50,"ema50_ema100":ema_50 > ema_100,"price":current_price,"ema50":ema_50,"ema100":ema_100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"E4"})+"\n")
         except: pass
         # #endregion
@@ -233,7 +233,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:182","message":"calculate_position_size entry","data":{"futures_price":futures_price,"atr":atr,"capital":capital,"lot_size":lot_size,"INITIAL_STOP_LOSS_ATR_MULTIPLIER":INITIAL_STOP_LOSS_ATR_MULTIPLIER,"MAX_RISK_PCT_OF_CAPITAL":MAX_RISK_PCT_OF_CAPITAL,"MAX_POSITION_SIZE":MAX_POSITION_SIZE},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H2,H4"})+"\n")
         except: pass
         # #endregion
@@ -244,7 +244,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:190","message":"Risk per share calculated","data":{"stop_loss_atr":stop_loss_atr,"risk_per_share":risk_per_share},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H2"})+"\n")
         except: pass
         # #endregion
@@ -254,7 +254,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:196","message":"Max risk amount calculated","data":{"max_risk_amount":max_risk_amount,"capital":capital,"MAX_RISK_PCT_OF_CAPITAL":MAX_RISK_PCT_OF_CAPITAL},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H2,H4"})+"\n")
         except: pass
         # #endregion
@@ -268,7 +268,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:203","message":"Max lots by risk calculated","data":{"max_lots_by_risk_raw":max_lots_by_risk_raw,"max_lots_by_risk":max_lots_by_risk,"max_risk_amount":max_risk_amount,"risk_per_lot":risk_per_lot,"risk_per_share":risk_per_share,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H2,H5"})+"\n")
         except: pass
         # #endregion
@@ -278,7 +278,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:210","message":"Max lots after limit","data":{"max_lots":max_lots,"max_lots_by_risk":max_lots_by_risk,"MAX_POSITION_SIZE":MAX_POSITION_SIZE,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H3"})+"\n")
         except: pass
         # #endregion
@@ -289,7 +289,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:217","message":"Lots and quantity calculated","data":{"lots":lots,"quantity":quantity,"max_quantity":max_quantity,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1"})+"\n")
         except: pass
         # #endregion
@@ -298,7 +298,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
             logger.warning(f"Position size is 0: risk_per_share={risk_per_share:.2f}, max_risk={max_risk_amount:.2f}")
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"trend_follow_futures.py:223","message":"Position size is 0 - returning zero","data":{"risk_per_share":risk_per_share,"max_risk_amount":max_risk_amount,"max_quantity_by_risk":max_quantity_by_risk,"max_quantity":max_quantity,"lots":lots,"quantity":quantity},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1,H2,H3"})+"\n")
             except: pass
             # #endregion
@@ -318,7 +318,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:241","message":"Position size calculated successfully","data":{"lots":lots,"quantity":quantity,"actual_risk_amount":actual_risk_amount,"risk_per_share":risk_per_share},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1"})+"\n")
         except: pass
         # #endregion
@@ -335,7 +335,7 @@ def calculate_position_size(futures_price: float, atr: float, capital: float,
         logger.error(f"Error calculating position size: {str(e)}")
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:252","message":"Exception in calculate_position_size","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-size-debug","hypothesisId":"H1"})+"\n")
         except: pass
         # #endregion
@@ -396,7 +396,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:248","message":"generate_trend_follow_trade called","data":{"regime":market_state.get('regime'),"spot_price":market_state.get('spot_price'),"atr":market_state.get('atr'),"adx":market_state.get('adx_14')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T0"})+"\n")
         except: pass
         # #endregion
@@ -406,7 +406,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         if regime != "TREND_CONTINUATION":
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"trend_follow_futures.py:252","message":"Regime check failed","data":{"regime":regime,"expected":"TREND_CONTINUATION"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T0a"})+"\n")
             except: pass
             # #endregion
@@ -496,7 +496,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:278","message":"Calling get_ema_structure","data":{"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T1"})+"\n")
         except: pass
         # #endregion
@@ -505,7 +505,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:282","message":"EMA structure result","data":{"ema_structure_is_none":ema_structure is None,"has_direction":ema_structure.get('direction') if ema_structure else None,"ema_50":ema_structure.get('ema_50') if ema_structure else None,"ema_100":ema_structure.get('ema_100') if ema_structure else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T2"})+"\n")
         except: pass
         # #endregion
@@ -518,7 +518,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:290","message":"Direction check","data":{"direction":direction,"has_direction":direction is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T3"})+"\n")
         except: pass
         # #endregion
@@ -536,7 +536,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:290","message":"Calculating position size","data":{"futures_price":futures_price,"atr":atr,"capital":capital,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T6"})+"\n")
         except: pass
         # #endregion
@@ -545,7 +545,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"trend_follow_futures.py:295","message":"Position size result","data":{"quantity":position_info.get('quantity'),"lots":position_info.get('lots'),"risk_amount":position_info.get('risk_amount')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T7"})+"\n")
         except: pass
         # #endregion

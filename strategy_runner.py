@@ -28,7 +28,7 @@ from technical_indicators import (
 )
 
 # Debug logging setup
-DEBUG_LOG_PATH = '/Users/arshdeep/git/ironcondor/.cursor/debug.log'
+DEBUG_LOG_PATH = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
 
 def _debug_log(location, message, data, hypothesis_id=None):
     """Write debug log entry"""
@@ -887,7 +887,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             # #region agent log
             import json
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategy_runner.py:884","message":"NEUTRAL sub-state determined","data":{"neutral_sub_state":neutral_sub_state,"adx_14":market_state.get('adx_14'),"iv_percentile":market_state.get('iv_percentile'),"atr_percentile":regime_info.get('atr_percentile'),"range_state":regime_info.get('range_state')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S2"})+"\n")
             except: pass
             # #endregion
@@ -911,7 +911,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"strategy_runner.py:896","message":"Added regime to market_state","data":{"regime":regime,"market_state_regime":market_state.get('regime'),"atr":market_state.get('atr'),"atr_percentile":market_state.get('atr_percentile')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"S1"})+"\n")
         except: pass
         # #endregion
@@ -924,7 +924,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         # #region agent log
         import json
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"strategy_runner.py:910","message":"Strategy routing decision","data":{"regime":regime,"neutral_sub_state":neutral_sub_state,"has_position_tracker":position_tracker is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S3"})+"\n")
         except: pass
         # #endregion
@@ -945,7 +945,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 no_trade_reason = "NO_VALID_TRADE"
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategy_runner.py:925","message":"Iron Condor strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S4"})+"\n")
             except: pass
             # #endregion
@@ -968,7 +968,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 no_trade_reason = "NO_VALID_TRADE"
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategy_runner.py:942","message":"Convex Backspread strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S5"})+"\n")
             except: pass
             # #endregion
@@ -991,7 +991,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 no_trade_reason = "NO_VALID_TRADE"
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategy_runner.py:959","message":"Trend Follow strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S6"})+"\n")
             except: pass
             # #endregion
@@ -1016,7 +1016,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                     no_trade_reason = "NO_VALID_TRADE"
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
                 except: pass
                 # #endregion
@@ -1084,7 +1084,7 @@ def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, ma
             if trade_proposal:
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"strategy_runner.py:1082","message":"Trade proposal received from generate_iron_condor_trade","data":{"has_trade_proposal":trade_proposal is not None,"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"has_net_credit_total":'net_credit_total' in trade_proposal if trade_proposal else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C5"})+"\n")
                 except: pass
                 # #endregion
@@ -1096,7 +1096,7 @@ def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, ma
                 
                 # #region agent log
                 try:
-                    with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                         f.write(json.dumps({"location":"strategy_runner.py:1090","message":"Trade proposal after adding regime info","data":{"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"regime_at_entry":trade_proposal.get('regime_at_entry')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C6"})+"\n")
                 except: pass
                 # #endregion

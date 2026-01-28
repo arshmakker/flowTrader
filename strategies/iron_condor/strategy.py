@@ -130,7 +130,7 @@ def generate_iron_condor_trade(
             # #region agent log
             import json
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategies/iron_condor/strategy.py:122","message":"Payoff validation result","data":{"net_credit":payoff.get('net_credit'),"max_loss":payoff.get('max_loss'),"reward_to_risk":payoff.get('reward_to_risk'),"is_valid":payoff.get('is_valid', True)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C1"})+"\n")
             except: pass
             # #endregion
@@ -138,7 +138,7 @@ def generate_iron_condor_trade(
             logger.info(f"Payoff validation failed: {str(e)}")
             # #region agent log
             try:
-                with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                     f.write(json.dumps({"location":"strategies/iron_condor/strategy.py:129","message":"Payoff validation rejected","data":{"error":str(e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C2"})+"\n")
             except: pass
             # #endregion
@@ -296,7 +296,7 @@ def generate_iron_condor_trade(
         
         # #region agent log
         try:
-            with open('/Users/arshdeep/git/ironcondor/.cursor/debug.log', 'a') as f:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
                 f.write(json.dumps({"location":"strategies/iron_condor/strategy.py:265","message":"Trade proposal created","data":{"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":lots,"payoff_net_credit":payoff['net_credit']},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C3"})+"\n")
         except: pass
         # #endregion
