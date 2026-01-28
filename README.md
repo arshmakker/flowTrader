@@ -1,37 +1,66 @@
-# Market Data Collection System
+# RegimeTrader
 
-A Python-based market data collection system for NIFTY 50, BANKNIFTY, and FINNIFTY stocks and their index derivatives using the Shoonya API. The system collects real-time tick data for analysis purposes.
+A Python-based multi-strategy trading system with regime detection for NIFTY derivatives using the Shoonya API. The system automatically detects market regimes and routes to appropriate strategies.
+
+## Trading Strategies
+
+| Regime | Strategy | Conditions |
+|--------|----------|------------|
+| **INCOME** | Iron Condor | IV > 60%, ADX < 20, ATR% < 50% |
+| **CONVEX** | Call Backspread | IV < 40%, ATR% < 25%, Range compressed |
+| **TREND_CONTINUATION** | Trend Following Futures | ADX >= 30, ATR% >= 50%, EMA aligned |
+| **NEUTRAL_ACTIVE** | Calendar Spread | IV 40-60%, ADX 18-25 |
+| **NEUTRAL_PASSIVE** | No trade | Conditions don't match any strategy |
+
+## Key Features
+
+- **Regime Detection**: Automatically identifies market conditions using IV percentile, ADX, ATR percentile, and EMA structure
+- **Multi-Strategy Routing**: Routes to appropriate strategy based on detected regime
+- **Contract Rollover Handling**: Adjusts for futures contract price discontinuities
+- **Position Management**: Tracks positions, trailing stops, and exit conditions
+- **Risk Management**: Per-trade risk limits, mutual exclusion between strategies
+- **Market Data Collection**: Real-time tick data for equities, futures, and options
 
 ## System Architecture
 
 ### Core Components
 
-1. **API Integration** (`api_helper.py`)
+1. **Regime Detection** (`regime/regime_detector.py`)
+   - Detects market conditions using IV, ADX, ATR, EMA structure
+   - Implements regime persistence (anti-whipsaw)
+   - Handles contract rollover adjustment for accurate EMA calculation
+
+2. **Strategy Runner** (`strategy_runner.py`)
+   - Routes to appropriate strategy based on detected regime
+   - Enforces mutual exclusion between strategies
+   - Logs all decisions for auditability
+
+3. **Strategies** (`strategies/`)
+   - `iron_condor/` - Iron Condor for high IV, low movement markets
+   - `convex/` - Call Backspread for low IV, compressed range
+   - `trend/` - Trend Following Futures for trending markets
+   - `neutral/` - Calendar Spread for range-bound neutral markets
+
+4. **API Integration** (`api_helper.py`)
    - Wrapper for Shoonya API
    - Handles authentication and API communication
    - Manages market data subscriptions
 
-2. **Symbol Management** (`symbol_manager.py`)
+5. **Symbol Management** (`symbol_manager.py`)
    - Manages trading symbols and contracts
    - Handles expiry calculations
    - Maintains symbol mappings for NFO and NSE
 
-3. **Data Collection** (`data_collector.py`)
+6. **Data Collection** (`data_collector.py`)
    - Real-time market data collection
    - Tick-by-tick data processing
    - Data storage in structured format
    - Automatic directory management
 
-4. **Paper Trading** (`paper_trader.py`)
-   - Simulated trading environment
-   - Position management
-   - Risk management
-   - PnL tracking
-
-5. **Strategy Testing** (`strategy_tester.py`)
-   - Backtesting framework
-   - Strategy performance analysis
-   - Parameter optimization
+7. **Position Tracking** (`strategies/iron_condor/position_tracker.py`)
+   - Tracks all open positions across strategies
+   - Monitors exit conditions (stop loss, trailing stop, regime change)
+   - Records performance by regime
 
 ## System Requirements
 
@@ -54,7 +83,7 @@ A Python-based market data collection system for NIFTY 50, BANKNIFTY, and FINNIF
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd shoonyapythonmod
+cd regimetrader
 ```
 
 2. Install required packages:
@@ -119,28 +148,33 @@ Data is stored in `market_data_YYYYMMDD/` directories:
 ## Directory Structure
 
 ```
-shoonyapythonmod/
+regimetrader/
 ├── main.py                 # Main entry point
+├── strategy_runner.py      # Strategy routing with regime detection
 ├── api_helper.py           # Shoonya API wrapper
 ├── symbol_manager.py       # Symbol management
 ├── data_collector.py       # Market data collection
-├── paper_trader.py         # Paper trading system
-├── strategy_tester.py      # Strategy testing framework
-├── example_orders.py       # Order examples
-├── example_market.py       # Market data examples
-├── tests/                  # Test suite
-│   └── test_api.py        # API tests
-├── market_data_YYYYMMDD/   # Daily market data
-│   ├── raw_data/          # Raw tick data
-│   └── processed_data/    # Processed market data
-├── logs/                   # System logs
-├── data/                   # Additional data files
-├── symbols/               # Symbol information
-│   ├── NFO.csv           # NFO symbols
-│   └── NSE.csv           # NSE symbols
-├── cred.yml              # API credentials
-├── cred.yml.template     # Credentials template
-└── requirements.txt      # Dependencies
+├── technical_indicators.py # IV, ADX, ATR, EMA calculations
+├── regime/                 # Regime detection
+│   └── regime_detector.py  # Market regime detection logic
+├── strategies/             # Trading strategies
+│   ├── iron_condor/       # Iron Condor strategy
+│   ├── convex/            # Call Backspread strategy
+│   ├── trend/             # Trend Following Futures
+│   └── neutral/           # Calendar Spread strategy
+├── diagnostics/           # System diagnostics and validation
+├── tests/                 # Test suite
+├── market_data_YYYYMMDD/  # Daily market data
+│   └── raw_data/          # Raw tick data (cash, futures, options)
+├── market_data_iv/        # Historical IV data
+├── market_data_atr/       # ATR history
+├── logs/                  # System logs
+├── symbols/               # Symbol information (NFO.csv, NSE.csv)
+├── active_positions.json  # Current open positions
+├── strategy_decisions.json # Strategy decision log
+├── performance_by_regime.json # Performance tracking
+├── cred.yml               # API credentials (from template)
+└── requirements.txt       # Dependencies
 
 ## Data Collection Features
 

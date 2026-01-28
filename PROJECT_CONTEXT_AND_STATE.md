@@ -1,7 +1,7 @@
 ## Project context
 
-- **Name**: `ironcondor`
-- **Goal**: Options strategy system with regime detection + strategy selection; includes historical market-data storage and backtesting utilities.
+- **Name**: `regimetrader`
+- **Goal**: Multi-strategy trading system with regime detection that automatically routes to appropriate strategies based on market conditions. Supports Iron Condor (INCOME), Call Backspread (CONVEX), Trend Following Futures (TREND_CONTINUATION), and Calendar Spreads (NEUTRAL). Includes market data collection, position tracking, and backtesting utilities.
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` runs Iron Condor proposal/exit logic against stored tick data.
 
