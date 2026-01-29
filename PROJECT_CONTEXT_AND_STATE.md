@@ -5,7 +5,15 @@
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` runs Iron Condor proposal/exit logic against stored tick data.
 
-## Current state (2026-01-28)
+## Current state (2026-01-29)
+
+### Trend Strategy: ATR Profit Target & Tighter Trail (2026-01-29)
+
+**Implemented**:
+1. **ATR profit target (#2)** – Exit when unrealized profit in points ≥ `PROFIT_TARGET_ATR_MULTIPLIER × ATR` (0.25× ATR). Books gains proactively instead of relying only on trailing stop and regime change. Config: `strategies/trend/config.py` → `PROFIT_TARGET_ATR_MULTIPLIER = 0.25`. Exit reason logged as `PROFIT_TARGET_ATR`.
+2. **Tighter trail in very large profit (#4)** – Added Phase 5: when profit ≥ 2.5× ATR, trailing stop uses 0.75× ATR (Phase 4 remains 1× ATR at 2× ATR profit). Config: `HYBRID_PHASE4_THRESHOLD_ATR = 2.5`, `HYBRID_PHASE4_MULTIPLIER = 0.75`. Phase names: `PHASE4_VERY_TIGHT`, `PHASE5_VERY_LARGE_PROFIT`.
+
+**Context**: On 2026-01-29 a SHORT trend trade reached ~₹6,467 profit (~0.39× ATR) then reversed; regime-change exit later closed at -₹1,930. A 0.5× ATR profit target would have locked ~₹8,231 had price reached it; a 0.25× target would have locked ~₹4,115 at peak. Regime-change exit already exits at current P&L (#1); no code change for that.
 
 ### Live Trading Status
 - **Active strategies**: Trend Following Futures (TREND_CONTINUATION regime)

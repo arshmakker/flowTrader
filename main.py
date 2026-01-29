@@ -689,6 +689,19 @@ def main():
                                                 except: pass
                                                 # #endregion
                                                 
+                                                # Exit condition 2b: ATR profit target (book gains proactively)
+                                                if not should_exit and current_atr > 0:
+                                                    from strategies.trend.config import PROFIT_TARGET_ATR_MULTIPLIER
+                                                    qty = position.get('quantity', 0)
+                                                    if qty and qty > 0:
+                                                        unrealized_pnl_points = abs(current_pnl) / qty if current_pnl > 0 else 0
+                                                        if current_pnl > 0 and unrealized_pnl_points >= (current_atr * PROFIT_TARGET_ATR_MULTIPLIER):
+                                                            should_exit = True
+                                                            exit_reason = 'PROFIT_TARGET_ATR'
+                                                            logger.info(
+                                                                f"ATR profit target hit: P&L=₹{current_pnl:.2f} (≥ {PROFIT_TARGET_ATR_MULTIPLIER}× ATR = {current_atr * PROFIT_TARGET_ATR_MULTIPLIER:.1f} pts), closing position"
+                                                            )
+                                                
                                                 # Exit condition 3: Expiry date approaching
                                                 if not should_exit:
                                                     from strategies.trend.config import EXIT_DAYS_BEFORE_EXPIRY
@@ -832,9 +845,11 @@ def main():
                                                         HYBRID_BREAKEVEN_THRESHOLD_ATR,
                                                         HYBRID_PHASE2_THRESHOLD_ATR,
                                                         HYBRID_PHASE3_THRESHOLD_ATR,
+                                                        HYBRID_PHASE4_THRESHOLD_ATR,
                                                         HYBRID_PHASE1_MULTIPLIER,
                                                         HYBRID_PHASE2_MULTIPLIER,
-                                                        HYBRID_PHASE3_MULTIPLIER
+                                                        HYBRID_PHASE3_MULTIPLIER,
+                                                        HYBRID_PHASE4_MULTIPLIER
                                                     )
                                                     
                                                     # Calculate unrealized P&L in points
@@ -862,10 +877,14 @@ def main():
                                                             # Phase 3: Medium profit - tighter 1.5× ATR
                                                             trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
                                                             trail_phase = 'PHASE3_TIGHT'
-                                                        else:
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE4_THRESHOLD_ATR):
                                                             # Phase 4: Large profit - very tight 1× ATR
                                                             trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
                                                             trail_phase = 'PHASE4_VERY_TIGHT'
+                                                        else:
+                                                            # Phase 5: Very large profit - 0.75× ATR (tighter trail in big profit)
+                                                            trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
+                                                            trail_phase = 'PHASE5_VERY_LARGE_PROFIT'
                                                     else:
                                                         # FIXED mode: Standard 2× ATR trailing
                                                         trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
@@ -877,7 +896,7 @@ def main():
                                                         new_trailing_stop = current_futures_price - trailing_stop_distance
                                                         
                                                         # In profit phases, ensure stop is at least at breakeven
-                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT']:
+                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_VERY_LARGE_PROFIT']:
                                                             new_trailing_stop = max(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves up (tightens) for LONG
@@ -886,7 +905,7 @@ def main():
                                                         new_trailing_stop = current_futures_price + trailing_stop_distance
                                                         
                                                         # In profit phases, ensure stop is at least at breakeven
-                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT']:
+                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_VERY_LARGE_PROFIT']:
                                                             new_trailing_stop = min(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves down (tightens) for SHORT

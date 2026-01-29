@@ -317,5 +317,16 @@
     "max_loss": 49319.67857142854,
     "lots": 1,
     "trade_id": "2026-01-28T13:07:09.364713"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-01-29T09:19:02.447804",
+    "exit_time": "2026-01-29T11:24:43.941581",
+    "pnl": -1930.5000000000473,
+    "max_loss": 49385.14285714284,
+    "lots": 1,
+    "trade_id": "2026-01-29T09:19:02.445086"
   }
 ]
