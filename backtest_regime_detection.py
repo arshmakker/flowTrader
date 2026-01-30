@@ -1,11 +1,11 @@
 """
 Regime Detection Validation Backtest
 
-Validates regime detection accuracy on historical data:
-- Regime detection accuracy (CONVEX, INCOME, NEUTRAL, TREND_CONTINUATION)
-- Regime persistence (confirmation count logic)
-- Indicator calculation accuracy (IV%, ADX, ATR%, Range state)
-- Regime transitions and timing
+Validates regime detection using production logic (classify_regime_from_indicators):
+- CONVEX, INCOME, TREND_CONTINUATION, NEUTRAL with production thresholds
+- IV from CSV, daily_metrics.json, or volatility proxy when no IV data
+- Indicator accuracy (IV%, ADX, ATR%, range, EMA direction)
+- Regime transitions and distribution report
 """
 
 import pandas as pd
@@ -18,9 +18,13 @@ from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import glob
 
-from regime.regime_detector import RegimeDetector
-from technical_indicators import calculate_iv_percentile, calculate_atm_iv, calculate_adx, get_historical_price_data
-from symbol_manager import SymbolManager
+from regime.regime_detector import RegimeDetector, classify_regime_from_indicators
+from technical_indicators import calculate_adx, calculate_ema
+from backtest_trend_following import (
+    load_backtest_iv_csv,
+    load_daily_metrics,
+    iv_percentile_from_vol_history,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('RegimeBacktest')
@@ -115,193 +119,229 @@ class RegimeDetectionBacktester:
         candles = candles.dropna()
         return candles
     
-    def calculate_indicators(self, candles: pd.DataFrame, options_data: Dict, spot_price: float) -> Dict:
-        """Calculate all indicators needed for regime detection"""
+    def _atr_percentile_and_range(self, candles_df: pd.DataFrame, atr_period: int = 14,
+                                   range_lookback: int = 20) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """ATR percentile (0-100), last_range, rolling_avg_range from candles (production-style)."""
+        if len(candles_df) < atr_period + 5 or 'high' not in candles_df.columns or 'low' not in candles_df.columns:
+            return None, None, None
+        highs = candles_df['high'].tolist()
+        lows = candles_df['low'].tolist()
+        closes = candles_df['close'].tolist()
+        atr_values = []
+        for i in range(atr_period - 1, len(closes)):
+            h = highs[max(0, i - atr_period + 1):i + 1]
+            l_ = lows[max(0, i - atr_period + 1):i + 1]
+            c = closes[max(0, i - atr_period):i + 1]
+            if len(h) >= atr_period and len(l_) >= atr_period and len(c) >= atr_period + 1:
+                a = self.regime_detector.calculate_atr(h, l_, c, period=atr_period)
+                if a is not None:
+                    atr_values.append(a)
+        if not atr_values:
+            return None, None, None
+        current_atr = atr_values[-1]
+        atr_percentile = (sum(1 for a in atr_values if a <= current_atr) / len(atr_values)) * 100.0
+        last_range = float(highs[-1] - lows[-1]) if highs and lows else None
+        n = min(range_lookback, len(highs), len(lows))
+        rolling_avg_range = (sum(float(highs[-i - 1] - lows[-i - 1]) for i in range(n)) / n) if n > 0 else None
+        return atr_percentile, last_range, rolling_avg_range
+
+    def _compute_daily_vol_proxy(self, candles: pd.DataFrame, atr_period: int = 14) -> Optional[float]:
+        """Daily vol proxy = ATR(14)/close for IV proxy when no IV data."""
+        if candles is None or len(candles) < atr_period + 1:
+            return None
+        if 'high' not in candles.columns or 'low' not in candles.columns or 'close' not in candles.columns:
+            return None
+        highs = candles['high'].tolist()
+        lows = candles['low'].tolist()
+        closes = candles['close'].tolist()
+        atr = self.regime_detector.calculate_atr(highs, lows, closes, period=atr_period)
+        if atr is None or not closes or closes[-1] <= 0:
+            return None
+        return float(atr) / float(closes[-1])
+
+    def calculate_indicators(self, candles: pd.DataFrame, spot_price: float) -> Dict:
+        """Calculate all indicators needed for production regime detection (needs >= 100 bars)."""
         indicators = {
             'spot_price': spot_price,
-            'iv_percentile': None,
             'adx_14': None,
             'atr': None,
             'atr_percentile': None,
-            'range_state': 'NORMAL'
+            'last_range': None,
+            'rolling_avg_range': None,
+            'ema_50': None,
+            'ema_100': None,
         }
-        
-        # Calculate ADX and ATR from candles
-        if len(candles) >= 15:
-            highs = candles['high'].tolist()
-            lows = candles['low'].tolist()
-            closes = candles['close'].tolist()
-            
-            # Calculate ADX
-            indicators['adx_14'] = calculate_adx(highs, lows, closes, period=14)
-            
-            # Calculate ATR
-            indicators['atr'] = self.regime_detector.calculate_atr(highs, lows, closes, period=14)
-            
-            # Calculate ATR percentile
-            if indicators['atr']:
-                indicators['atr_percentile'] = self.regime_detector.calculate_atr_percentile(
-                    indicators['atr']
-                )
-        
-        # Calculate IV percentile from options data
-        if options_data:
-            try:
-                # Build option chain DataFrame
-                option_chain_rows = []
-                for symbol, df in options_data.items():
-                    if not df.empty and 'ltp' in df.columns:
-                        # Get latest quote
-                        latest = df.sort_values('timestamp').iloc[-1]
-                        if 'strike' in latest and 'option_type' in latest:
-                            option_chain_rows.append({
-                                'symbol': symbol,
-                                'strike': float(latest['strike']),
-                                'option_type': latest['option_type'],
-                                'ltp': float(latest['ltp']) if pd.notna(latest['ltp']) else 0,
-                                'bid': float(latest.get('bid', 0)) if pd.notna(latest.get('bid', 0)) else 0,
-                                'ask': float(latest.get('ask', 0)) if pd.notna(latest.get('ask', 0)) else 0,
-                            })
-                
-                if option_chain_rows:
-                    option_chain_df = pd.DataFrame(option_chain_rows)
-                    # Estimate days to expiry (simplified - use 7 for weekly)
-                    days_to_expiry = 7
-                    indicators['iv_percentile'] = calculate_iv_percentile(
-                        option_chain_df, spot_price, days_to_expiry
-                    )
-            except Exception as e:
-                logger.debug(f"Error calculating IV percentile: {str(e)}")
-        
+        if len(candles) < 100:
+            return indicators
+        highs = candles['high'].tolist()
+        lows = candles['low'].tolist()
+        closes = candles['close'].tolist()
+        indicators['adx_14'] = calculate_adx(highs, lows, closes, period=14)
+        indicators['atr'] = self.regime_detector.calculate_atr(highs, lows, closes, period=14)
+        atr_pct, last_range, rolling_avg_range = self._atr_percentile_and_range(
+            candles, atr_period=14, range_lookback=20
+        )
+        indicators['atr_percentile'] = atr_pct
+        indicators['last_range'] = last_range
+        indicators['rolling_avg_range'] = rolling_avg_range
+        indicators['ema_50'] = calculate_ema(closes, period=50)
+        indicators['ema_100'] = calculate_ema(closes, period=100)
         return indicators
     
-    def detect_regime_for_timestamp(self, indicators: Dict, timestamp: datetime) -> Dict:
-        """Detect regime for a specific timestamp"""
-        market_state = {
-            'spot_price': indicators['spot_price'],
-            'iv_percentile': indicators['iv_percentile'] or 50.0,  # Default if missing
-            'adx_14': indicators['adx_14'] or 0,
-            'atr': indicators['atr'],
-            'atr_percentile': indicators['atr_percentile']
-        }
-        
-        # Use RegimeDetector (simplified - no API/symbol_manager in backtest)
-        # We'll use a simplified version that doesn't require API
-        regime_result = self._simplified_regime_detection(market_state)
-        
+    def _ema_direction(self, current_price: float, ema_50: float, ema_100: float) -> Optional[str]:
+        """LONG / SHORT / None from price vs EMA50 vs EMA100 (production logic)."""
+        if not all([current_price, ema_50, ema_100]):
+            return None
+        if current_price > ema_50 > ema_100:
+            return 'LONG'
+        if current_price < ema_50 < ema_100:
+            return 'SHORT'
+        return None
+
+    def detect_regime_for_timestamp(self, indicators: Dict, iv_pct: Optional[float],
+                                    timestamp: datetime,
+                                    india_vix: Optional[float] = None) -> Dict:
+        """Detect regime using production classify_regime_from_indicators."""
+        adx = indicators.get('adx_14') or 0
+        atr_pct = indicators.get('atr_percentile')
+        last_range = indicators.get('last_range')
+        rolling_avg = indicators.get('rolling_avg_range')
+        range_compressed = (
+            last_range is not None and rolling_avg is not None
+            and rolling_avg > 0 and last_range < 0.6 * rolling_avg
+        )
+        current_price = indicators.get('spot_price')
+        ema_50 = indicators.get('ema_50')
+        ema_100 = indicators.get('ema_100')
+        ema_direction = self._ema_direction(current_price, ema_50, ema_100)
+        regime = classify_regime_from_indicators(
+            iv_percentile=iv_pct,
+            adx_14=adx,
+            atr_percentile=atr_pct,
+            range_compressed=range_compressed,
+            ema_direction=ema_direction,
+            india_vix=india_vix,
+        )
         return {
             'timestamp': timestamp,
-            'regime': regime_result['regime'],
-            'indicators': indicators,
-            'regime_details': regime_result
+            'regime': regime,
+            'indicators': {**indicators, 'iv_percentile': iv_pct},
+            'regime_details': {
+                'regime': regime,
+                'iv_percentile': iv_pct,
+                'adx': adx,
+                'atr_percentile': atr_pct,
+                'range_state': 'COMPRESSED' if range_compressed else 'NORMAL',
+            },
         }
     
-    def _simplified_regime_detection(self, market_state: Dict) -> Dict:
-        """Simplified regime detection for backtest (without API dependencies)"""
-        iv_percentile = market_state.get('iv_percentile', 50.0)
-        adx_14 = market_state.get('adx_14', 0)
-        atr_percentile = market_state.get('atr_percentile')
-        spot_price = market_state.get('spot_price', 0)
-        
-        # CONVEX: Low IV, compressed volatility
-        if iv_percentile < 40 and atr_percentile and atr_percentile < 25:
-            return {
-                'regime': 'CONVEX',
-                'iv_percentile': iv_percentile,
-                'adx': adx_14,
-                'atr_percentile': atr_percentile,
-                'range_state': 'COMPRESSED'
-            }
-        
-        # INCOME: High IV, low trend
-        if iv_percentile >= 50 and adx_14 < 25:
-            return {
-                'regime': 'INCOME',
-                'iv_percentile': iv_percentile,
-                'adx': adx_14,
-                'atr_percentile': atr_percentile,
-                'range_state': 'NORMAL'
-            }
-        
-        # TREND_CONTINUATION: Strong trend
-        if adx_14 >= 30 and atr_percentile and atr_percentile >= 50:
-            return {
-                'regime': 'TREND_CONTINUATION',
-                'iv_percentile': iv_percentile,
-                'adx': adx_14,
-                'atr_percentile': atr_percentile,
-                'range_state': 'EXPANDING'
-            }
-        
-        # NEUTRAL: Default
-        return {
-            'regime': 'NEUTRAL',
-            'iv_percentile': iv_percentile,
-            'adx': adx_14,
-            'atr_percentile': atr_percentile,
-            'range_state': 'NORMAL'
-        }
-    
-    def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
-        """Run regime detection validation on historical data"""
+    def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15,
+                     iv_csv_path: Optional[str] = None):
+        """Run regime detection validation using production logic. IV from CSV, daily_metrics, or vol proxy."""
         logger.info(f"Starting regime detection validation from {start_date} to {end_date}")
+        self._iv_by_date = load_backtest_iv_csv(iv_csv_path) if iv_csv_path else {}
+        self._india_vix_by_date = {}
+        self._daily_vol_by_date = {}
+        if self._iv_by_date:
+            logger.info(f"Loaded IV for {len(self._iv_by_date)} dates from {iv_csv_path}")
+        else:
+            logger.info("No IV CSV: using daily_metrics.json when present, else volatility proxy")
         
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
-        
         previous_regime = None
+        historical_candles = []
+        
+        # Pre-load historical candles for EMA/ATR (need 100 bars)
+        preload_start = start - timedelta(days=5)
+        preload_date = preload_start
+        while preload_date < start:
+            date_str = preload_date.strftime('%Y%m%d')
+            tick_data = self.load_futures_data(date_str)
+            if not tick_data.empty:
+                day_candles = self.aggregate_to_15min_candles(tick_data)
+                if not day_candles.empty:
+                    historical_candles.extend(day_candles.to_dict('records'))
+            preload_date += timedelta(days=1)
+        if len(historical_candles) > 100:
+            historical_candles = historical_candles[-100:]
         
         while current_date <= end:
             date_str = current_date.strftime('%Y%m%d')
             logger.info(f"Processing {date_str}...")
             
-            # Load data
             futures_data = self.load_futures_data(date_str)
-            options_data = self.load_options_data(date_str)
-            
             if futures_data.empty:
                 logger.warning(f"No futures data for {date_str}")
                 current_date += timedelta(days=1)
                 continue
             
-            # Aggregate to 15-minute candles
             candles = self.aggregate_to_15min_candles(futures_data)
             if candles.empty:
                 logger.warning(f"No candles generated for {date_str}")
                 current_date += timedelta(days=1)
                 continue
             
+            historical_candles.extend(candles.to_dict('records'))
+            if len(historical_candles) > 100:
+                historical_candles = historical_candles[-100:]
+            
+            # IV for this date: CSV / daily_metrics / vol proxy
+            if date_str not in self._iv_by_date:
+                daily_metrics = load_daily_metrics(date_str)
+                if daily_metrics:
+                    self._india_vix_by_date[date_str] = daily_metrics.get('india_vix')
+                    if daily_metrics.get('iv_percentile') is not None:
+                        self._iv_by_date[date_str] = float(daily_metrics['iv_percentile'])
+                if date_str not in self._iv_by_date:
+                    daily_vol = self._compute_daily_vol_proxy(candles)
+                    if daily_vol is not None:
+                        self._daily_vol_by_date[date_str] = daily_vol
+                        historical_vols = [
+                            self._daily_vol_by_date[d]
+                            for d in sorted(self._daily_vol_by_date.keys())
+                            if d < date_str
+                        ]
+                        self._iv_by_date[date_str] = iv_percentile_from_vol_history(
+                            historical_vols, daily_vol
+                        )
+                    else:
+                        self._iv_by_date[date_str] = 50.0
+            iv_pct = self._iv_by_date.get(date_str)
+            # Backtest: when India VIX not available, use synthetic 14 so CONVEX can trigger when range_compressed
+            if date_str not in self._india_vix_by_date:
+                self._india_vix_by_date[date_str] = 14.0
+            
             # Process each candle
             for idx, candle in candles.iterrows():
                 timestamp = candle['timestamp']
                 spot_price = candle['close']
+                recent_df = pd.DataFrame(historical_candles[-100:])
+                if len(recent_df) < 100:
+                    continue
+                indicators = self.calculate_indicators(recent_df, spot_price)
+                if indicators.get('adx_14') is None and indicators.get('atr_percentile') is None:
+                    continue
+                india_vix = self._india_vix_by_date.get(date_str)
+                regime_result = self.detect_regime_for_timestamp(indicators, iv_pct, timestamp, india_vix=india_vix)
                 
-                # Calculate indicators
-                indicators = self.calculate_indicators(candles.iloc[:idx+1], options_data, spot_price)
-                
-                # Detect regime
-                regime_result = self.detect_regime_for_timestamp(indicators, timestamp)
-                
-                # Track regime history
                 self.regime_history.append(regime_result)
                 self.indicator_history.append({
                     'timestamp': timestamp,
-                    'indicators': indicators
+                    'indicators': {**indicators, 'iv_percentile': iv_pct},
                 })
                 
-                # Track transitions
                 current_regime = regime_result['regime']
                 if previous_regime and previous_regime != current_regime:
                     self.transitions.append({
                         'timestamp': timestamp,
                         'from_regime': previous_regime,
                         'to_regime': current_regime,
-                        'indicators': indicators
+                        'indicators': regime_result['indicators'],
                     })
                     logger.info(f"Regime transition: {previous_regime} -> {current_regime} at {timestamp}")
-                
                 previous_regime = current_regime
             
             current_date += timedelta(days=1)
@@ -321,10 +361,30 @@ class RegimeDetectionBacktester:
         
         # Regime distribution
         regime_counts = {}
+        range_compressed_count = 0
         for entry in self.regime_history:
             regime = entry['regime']
             regime_counts[regime] = regime_counts.get(regime, 0) + 1
-        
+            if entry.get('regime_details', {}).get('range_state') == 'COMPRESSED':
+                range_compressed_count += 1
+
+        # CONVEX summary: triggered when india_vix < 15 and range_compressed
+        convex_triggered = regime_counts.get('CONVEX', 0)
+        convex_note = (
+            f"CONVEX requires India VIX < 15 and range_compressed. "
+            f"range_compressed was true in {range_compressed_count} bars."
+        )
+
+        # INCOME summary: high vol (IV% > 60 OR India VIX >= 20), ADX < 20, ATR% < 50
+        income_triggered = regime_counts.get('INCOME', 0)
+        bars_adx_lt_20 = sum(1 for e in self.regime_history if (e.get('indicators') or {}).get('adx_14') is not None and e['indicators']['adx_14'] < 20)
+        iv_vals = [e.get('indicators', {}).get('iv_percentile') for e in self.regime_history]
+        iv_max = max((v for v in iv_vals if v is not None), default=None)
+        income_note = (
+            f"INCOME requires (IV% > 60 OR India VIX >= 20), ADX < 20, ATR% < 50. "
+            f"In this run: IV% max={iv_max}, bars with ADX<20={bars_adx_lt_20}."
+        )
+
         # Indicator statistics by regime
         indicator_stats = {}
         for regime in regime_counts.keys():
@@ -358,6 +418,11 @@ class RegimeDetectionBacktester:
             'regime_distribution': regime_counts,
             'regime_percentages': {k: (v / len(self.regime_history)) * 100 
                                   for k, v in regime_counts.items()},
+            'convex_triggered': convex_triggered,
+            'range_compressed_bars': range_compressed_count,
+            'convex_note': convex_note,
+            'income_triggered': income_triggered,
+            'income_note': income_note,
             'transitions': self.transitions,
             'transition_count': len(self.transitions),
             'indicator_stats': indicator_stats,
@@ -365,52 +430,56 @@ class RegimeDetectionBacktester:
         }
 
 
-def main():
-    """Run regime detection validation"""
+def main(start_date: str = '20251222', end_date: str = '20260116',
+         iv_csv_path: Optional[str] = None) -> Dict:
+    """Run regime detection backtest with production logic. Optional IV CSV for CONVEX/INCOME."""
     backtester = RegimeDetectionBacktester()
-    
-    # Run validation on available data
-    backtester.run_backtest('20251222', '20260116', check_interval_minutes=15)
-    
-    # Generate report
+    backtester.run_backtest(start_date, end_date, check_interval_minutes=15, iv_csv_path=iv_csv_path)
     report = backtester.generate_report()
     
     print("\n" + "="*60)
-    print("REGIME DETECTION VALIDATION REPORT")
+    print("REGIME DETECTION VALIDATION REPORT (production thresholds)")
     print("="*60)
     print(f"Total Detections: {report['total_detections']}")
     print(f"\nRegime Distribution:")
     for regime, count in report['regime_distribution'].items():
         pct = report['regime_percentages'].get(regime, 0)
         print(f"  {regime}: {count} ({pct:.1f}%)")
-    
+    convex_triggered = report.get('convex_triggered', 0)
+    print(f"\nCONVEX triggered: {convex_triggered} bars")
+    print(f"  {report.get('convex_note', '')}")
+    income_triggered = report.get('income_triggered', 0)
+    print(f"\nINCOME triggered: {income_triggered} bars")
+    print(f"  {report.get('income_note', '')}")
+
     print(f"\nRegime Transitions: {report['transition_count']}")
     if report['transitions']:
-        print("\nTransition Timeline:")
-        for trans in report['transitions'][:10]:  # Show first 10
+        print("\nTransition Timeline (first 10):")
+        for trans in report['transitions'][:10]:
             print(f"  {trans['timestamp']}: {trans['from_regime']} -> {trans['to_regime']}")
     
     print("\nIndicator Statistics by Regime:")
     for regime, stats in report['indicator_stats'].items():
         print(f"\n  {regime}:")
-        if stats['iv_percentile']['mean']:
+        if stats.get('iv_percentile') and stats['iv_percentile'].get('mean') is not None:
             print(f"    IV%: {stats['iv_percentile']['mean']:.1f} (min: {stats['iv_percentile']['min']:.1f}, max: {stats['iv_percentile']['max']:.1f})")
-        if stats['adx_14']['mean']:
+        if stats.get('adx_14') and stats['adx_14'].get('mean') is not None:
             print(f"    ADX: {stats['adx_14']['mean']:.1f} (min: {stats['adx_14']['min']:.1f}, max: {stats['adx_14']['max']:.1f})")
-        if stats['atr_percentile']['mean']:
+        if stats.get('atr_percentile') and stats['atr_percentile'].get('mean') is not None:
             print(f"    ATR%: {stats['atr_percentile']['mean']:.1f} (min: {stats['atr_percentile']['min']:.1f}, max: {stats['atr_percentile']['max']:.1f})")
     
     print("="*60)
     
-    # Save detailed report
     report_file = f"backtest_regime_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
     with open(report_file, 'w') as f:
         json.dump(report, f, indent=2, default=str)
-    
     print(f"\nDetailed report saved to: {report_file}")
-    
     return report
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    start = sys.argv[1] if len(sys.argv) > 1 else '20251222'
+    end = sys.argv[2] if len(sys.argv) > 2 else '20260116'
+    iv_csv = sys.argv[3] if len(sys.argv) > 3 else None
+    main(start_date=start, end_date=end, iv_csv_path=iv_csv)

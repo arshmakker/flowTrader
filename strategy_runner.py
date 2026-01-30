@@ -50,6 +50,35 @@ def _debug_log(location, message, data, hypothesis_id=None):
 logger = logging.getLogger('StrategyRunner')
 
 
+def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
+    """
+    Persist daily metrics (e.g. iv_percentile) to market_data_YYYYMMDD/daily_metrics.json.
+    Called when IV (and related regime inputs) are calculated so backtest can use them later.
+    Merges with existing file if present. Keys typically: iv_percentile, adx_14, atr_percentile, regime, date.
+    """
+    try:
+        when = date_str or datetime.now().strftime('%Y%m%d')
+        data_dir = f"market_data_{when}"
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        path = os.path.join(data_dir, 'daily_metrics.json')
+        existing = {}
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    existing = json.load(f)
+            except Exception:
+                pass
+        existing.update(metrics)
+        if 'date' not in existing:
+            existing['date'] = when
+        with open(path, 'w') as f:
+            json.dump(existing, f, indent=2)
+        logger.debug(f"Saved daily metrics to {path} (iv_percentile={metrics.get('iv_percentile')})")
+    except Exception as e:
+        logger.debug(f"Could not save daily metrics: {e}")
+
+
 def _get_date_object(date_or_datetime):
     """
     Helper function to safely convert date or datetime to date object.
@@ -469,6 +498,31 @@ def calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
         return None
 
 
+# India VIX token on NSE (same as convexcall project)
+INDIA_VIX_TOKEN_NSE = '26017'
+
+
+def get_india_vix(api) -> Optional[float]:
+    """
+    Fetch India VIX from NSE (convexcall-style low-vol check for CONVEX regime).
+    CONVEX can trigger when India VIX < 15 even if IV percentile is unavailable.
+    """
+    if api is None:
+        return None
+    try:
+        quote = api.get_quotes(exchange='NSE', token=INDIA_VIX_TOKEN_NSE)
+        if not quote:
+            logger.debug("Failed to get India VIX quote")
+            return None
+        vix = float(quote.get('lp', 0))
+        if vix <= 0:
+            return None
+        return vix
+    except Exception as e:
+        logger.debug(f"Could not fetch India VIX: {e}")
+        return None
+
+
 def calculate_adx_wrapper(api, symbol_manager, period=14):
     """
     Calculate ADX(14) from historical price data.
@@ -588,6 +642,7 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
         # Calculate market metrics
         iv_percentile = calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
         adx_14 = calculate_adx_wrapper(api, symbol_manager)
+        india_vix = get_india_vix(api)
         has_major_event = check_major_events(expiry_date)
         
         # Calculate current IV for PoP calculation
@@ -607,6 +662,7 @@ def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, 
         
         market_state = {
             'iv_percentile': iv_percentile,
+            'india_vix': india_vix,
             'days_to_expiry': days_to_expiry,
             'adx_14': adx_14,
             'has_major_event': has_major_event,
@@ -907,6 +963,17 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         market_state['atr'] = regime_info.get('atr')
         market_state['atr_percentile'] = regime_info.get('atr_percentile')
         market_state['adx_14'] = regime_info.get('adx', market_state.get('adx_14'))
+        
+        # Persist IV and regime inputs to daily data for future backtest use
+        daily_metrics = {
+            'date': datetime.now().strftime('%Y%m%d'),
+            'regime': regime,
+            'iv_percentile': regime_info.get('iv_percentile') or market_state.get('iv_percentile'),
+            'india_vix': regime_info.get('india_vix') or market_state.get('india_vix'),
+            'adx_14': regime_info.get('adx') or market_state.get('adx_14'),
+            'atr_percentile': regime_info.get('atr_percentile'),
+        }
+        save_daily_metrics({k: v for k, v in daily_metrics.items() if v is not None})
         
         # #region agent log
         import json

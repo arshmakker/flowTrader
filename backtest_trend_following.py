@@ -13,24 +13,163 @@ from pathlib import Path
 import glob
 
 from technical_indicators import calculate_ema, calculate_adx
-from regime.regime_detector import RegimeDetector
+from regime.regime_detector import RegimeDetector, classify_regime_from_indicators
 from strategies.trend.config import (
     MAX_RISK_PCT_OF_CAPITAL,
     MAX_POSITION_SIZE,
     INITIAL_STOP_LOSS_ATR_MULTIPLIER,
     TRAILING_STOP_LOSS_ATR_MULTIPLIER,
     EMA_FAST_PERIOD,
-    EMA_SLOW_PERIOD
+    EMA_SLOW_PERIOD,
+    PROFIT_TARGET_ATR_MULTIPLIER,
+    USE_HYBRID_TRAILING_STOP,
+    HYBRID_BREAKEVEN_THRESHOLD_ATR,
+    HYBRID_PHASE2_THRESHOLD_ATR,
+    HYBRID_PHASE3_THRESHOLD_ATR,
+    HYBRID_PHASE4_THRESHOLD_ATR,
+    HYBRID_PHASE1_MULTIPLIER,
+    HYBRID_PHASE2_MULTIPLIER,
+    HYBRID_PHASE3_MULTIPLIER,
+    HYBRID_PHASE4_MULTIPLIER,
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('Backtest')
 
+# Default lot size if NFO.csv not found or no NIFTY FUTIDX row
+DEFAULT_NIFTY_LOT_SIZE = 50
+
+# Futures brokerage/transaction charges (per order unless noted)
+BROKERAGE_PCT = 0.0003  # 0.03%
+BROKERAGE_MAX_PER_ORDER = 5.0  # Rs 5
+TX_CHARGES_PCT = 0.0000173  # 0.00173%
+SEBI_PER_CRORE = 10.0  # Rs 10 per crore turnover
+STT_PCT_SELL = 0.0002  # 0.02% on sell side
+GST_PCT = 0.18  # 18% on (brokerage + SEBI + transaction charges)
+IPFT_PER_LAKH = 0.10  # Rs 0.10 per lakh turnover
+
+
+def charges_per_order_futures(notional: float, is_sell: bool) -> float:
+    """
+    Transaction cost for one futures order (entry or exit).
+    Brokerage: 0.03% or Rs 5 whichever low; STT 0.02% on sell; tx 0.00173%; SEBI Rs 10/cr; GST 18%.
+    """
+    brokerage = min(BROKERAGE_PCT * notional, BROKERAGE_MAX_PER_ORDER)
+    tx = TX_CHARGES_PCT * notional
+    sebi = (notional / 1e7) * SEBI_PER_CRORE
+    stt = STT_PCT_SELL * notional if is_sell else 0.0
+    base_gst = brokerage + tx + sebi
+    gst = GST_PCT * base_gst
+    return brokerage + tx + sebi + stt + gst
+
+
+def charges_per_trade_futures(entry_price: float, exit_price: float, quantity: float) -> float:
+    """
+    Total transaction charges for one round-trip futures trade (entry + exit + IPFT).
+    """
+    entry_notional = entry_price * quantity
+    exit_notional = exit_price * quantity
+    entry_cost = charges_per_order_futures(entry_notional, is_sell=False)
+    exit_cost = charges_per_order_futures(exit_notional, is_sell=True)
+    turnover = entry_notional + exit_notional
+    ipft = (turnover / 1e5) * IPFT_PER_LAKH
+    return entry_cost + exit_cost + ipft
+
+
+def load_backtest_iv_csv(csv_path: str) -> Dict[str, float]:
+    """
+    Load IV percentile by date from a CSV for regime testing in backtest.
+    CSV columns: date (YYYYMMDD), iv_percentile (0-100).
+    Returns dict date_str -> iv_percentile. Empty dict if file missing or invalid.
+    """
+    if not csv_path or not os.path.exists(csv_path):
+        return {}
+    try:
+        df = pd.read_csv(csv_path)
+        if 'date' not in df.columns or 'iv_percentile' not in df.columns:
+            logger.warning(f"IV CSV must have columns 'date' and 'iv_percentile'; got {list(df.columns)}")
+            return {}
+        df['date'] = df['date'].astype(str).str.replace('-', '').str.strip()
+        return dict(zip(df['date'], df['iv_percentile'].astype(float)))
+    except Exception as e:
+        logger.warning(f"Error loading IV CSV {csv_path}: {e}")
+        return {}
+
+
+def load_iv_from_daily_metrics(date_str: str) -> Optional[float]:
+    """
+    Load iv_percentile from market_data_YYYYMMDD/daily_metrics.json if present.
+    Used when backtest has no IV CSV: prefer stored IV from when it was calculated (e.g. in production).
+    Returns iv_percentile (0-100) or None if file missing or no iv_percentile.
+    """
+    m = load_daily_metrics(date_str)
+    return float(m['iv_percentile']) if m and m.get('iv_percentile') is not None else None
+
+
+def load_daily_metrics(date_str: str) -> Optional[Dict]:
+    """
+    Load full daily_metrics from market_data_YYYYMMDD/daily_metrics.json if present.
+    Returns dict with iv_percentile, india_vix, adx_14, atr_percentile, regime, etc. or None.
+    """
+    data_dirs = glob.glob(f"market_data_{date_str}")
+    if not data_dirs:
+        return None
+    metrics_path = os.path.join(data_dirs[0], 'daily_metrics.json')
+    if not os.path.exists(metrics_path):
+        return None
+    try:
+        with open(metrics_path, 'r') as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def iv_percentile_from_vol_history(historical_vols: List[float], current_vol: float,
+                                  min_samples: int = 20) -> float:
+    """
+    Compute IV-percentile-like value from volatility proxy history (same formula as production).
+    If fewer than min_samples historical values, return 50 (neutral) so CONVEX/INCOME don't trigger on thin data.
+    """
+    if not historical_vols or len(historical_vols) < min_samples:
+        return 50.0
+    count_below = sum(1 for v in historical_vols if v < current_vol)
+    return (count_below / len(historical_vols)) * 100.0
+
+
+def get_nifty_lot_size_from_nfo(symbols_dir: str = 'symbols') -> int:
+    """
+    Read NIFTY futures lot size from symbols/NFO.csv (LotSize for Symbol=NIFTY, Instrument=FUTIDX).
+    Returns DEFAULT_NIFTY_LOT_SIZE if file missing or no matching row.
+    """
+    try:
+        nfo_path = os.path.join(symbols_dir, 'NFO.csv')
+        if not os.path.exists(nfo_path):
+            logger.warning(f"NFO.csv not found at {nfo_path}, using default lot size {DEFAULT_NIFTY_LOT_SIZE}")
+            return DEFAULT_NIFTY_LOT_SIZE
+        df = pd.read_csv(nfo_path)
+        # NFO.csv columns: Exchange, Token, LotSize, Symbol, TradingSymbol, Expiry, Instrument, ...
+        if 'Symbol' not in df.columns or 'LotSize' not in df.columns or 'Instrument' not in df.columns:
+            logger.warning(f"NFO.csv missing required columns (Symbol, LotSize, Instrument), using default {DEFAULT_NIFTY_LOT_SIZE}")
+            return DEFAULT_NIFTY_LOT_SIZE
+        nifty_fut = df[(df['Symbol'].str.strip() == 'NIFTY') & (df['Instrument'] == 'FUTIDX')]
+        if nifty_fut.empty:
+            logger.warning("No NIFTY FUTIDX row in NFO.csv, using default lot size %s", DEFAULT_NIFTY_LOT_SIZE)
+            return DEFAULT_NIFTY_LOT_SIZE
+        lot_size = int(nifty_fut.iloc[0]['LotSize'])
+        logger.info(f"NIFTY futures lot size from NFO.csv: {lot_size}")
+        return lot_size
+    except Exception as e:
+        logger.warning(f"Error reading NIFTY lot size from NFO.csv: {e}, using default {DEFAULT_NIFTY_LOT_SIZE}")
+        return DEFAULT_NIFTY_LOT_SIZE
+
 
 class TrendFollowingBacktester:
     """Backtest Futures Trend Following strategy on historical data"""
     
-    def __init__(self, data_dir='market_data_*', initial_capital=1000000):
+    def __init__(self, data_dir='market_data_*', initial_capital=1000000,
+                 profit_target_atr_multiplier=None, hybrid_breakeven_threshold_atr=None,
+                 scenario_name=None, max_position_size=None, max_risk_pct_of_capital=None,
+                 force_max_lots=False):
         self.data_dir = data_dir
         self.initial_capital = initial_capital
         self.capital = initial_capital
@@ -38,7 +177,25 @@ class TrendFollowingBacktester:
         self.open_positions = []
         self.daily_pnl = []
         self.regime_detector = RegimeDetector()
-        self.lot_size = 50  # NIFTY futures lot size
+        self.lot_size = get_nifty_lot_size_from_nfo()
+        # Overrides for profit target vs breakeven comparison (default = config)
+        self._profit_target_atr = (
+            profit_target_atr_multiplier if profit_target_atr_multiplier is not None
+            else PROFIT_TARGET_ATR_MULTIPLIER
+        )
+        self._hybrid_breakeven_atr = (
+            hybrid_breakeven_threshold_atr if hybrid_breakeven_threshold_atr is not None
+            else HYBRID_BREAKEVEN_THRESHOLD_ATR
+        )
+        self._max_position_size = (
+            max_position_size if max_position_size is not None else MAX_POSITION_SIZE
+        )
+        self._max_risk_pct = (
+            max_risk_pct_of_capital if max_risk_pct_of_capital is not None
+            else MAX_RISK_PCT_OF_CAPITAL
+        )
+        self._force_max_lots = bool(force_max_lots)  # True = always take max_position_size lots
+        self.scenario_name = scenario_name or 'default'
         
     def load_futures_data(self, date_str: str) -> pd.DataFrame:
         """
@@ -163,6 +320,57 @@ class TrendFollowingBacktester:
             'current_price': closes[-1] if closes else None
         }
     
+    def _atr_percentile_and_range(self, candles_df: pd.DataFrame, atr_period: int = 14,
+                                   range_lookback: int = 20) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """
+        From last 100 candles, compute: atr_percentile (0-100), last_range (high-low), rolling_avg_range.
+        Used for simplified four-regime detection (no IV).
+        """
+        if len(candles_df) < atr_period + 5 or 'high' not in candles_df.columns or 'low' not in candles_df.columns:
+            return None, None, None
+        highs = candles_df['high'].tolist()
+        lows = candles_df['low'].tolist()
+        closes = candles_df['close'].tolist()
+        atr_values = []
+        for i in range(atr_period - 1, len(closes)):
+            h = highs[max(0, i - atr_period + 1):i + 1]
+            l_ = lows[max(0, i - atr_period + 1):i + 1]
+            c = closes[max(0, i - atr_period):i + 1]
+            if len(h) >= atr_period and len(l_) >= atr_period and len(c) >= atr_period + 1:
+                a = self.regime_detector.calculate_atr(h, l_, c, period=atr_period)
+                if a is not None:
+                    atr_values.append(a)
+        if not atr_values:
+            return None, None, None
+        current_atr = atr_values[-1]
+        atr_percentile = (sum(1 for a in atr_values if a <= current_atr) / len(atr_values)) * 100.0
+        last_range = float(highs[-1] - lows[-1]) if highs and lows else None
+        n = min(range_lookback, len(highs), len(lows))
+        if n > 0:
+            ranges = [float(highs[-i - 1] - lows[-i - 1]) for i in range(n)]
+            rolling_avg_range = sum(ranges) / len(ranges)
+        else:
+            rolling_avg_range = None
+        return atr_percentile, last_range, rolling_avg_range
+
+    def _compute_daily_vol_proxy(self, candles: pd.DataFrame, atr_period: int = 14) -> Optional[float]:
+        """
+        Compute a daily volatility proxy from 15m candles (ATR(14) / close) for IV proxy in backtest.
+        Used when no IV data or daily_metrics: allows CONVEX/INCOME regime testing via percentile rank.
+        Returns volatility as fraction (e.g. 0.02 for 2%) or None if insufficient data.
+        """
+        if candles is None or len(candles) < atr_period + 1:
+            return None
+        if 'high' not in candles.columns or 'low' not in candles.columns or 'close' not in candles.columns:
+            return None
+        highs = candles['high'].tolist()
+        lows = candles['low'].tolist()
+        closes = candles['close'].tolist()
+        atr = self.regime_detector.calculate_atr(highs, lows, closes, period=atr_period)
+        if atr is None or not closes or closes[-1] <= 0:
+            return None
+        return float(atr) / float(closes[-1])
+
     def detect_trend_direction(self, current_price: float, ema_50: float, ema_100: float) -> Optional[str]:
         """
         Detect trend direction from EMA structure
@@ -225,13 +433,17 @@ class TrendFollowingBacktester:
         risk_per_share = stop_loss_atr
         
         # Maximum risk per trade
-        max_risk_amount = self.capital * MAX_RISK_PCT_OF_CAPITAL
+        max_risk_amount = self.capital * self._max_risk_pct
         
         # Calculate maximum quantity based on risk
         max_quantity_by_risk = int(max_risk_amount / risk_per_share) if risk_per_share > 0 else 0
         
-        # Limit to max position size
-        max_quantity = min(max_quantity_by_risk, MAX_POSITION_SIZE * self.lot_size)
+        # Limit to max position size (or use full lots when force_max_lots is set)
+        cap_quantity = self._max_position_size * self.lot_size
+        if getattr(self, '_force_max_lots', False):
+            max_quantity = cap_quantity  # Always take max lots (ignore risk limit for comparison)
+        else:
+            max_quantity = min(max_quantity_by_risk, cap_quantity)
         
         # Round down to lot size
         lots = max_quantity // self.lot_size
@@ -262,18 +474,28 @@ class TrendFollowingBacktester:
             'risk_per_share': risk_per_share
         }
     
-    def check_exit_conditions(self, position: Dict, current_price: float, indicators: Dict, 
+    def check_exit_conditions(self, position: Dict, current_price: float, indicators: Dict,
                             market_state: Dict) -> Tuple[bool, str]:
         """
-        Check if exit conditions are met
-        
+        Check if exit conditions are met. Mirrors main.py: stop loss, regime change,
+        ATR profit target, EMA break; then update hybrid trailing stop.
         Returns:
             (should_exit, exit_reason)
         """
         direction = position['direction']
         entry_price = position['entry_price']
         current_stop = position['current_stop_price']
-        
+        quantity = position['quantity']
+        atr = indicators.get('atr_14', 0)
+
+        # Current P&L in rupees and in points
+        if direction == 'LONG':
+            current_pnl = (current_price - entry_price) * quantity
+            unrealized_pnl_points = current_price - entry_price
+        else:  # SHORT
+            current_pnl = (entry_price - current_price) * quantity
+            unrealized_pnl_points = entry_price - current_price
+
         # Exit condition 1: Stop loss hit
         if direction == 'LONG':
             if current_price <= current_stop:
@@ -281,16 +503,20 @@ class TrendFollowingBacktester:
         else:  # SHORT
             if current_price >= current_stop:
                 return True, 'STOP_LOSS_HIT'
-        
+
         # Exit condition 2: Regime change
         regime = market_state.get('regime')
         if regime != 'TREND_CONTINUATION':
             return True, 'REGIME_CHANGE'
-        
+
+        # Exit condition 2b: ATR profit target (book gains proactively)
+        if atr > 0 and quantity > 0:
+            if current_pnl > 0 and unrealized_pnl_points >= (atr * self._profit_target_atr):
+                return True, 'PROFIT_TARGET_ATR'
+
         # Exit condition 3: EMA structure breaks
         ema_50 = indicators.get('ema_50')
         ema_100 = indicators.get('ema_100')
-        
         if ema_50 and ema_100:
             if direction == 'LONG':
                 if not (current_price > ema_50 > ema_100):
@@ -298,38 +524,80 @@ class TrendFollowingBacktester:
             else:  # SHORT
                 if not (current_price < ema_50 < ema_100):
                     return True, 'EMA_STRUCTURE_BROKEN'
-        
-        # Update trailing stop loss
-        atr = indicators.get('atr_14', 0)
+
+        # Update trailing stop loss (hybrid phases 1–5, same as main.py)
         if atr > 0:
-            trailing_stop_atr = atr * TRAILING_STOP_LOSS_ATR_MULTIPLIER
+            if USE_HYBRID_TRAILING_STOP:
+                if unrealized_pnl_points <= 0:
+                    trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                elif unrealized_pnl_points < (atr * self._hybrid_breakeven_atr):
+                    trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                elif unrealized_pnl_points < (atr * HYBRID_PHASE2_THRESHOLD_ATR):
+                    trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
+                elif unrealized_pnl_points < (atr * HYBRID_PHASE3_THRESHOLD_ATR):
+                    trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
+                elif unrealized_pnl_points < (atr * HYBRID_PHASE4_THRESHOLD_ATR):
+                    trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
+                else:
+                    trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
+            else:
+                trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
+
+            trailing_stop_distance = atr * trailing_multiplier
             if direction == 'LONG':
-                new_trailing_stop = current_price - trailing_stop_atr
+                new_trailing_stop = current_price - trailing_stop_distance
+                if USE_HYBRID_TRAILING_STOP and unrealized_pnl_points > 0:
+                    new_trailing_stop = max(new_trailing_stop, entry_price)
                 position['current_stop_price'] = max(current_stop, new_trailing_stop)
             else:  # SHORT
-                new_trailing_stop = current_price + trailing_stop_atr
+                new_trailing_stop = current_price + trailing_stop_distance
+                if USE_HYBRID_TRAILING_STOP and unrealized_pnl_points > 0:
+                    new_trailing_stop = min(new_trailing_stop, entry_price)
                 position['current_stop_price'] = min(current_stop, new_trailing_stop)
-        
+
         return False, None
     
-    def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
+    def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15,
+                     iv_csv_path: Optional[str] = None):
         """
-        Run backtest on historical data
-        
+        Run backtest on historical data.
+
         Args:
             start_date: Start date in YYYYMMDD format
             end_date: End date in YYYYMMDD format
             check_interval_minutes: How often to check for entry/exit (default: 15 minutes)
+            iv_csv_path: Optional path to CSV with columns date (YYYYMMDD), iv_percentile (0-100).
+                         If provided, all four regimes (CONVEX, INCOME, TREND, NEUTRAL) are tested
+                         using production thresholds. If not provided, IV is None so only TREND
+                         and NEUTRAL can trigger (CONVEX/INCOME need IV).
         """
         logger.info(f"Starting backtest from {start_date} to {end_date}")
-        
+        self._iv_by_date = load_backtest_iv_csv(iv_csv_path) if iv_csv_path else {}
+        self._india_vix_by_date = {}  # date_str -> India VIX (from daily_metrics when present)
+        self._daily_vol_by_date = {}  # date_str -> daily vol proxy (for IV proxy when no IV data)
+        if self._iv_by_date:
+            logger.info(f"Loaded IV for {len(self._iv_by_date)} dates from {iv_csv_path} (testing all four regimes)")
+        else:
+            logger.info(
+                "No IV CSV: will use daily_metrics.json when present, else compute IV proxy from volatility (testing all four regimes)"
+            )
+
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
-        
+
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
         last_processed_price = None  # Track last candle close price for end-of-backtest closing
-        
+        # Per-day regime tracking: all four regimes (CONVEX, INCOME, TREND_CONTINUATION, NEUTRAL)
+        self._days_with_data = set()
+        self._days_with_convex = set()
+        self._days_with_income = set()
+        self._days_with_trend = set()
+        self._days_with_neutral = set()
+        # ATR and ADX range over the backtest data (all bars where indicators were computed)
+        self._atr_values = []
+        self._adx_values = []
+
         # Load all historical data for regime detection (across multiple days)
         historical_candles = []
         
@@ -375,7 +643,35 @@ class TrendFollowingBacktester:
             # This ensures we have enough data across days
             if len(historical_candles) > 100:
                 historical_candles = historical_candles[-100:]
-            
+
+            self._days_with_data.add(date_str)
+            had_convex_today = False
+            had_income_today = False
+            had_trend_today = False
+            had_neutral_today = False
+
+            # IV for regime: use CSV if provided; else daily_metrics if present; else volatility proxy
+            if date_str not in self._iv_by_date:
+                daily_metrics = load_daily_metrics(date_str)
+                if daily_metrics:
+                    self._india_vix_by_date[date_str] = daily_metrics.get('india_vix')
+                    if daily_metrics.get('iv_percentile') is not None:
+                        self._iv_by_date[date_str] = float(daily_metrics['iv_percentile'])
+                if date_str not in self._iv_by_date:
+                    daily_vol = self._compute_daily_vol_proxy(candles)
+                    if daily_vol is not None:
+                        self._daily_vol_by_date[date_str] = daily_vol
+                        historical_vols = [
+                            self._daily_vol_by_date[d]
+                            for d in sorted(self._daily_vol_by_date.keys())
+                            if d < date_str
+                        ]
+                        self._iv_by_date[date_str] = iv_percentile_from_vol_history(
+                            historical_vols, daily_vol
+                        )
+                    else:
+                        self._iv_by_date[date_str] = 50.0  # neutral fallback
+
             # Process each candle
             for idx, candle in candles.iterrows():
                 timestamp = candle['timestamp']
@@ -390,30 +686,56 @@ class TrendFollowingBacktester:
                 indicators = self.calculate_indicators(recent_candles_df)
                 if not indicators:
                     continue
-                
-                # Build market state for regime detection
-                # Note: For backtest, we'll use simplified regime detection
-                # In production, regime detector uses more sophisticated logic
-                market_state = {
-                    'spot_price': current_price,
-                    'adx_14': indicators.get('adx_14', 0),
-                    'atr': indicators.get('atr_14', 0),
-                    'atr_percentile': 75.0,  # Simplified - in production this is calculated from history
-                    'regime': 'NEUTRAL'  # Will be updated below
-                }
-                
-                # Simplified regime detection for backtest
+                # Collect ATR and ADX for range stats
+                atr_val = indicators.get('atr_14')
+                adx_val = indicators.get('adx_14')
+                if atr_val is not None:
+                    self._atr_values.append(float(atr_val))
+                if adx_val is not None:
+                    self._adx_values.append(float(adx_val))
+                # ATR percentile and range for four-regime detection (no IV in backtest)
+                atr_pct, last_range, rolling_avg_range = self._atr_percentile_and_range(recent_candles_df)
+                if atr_pct is None:
+                    atr_pct = 75.0  # fallback
                 adx = indicators.get('adx_14', 0)
-                atr_percentile = market_state['atr_percentile']
                 direction = self.detect_trend_direction(
                     current_price,
                     indicators.get('ema_50'),
                     indicators.get('ema_100')
                 )
-                
-                if adx >= 30 and atr_percentile >= 50 and direction:
-                    market_state['regime'] = 'TREND_CONTINUATION'
-                
+                range_compressed = (last_range is not None and rolling_avg_range is not None and
+                                    rolling_avg_range > 0 and last_range < 0.6 * rolling_avg_range)
+                # Use production regime classifier (optional IV / India VIX from CSV or daily_metrics)
+                iv_pct = self._iv_by_date.get(date_str) if getattr(self, '_iv_by_date', None) else None
+                india_vix = getattr(self, '_india_vix_by_date', {}).get(date_str)
+                # Backtest: when India VIX not available, use synthetic 14 so CONVEX can trigger when range_compressed
+                if india_vix is None:
+                    india_vix = 14.0
+                regime = classify_regime_from_indicators(
+                    iv_percentile=iv_pct,
+                    adx_14=adx,
+                    atr_percentile=atr_pct,
+                    range_compressed=range_compressed,
+                    ema_direction=direction,
+                    india_vix=india_vix,
+                )
+                if regime == 'CONVEX':
+                    had_convex_today = True
+                elif regime == 'INCOME':
+                    had_income_today = True
+                elif regime == 'TREND_CONTINUATION':
+                    had_trend_today = True
+                else:
+                    had_neutral_today = True
+
+                market_state = {
+                    'spot_price': current_price,
+                    'adx_14': adx,
+                    'atr': indicators.get('atr_14', 0),
+                    'atr_percentile': atr_pct,
+                    'regime': regime
+                }
+
                 # Check exit conditions for open positions
                 for position in self.open_positions[:]:  # Copy list to allow modification
                     should_exit, exit_reason = self.check_exit_conditions(
@@ -421,13 +743,16 @@ class TrendFollowingBacktester:
                     )
                     
                     if should_exit:
-                        # Calculate P&L
+                        # Calculate gross P&L
                         if position['direction'] == 'LONG':
-                            pnl = (current_price - position['entry_price']) * position['quantity']
+                            pnl_gross = (current_price - position['entry_price']) * position['quantity']
                         else:  # SHORT
-                            pnl = (position['entry_price'] - current_price) * position['quantity']
-                        
-                        # Record trade
+                            pnl_gross = (position['entry_price'] - current_price) * position['quantity']
+                        charges = charges_per_trade_futures(
+                            position['entry_price'], current_price, position['quantity']
+                        )
+                        pnl = pnl_gross - charges
+                        # Record trade (pnl is net of charges)
                         trade_record = {
                             'entry_time': position['entry_time'],
                             'exit_time': timestamp,
@@ -437,6 +762,8 @@ class TrendFollowingBacktester:
                             'quantity': position['quantity'],
                             'lots': position['lots'],
                             'pnl': pnl,
+                            'pnl_gross': pnl_gross,
+                            'charges': charges,
                             'exit_reason': exit_reason,
                             'regime_at_entry': position['regime_at_entry']
                         }
@@ -448,7 +775,7 @@ class TrendFollowingBacktester:
                         logger.info(
                             f"Exited {position['direction']} position: "
                             f"Entry={position['entry_price']:.2f}, Exit={current_price:.2f}, "
-                            f"P&L=₹{pnl:.2f}, Reason={exit_reason}"
+                            f"P&L=₹{pnl:.2f} (gross ₹{pnl_gross:.2f}, charges ₹{charges:.2f}), Reason={exit_reason}"
                         )
                 
                 # Check entry conditions (only if no open position)
@@ -484,7 +811,16 @@ class TrendFollowingBacktester:
                                 f"Price={current_price:.2f}, Quantity={position_info['quantity']}, "
                                 f"Lots={position_info['lots']}, SL={position_info['stop_loss_price']:.2f}"
                             )
-            
+
+            if had_convex_today:
+                self._days_with_convex.add(date_str)
+            if had_income_today:
+                self._days_with_income.add(date_str)
+            if had_trend_today:
+                self._days_with_trend.add(date_str)
+            if had_neutral_today:
+                self._days_with_neutral.add(date_str)
+
             current_date += timedelta(days=1)
         
         # Close any remaining positions at end
@@ -500,10 +836,13 @@ class TrendFollowingBacktester:
                 logger.warning(f"Using entry_price for end-of-backtest close (no last price available): {position['entry_time']}")
             
             if position['direction'] == 'LONG':
-                pnl = (last_price - position['entry_price']) * position['quantity']
+                pnl_gross = (last_price - position['entry_price']) * position['quantity']
             else:  # SHORT
-                pnl = (position['entry_price'] - last_price) * position['quantity']
-            
+                pnl_gross = (position['entry_price'] - last_price) * position['quantity']
+            charges = charges_per_trade_futures(
+                position['entry_price'], last_price, position['quantity']
+            )
+            pnl = pnl_gross - charges
             trade_record = {
                 'entry_time': position['entry_time'],
                 'exit_time': datetime.now(),
@@ -513,10 +852,11 @@ class TrendFollowingBacktester:
                 'quantity': position['quantity'],
                 'lots': position['lots'],
                 'pnl': pnl,
+                'pnl_gross': pnl_gross,
+                'charges': charges,
                 'exit_reason': 'end_of_backtest',
                 'regime_at_entry': position['regime_at_entry']
             }
-            
             self.trades.append(trade_record)
             self.capital += pnl
         
@@ -525,25 +865,39 @@ class TrendFollowingBacktester:
     def generate_report(self) -> Dict:
         """Generate backtest performance report"""
         if not self.trades:
-            return {
+            r = {
                 'total_trades': 0,
                 'winning_trades': 0,
                 'losing_trades': 0,
                 'win_rate': 0.0,
                 'total_pnl': 0.0,
+                'total_pnl_gross': 0.0,
+                'total_charges': 0.0,
+                'total_quantity': 0,
                 'avg_pnl': 0.0,
                 'max_profit': 0.0,
                 'max_loss': 0.0,
                 'initial_capital': self.initial_capital,
                 'final_capital': self.capital,
                 'total_return_pct': 0.0,
-                'trades': []
+                'trades': [],
+                'exit_reasons': {},
             }
+            if hasattr(self, 'scenario_name'):
+                r['scenario_name'] = self.scenario_name
+                r['profit_target_atr_multiplier'] = self._profit_target_atr
+                r['hybrid_breakeven_threshold_atr'] = self._hybrid_breakeven_atr
+                r['max_position_size'] = self._max_position_size
+                r['max_risk_pct_of_capital'] = self._max_risk_pct
+            return r
         
         winning_trades = [t for t in self.trades if t['pnl'] > 0]
         losing_trades = [t for t in self.trades if t['pnl'] <= 0]
         
         total_pnl = sum(t['pnl'] for t in self.trades)
+        total_charges = sum(t.get('charges', 0) for t in self.trades)
+        total_pnl_gross = sum(t.get('pnl_gross', t['pnl']) for t in self.trades)
+        total_quantity = sum(t.get('quantity', 0) for t in self.trades)
         avg_pnl = total_pnl / len(self.trades) if self.trades else 0
         
         max_profit = max((t['pnl'] for t in self.trades), default=0)
@@ -568,12 +922,15 @@ class TrendFollowingBacktester:
             exit_reasons[reason]['count'] += 1
             exit_reasons[reason]['pnl'] += trade['pnl']
         
-        return {
+        report = {
             'total_trades': len(self.trades),
             'winning_trades': len(winning_trades),
             'losing_trades': len(losing_trades),
             'win_rate': win_rate,
             'total_pnl': total_pnl,
+            'total_pnl_gross': total_pnl_gross,
+            'total_charges': total_charges,
+            'total_quantity': total_quantity,
             'avg_pnl': avg_pnl,
             'max_profit': max_profit,
             'max_loss': max_loss,
@@ -587,50 +944,290 @@ class TrendFollowingBacktester:
             'exit_reasons': exit_reasons,
             'trades': self.trades
         }
+        if hasattr(self, 'scenario_name'):
+            report['scenario_name'] = self.scenario_name
+            report['profit_target_atr_multiplier'] = self._profit_target_atr
+            report['hybrid_breakeven_threshold_atr'] = self._hybrid_breakeven_atr
+            report['max_position_size'] = self._max_position_size
+            report['max_risk_pct_of_capital'] = self._max_risk_pct
+        # Regime-per-day stats (all four regimes; same for all scenarios)
+        if hasattr(self, '_days_with_data'):
+            n = len(self._days_with_data)
+            report['days_with_data'] = n
+            if n:
+                report['days_with_convex'] = len(getattr(self, '_days_with_convex', set()))
+                report['days_with_income'] = len(getattr(self, '_days_with_income', set()))
+                report['days_with_trend'] = len(getattr(self, '_days_with_trend', set()))
+                report['days_with_neutral'] = len(getattr(self, '_days_with_neutral', set()))
+                report['prob_convex_per_day_pct'] = report['days_with_convex'] / n * 100.0
+                report['prob_income_per_day_pct'] = report['days_with_income'] / n * 100.0
+                report['prob_trend_per_day_pct'] = report['days_with_trend'] / n * 100.0
+                report['prob_neutral_per_day_pct'] = report['days_with_neutral'] / n * 100.0
+                report['prob_at_least_one_regime_per_day'] = 100.0  # every day has at least one bar with some regime
+        # ATR and ADX range in the data (all bars where indicators were computed)
+        if hasattr(self, '_atr_values') and self._atr_values:
+            report['atr_min'] = min(self._atr_values)
+            report['atr_max'] = max(self._atr_values)
+            report['atr_mean'] = sum(self._atr_values) / len(self._atr_values)
+            report['atr_count'] = len(self._atr_values)
+        if hasattr(self, '_adx_values') and self._adx_values:
+            report['adx_min'] = min(self._adx_values)
+            report['adx_max'] = max(self._adx_values)
+            report['adx_mean'] = sum(self._adx_values) / len(self._adx_values)
+            report['adx_count'] = len(self._adx_values)
+        return report
+
+
+def run_comparison(start_date: str = '20251222', end_date: str = '20260116',
+                   check_interval_minutes: int = 15) -> Dict:
+    """
+    Run sixteen scenarios and compare:
+    1. Baseline (0.1×), 2. Lower (0.05×), 3. Earlier breakeven, 4. 0.05× 5 lots,
+    5–10. 0.15×–0.40×, 11. 0.45×, 12. 0.50×, 13. 0.56×, 14. 0.60×, 15. 0.65×, 16. 0.70× ATR target
+    """
+    scenarios = [
+        {
+            'name': 'Baseline (0.1× target, 0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.1,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': 'Lower ATR target (0.05× target, 0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.05,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': 'Earlier breakeven (0.1× target, 0.25× breakeven)',
+            'profit_target_atr_multiplier': 0.1,
+            'hybrid_breakeven_threshold_atr': 0.25,
+        },
+        {
+            'name': '0.05× ATR, 5 lots (0.05× target, force 5 lots)',
+            'profit_target_atr_multiplier': 0.05,
+            'hybrid_breakeven_threshold_atr': 0.5,
+            'max_position_size': 5,
+            'max_risk_pct_of_capital': 0.25,
+            'force_max_lots': True,
+        },
+        {
+            'name': '0.15× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.15,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.20× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.2,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.25× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.25,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.30× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.30,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.35× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.35,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.40× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.40,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.45× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.45,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.50× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.50,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.56× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.56,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.60× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.60,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.65× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.65,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+        {
+            'name': '0.70× ATR target (0.5× breakeven)',
+            'profit_target_atr_multiplier': 0.70,
+            'hybrid_breakeven_threshold_atr': 0.5,
+        },
+    ]
+    results = []
+    for s in scenarios:
+        logger.info(f"Running scenario: {s['name']}")
+        kwargs = {
+            'initial_capital': 1000000,
+            'profit_target_atr_multiplier': s['profit_target_atr_multiplier'],
+            'hybrid_breakeven_threshold_atr': s['hybrid_breakeven_threshold_atr'],
+            'scenario_name': s['name'],
+        }
+        if s.get('max_position_size') is not None:
+            kwargs['max_position_size'] = s['max_position_size']
+        if s.get('max_risk_pct_of_capital') is not None:
+            kwargs['max_risk_pct_of_capital'] = s['max_risk_pct_of_capital']
+        if s.get('force_max_lots'):
+            kwargs['force_max_lots'] = True
+        backtester = TrendFollowingBacktester(**kwargs)
+        backtester.run_backtest(start_date, end_date, check_interval_minutes=check_interval_minutes)
+        report = backtester.generate_report()
+        results.append(report)
+
+    # Comparison table
+    print("\n" + "=" * 95)
+    print("PROFIT TARGET vs EARLIER BREAKEVEN — COMPARISON")
+    print("=" * 95)
+    print(f"Period: {start_date} to {end_date}  |  Check interval: {check_interval_minutes} min")
+    print("=" * 95)
+
+    headers = [
+        'Scenario', 'Trades', 'Wins', 'Losses', 'Win%', 'Net P&L (₹)', 'Gross P&L (₹)', 'Charges (₹)', 'Total Qty',
+        'PROFIT_TARGET_ATR', 'STOP_LOSS_HIT', 'REGIME_CHANGE', 'Other'
+    ]
+    col_widths = [38, 6, 4, 5, 5, 11, 11, 9, 9, 8, 8, 8, 5]
+    fmt = "  ".join(f"{{:<{w}}}" for w in col_widths)
+    print(fmt.format(*headers))
+    print("-" * 95)
+
+    for r in results:
+        name = r.get('scenario_name', 'default')[:38]
+        total = r['total_trades']
+        wins = r['winning_trades']
+        loss = r['losing_trades']
+        win_pct = r['win_rate']
+        net_pnl = r['total_pnl']
+        gross = r.get('total_pnl_gross', net_pnl)
+        charges = r.get('total_charges', 0)
+        total_qty = r.get('total_quantity', 0)
+        er = r.get('exit_reasons', {})
+        pt = er.get('PROFIT_TARGET_ATR', {}).get('count', 0)
+        sl = er.get('STOP_LOSS_HIT', {}).get('count', 0)
+        rc = er.get('REGIME_CHANGE', {}).get('count', 0)
+        other = total - pt - sl - rc
+        print(fmt.format(
+            name[:38], str(total), str(wins), str(loss), f"{win_pct:.1f}",
+            f"{net_pnl:,.0f}", f"{gross:,.0f}", f"{charges:,.0f}", str(total_qty),
+            str(pt), str(sl), str(rc), str(other)
+        ))
+
+    print("=" * 95)
+    best = max(results, key=lambda x: x['total_pnl'])
+    print(f"Best net P&L: {best.get('scenario_name', 'default')} — ₹{best['total_pnl']:,.2f}")
+    print("=" * 95)
+
+    # Probability of at least one of each regime per day (all four regimes; from backtest)
+    r0 = results[0] if results else {}
+    if r0.get('days_with_data') is not None:
+        n_days = r0['days_with_data']
+        print("\nRegime per day (backtest, all four regimes):")
+        print(f"  Trading days with data: {n_days}")
+        print(f"  Days with ≥1 CONVEX:           {r0.get('days_with_convex', 0):3d}  → P(CONVEX per day)           = {r0.get('prob_convex_per_day_pct', 0):.1f}%")
+        print(f"  Days with ≥1 INCOME:           {r0.get('days_with_income', 0):3d}  → P(INCOME per day)           = {r0.get('prob_income_per_day_pct', 0):.1f}%")
+        print(f"  Days with ≥1 TREND_CONTINUATION: {r0.get('days_with_trend', 0):3d}  → P(TREND_CONTINUATION per day) = {r0.get('prob_trend_per_day_pct', 0):.1f}%")
+        print(f"  Days with ≥1 NEUTRAL:          {r0.get('days_with_neutral', 0):3d}  → P(NEUTRAL per day)          = {r0.get('prob_neutral_per_day_pct', 0):.1f}%")
+        print(f"  P(at least one of any regime per day): 100.0% (every bar has a regime)")
+    # ATR and ADX range in the backtest data
+    if r0.get('atr_min') is not None:
+        print("\nATR and ADX range in backtest data:")
+        print(f"  ATR(14): min = {r0['atr_min']:.2f}, max = {r0['atr_max']:.2f}, mean = {r0['atr_mean']:.2f}  (n = {r0.get('atr_count', 0)})")
+    if r0.get('adx_min') is not None:
+        print(f"  ADX(14): min = {r0['adx_min']:.2f}, max = {r0['adx_max']:.2f}, mean = {r0['adx_mean']:.2f}  (n = {r0.get('adx_count', 0)})")
+    print()
+
+    # Profitability summary for 0.5× ATR target (config default)
+    half_atr = next((r for r in results if r.get('profit_target_atr_multiplier') == 0.5), None)
+    if half_atr:
+        win_pct = half_atr['win_rate']
+        ret_pct = half_atr.get('total_return_pct', 0)
+        net_pnl = half_atr['total_pnl']
+        total = half_atr['total_trades']
+        wins = half_atr['winning_trades']
+        print("\n0.5× ATR target — profitability (backtest):")
+        print(f"  Win percentage: {win_pct:.1f}% ({wins} winning trades / {total} total)")
+        print(f"  Total return: {ret_pct:.2f}% on capital")
+        print(f"  Net P&L: ₹{net_pnl:,.2f}")
+        print("  ATR percentile: backtest computes atr_percentile from recent 100 candles for four-regime stats.")
+    print()
+
+    # Save comparison (summaries only, no full trade lists)
+    comparison = {
+        'start_date': start_date,
+        'end_date': end_date,
+        'check_interval_minutes': check_interval_minutes,
+        'regime_per_day': {
+            'days_with_data': results[0].get('days_with_data'),
+            'days_with_convex': results[0].get('days_with_convex'),
+            'days_with_income': results[0].get('days_with_income'),
+            'days_with_trend': results[0].get('days_with_trend'),
+            'days_with_neutral': results[0].get('days_with_neutral'),
+            'prob_convex_per_day_pct': results[0].get('prob_convex_per_day_pct'),
+            'prob_income_per_day_pct': results[0].get('prob_income_per_day_pct'),
+            'prob_trend_per_day_pct': results[0].get('prob_trend_per_day_pct'),
+            'prob_neutral_per_day_pct': results[0].get('prob_neutral_per_day_pct'),
+            'prob_at_least_one_regime_per_day_pct': 100.0,
+        } if results and results[0].get('days_with_data') is not None else None,
+        'atr_adx_range': {
+            'atr_min': results[0].get('atr_min'),
+            'atr_max': results[0].get('atr_max'),
+            'atr_mean': results[0].get('atr_mean'),
+            'atr_count': results[0].get('atr_count'),
+            'adx_min': results[0].get('adx_min'),
+            'adx_max': results[0].get('adx_max'),
+            'adx_mean': results[0].get('adx_mean'),
+            'adx_count': results[0].get('adx_count'),
+        } if results and results[0].get('atr_min') is not None else None,
+        'scenarios': [
+            {
+                'scenario_name': r.get('scenario_name'),
+                'profit_target_atr_multiplier': r.get('profit_target_atr_multiplier'),
+                'hybrid_breakeven_threshold_atr': r.get('hybrid_breakeven_threshold_atr'),
+                'max_position_size': r.get('max_position_size'),
+                'max_risk_pct_of_capital': r.get('max_risk_pct_of_capital'),
+                'total_trades': r['total_trades'],
+                'winning_trades': r['winning_trades'],
+                'losing_trades': r['losing_trades'],
+                'win_rate': r['win_rate'],
+                'total_pnl': r['total_pnl'],
+                'total_pnl_gross': r.get('total_pnl_gross'),
+                'total_charges': r.get('total_charges'),
+                'total_quantity': r.get('total_quantity'),
+                'total_return_pct': r.get('total_return_pct'),
+                'exit_reasons': r.get('exit_reasons'),
+            }
+            for r in results
+        ],
+    }
+    comparison_file = f"backtest_trend_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(comparison_file, 'w') as f:
+        json.dump(comparison, f, indent=2, default=str)
+    print(f"\nComparison saved to: {comparison_file}")
+    return comparison
 
 
 def main():
-    """Run backtest"""
-    backtester = TrendFollowingBacktester(initial_capital=1000000)
-    
-    # Backtest on available data
-    # Test on a subset first, then expand
-    backtester.run_backtest('20251222', '20260116', check_interval_minutes=15)
-    
-    # Generate report
-    report = backtester.generate_report()
-    
-    print("\n" + "="*60)
-    print("FUTURES TREND FOLLOWING BACKTEST REPORT")
-    print("="*60)
-    print(f"Total Trades: {report['total_trades']}")
-    print(f"Winning Trades: {report['winning_trades']}")
-    print(f"Losing Trades: {report['losing_trades']}")
-    print(f"Win Rate: {report['win_rate']:.2f}%")
-    print(f"\nTotal P&L: ₹{report['total_pnl']:.2f}")
-    print(f"Average P&L per Trade: ₹{report['avg_pnl']:.2f}")
-    print(f"Max Profit: ₹{report['max_profit']:.2f}")
-    print(f"Max Loss: ₹{report['max_loss']:.2f}")
-    print(f"\nLong Trades: {report['long_trades']} (P&L: ₹{report['long_pnl']:.2f})")
-    print(f"Short Trades: {report['short_trades']} (P&L: ₹{report['short_pnl']:.2f})")
-    print(f"\nInitial Capital: ₹{report['initial_capital']:.2f}")
-    print(f"Final Capital: ₹{report['final_capital']:.2f}")
-    print(f"Total Return: {report['total_return_pct']:.2f}%")
-    
-    print("\nExit Reasons:")
-    for reason, stats in report['exit_reasons'].items():
-        print(f"  {reason}: {stats['count']} trades, P&L: ₹{stats['pnl']:.2f}")
-    
-    print("="*60)
-    
-    # Save detailed report
-    report_file = f"backtest_trend_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(report_file, 'w') as f:
-        json.dump(report, f, indent=2, default=str)
-    
-    print(f"\nDetailed report saved to: {report_file}")
-    
-    return report
+    """Run comparison: Baseline vs Lower ATR target vs Earlier breakeven"""
+    return run_comparison(
+        start_date='20251222',
+        end_date='20260116',
+        check_interval_minutes=15,
+    )
 
 
 if __name__ == '__main__':

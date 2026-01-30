@@ -38,6 +38,25 @@ from strategies.trend.config import (
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger('TrailingStopBacktest')
 
+DEFAULT_NIFTY_LOT_SIZE = 50
+
+
+def get_nifty_lot_size_from_nfo(symbols_dir: str = 'symbols') -> int:
+    """Read NIFTY futures lot size from symbols/NFO.csv (Symbol=NIFTY, Instrument=FUTIDX)."""
+    try:
+        nfo_path = os.path.join(symbols_dir, 'NFO.csv')
+        if not os.path.exists(nfo_path):
+            return DEFAULT_NIFTY_LOT_SIZE
+        df = pd.read_csv(nfo_path)
+        if 'Symbol' not in df.columns or 'LotSize' not in df.columns or 'Instrument' not in df.columns:
+            return DEFAULT_NIFTY_LOT_SIZE
+        nifty_fut = df[(df['Symbol'].str.strip() == 'NIFTY') & (df['Instrument'] == 'FUTIDX')]
+        if nifty_fut.empty:
+            return DEFAULT_NIFTY_LOT_SIZE
+        return int(nifty_fut.iloc[0]['LotSize'])
+    except Exception:
+        return DEFAULT_NIFTY_LOT_SIZE
+
 
 # Trailing Stop Modes
 class TrailingStopMode:
@@ -68,7 +87,7 @@ class TrailingStopBacktester:
         self.trades = []
         self.open_positions = []
         self.regime_detector = RegimeDetector()
-        self.lot_size = 50  # NIFTY futures lot size
+        self.lot_size = get_nifty_lot_size_from_nfo()
         self.hybrid_config = hybrid_config or HYBRID_CONFIG
         
         # Track additional metrics for hybrid mode

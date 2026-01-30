@@ -18,8 +18,9 @@ from pathlib import Path
 import glob
 
 from strategies.convex.call_backspread import generate_nifty_call_backspread
-from technical_indicators import calculate_iv_percentile, calculate_atm_iv, calculate_adx
-from regime.regime_detector import RegimeDetector
+from technical_indicators import calculate_iv_percentile, calculate_atm_iv, calculate_adx, calculate_ema
+from regime.regime_detector import RegimeDetector, classify_regime_from_indicators
+from backtest_trend_following import load_daily_metrics
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('ConvexBacktest')
@@ -90,6 +91,101 @@ class ConvexBackspreadBacktester:
         
         data['timestamps'] = sorted(list(data['timestamps']))
         return data
+
+    def load_futures_data(self, date_str: str) -> pd.DataFrame:
+        """Load NIFTY futures tick data for a date (for 15m candles)."""
+        date_pattern = f"market_data_{date_str}"
+        data_dirs = glob.glob(date_pattern)
+        if not data_dirs:
+            return pd.DataFrame()
+        data_dir = data_dirs[0]
+        futures_dir = os.path.join(data_dir, 'raw_data', 'futures')
+        if not os.path.exists(futures_dir):
+            return pd.DataFrame()
+        all_data = []
+        for csv_file in glob.glob(os.path.join(futures_dir, 'NIFTY*.csv')):
+            try:
+                df = pd.read_csv(csv_file)
+                if 'timestamp' in df.columns and 'ltp' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                    df = df[df['ltp'] > 0]
+                    all_data.append(df)
+            except Exception as e:
+                logger.debug(f"Error loading {csv_file}: {str(e)}")
+        if not all_data:
+            return pd.DataFrame()
+        combined = pd.concat(all_data, ignore_index=True)
+        return combined.sort_values('timestamp')
+
+    def aggregate_to_15min_candles(self, tick_data: pd.DataFrame) -> pd.DataFrame:
+        """Aggregate tick data into 15-minute candles."""
+        if tick_data.empty:
+            return pd.DataFrame()
+        tick_data = tick_data.set_index('timestamp')
+        candles = tick_data['ltp'].resample('15min').agg({
+            'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last'
+        }).reset_index()
+        return candles.dropna()
+
+    def _atr_percentile_and_range(self, candles_df: pd.DataFrame, atr_period: int = 14,
+                                  range_lookback: int = 20) -> Tuple[Optional[float], Optional[float], Optional[float]]:
+        """ATR percentile (0-100), last_range, rolling_avg_range (production-style)."""
+        if len(candles_df) < atr_period + 5 or 'high' not in candles_df.columns or 'low' not in candles_df.columns:
+            return None, None, None
+        highs = candles_df['high'].tolist()
+        lows = candles_df['low'].tolist()
+        closes = candles_df['close'].tolist()
+        atr_values = []
+        for i in range(atr_period - 1, len(closes)):
+            h = highs[max(0, i - atr_period + 1):i + 1]
+            l_ = lows[max(0, i - atr_period + 1):i + 1]
+            c = closes[max(0, i - atr_period):i + 1]
+            if len(h) >= atr_period and len(l_) >= atr_period and len(c) >= atr_period + 1:
+                a = self.regime_detector.calculate_atr(h, l_, c, period=atr_period)
+                if a is not None:
+                    atr_values.append(a)
+        if not atr_values:
+            return None, None, None
+        current_atr = atr_values[-1]
+        atr_pct = (sum(1 for a in atr_values if a <= current_atr) / len(atr_values)) * 100.0
+        last_range = float(highs[-1] - lows[-1]) if highs and lows else None
+        n = min(range_lookback, len(highs), len(lows))
+        rolling_avg_range = (sum(float(highs[-i - 1] - lows[-i - 1]) for i in range(n)) / n) if n > 0 else None
+        return atr_pct, last_range, rolling_avg_range
+
+    def _regime_from_candles(self, candles_df: pd.DataFrame, spot_price: float,
+                             iv_pct: Optional[float], india_vix: Optional[float]) -> Tuple[str, bool]:
+        """Production regime and range_compressed from last 100 candles. Needs len(candles_df) >= 100."""
+        if len(candles_df) < 100:
+            return 'NEUTRAL', False
+        adx = calculate_adx(
+            candles_df['high'].tolist(), candles_df['low'].tolist(), candles_df['close'].tolist(), period=14
+        )
+        atr_pct, last_range, rolling_avg_range = self._atr_percentile_and_range(
+            candles_df, atr_period=14, range_lookback=20
+        )
+        range_compressed = (
+            last_range is not None and rolling_avg_range is not None
+            and rolling_avg_range > 0 and last_range < 0.6 * rolling_avg_range
+        )
+        closes = candles_df['close'].tolist()
+        ema_50 = calculate_ema(closes, period=50)
+        ema_100 = calculate_ema(closes, period=100)
+        ema_direction = None
+        if spot_price and ema_50 and ema_100:
+            if spot_price > ema_50 > ema_100:
+                ema_direction = 'LONG'
+            elif spot_price < ema_50 < ema_100:
+                ema_direction = 'SHORT'
+        regime = classify_regime_from_indicators(
+            iv_percentile=iv_pct,
+            adx_14=adx,
+            atr_percentile=atr_pct,
+            range_compressed=range_compressed,
+            ema_direction=ema_direction,
+            india_vix=india_vix,
+        )
+        return regime, range_compressed
     
     def build_option_chain_at_time(self, data: Dict, timestamp: datetime) -> pd.DataFrame:
         """Build option chain at a specific timestamp"""
@@ -186,67 +282,77 @@ class ConvexBackspreadBacktester:
         return indicators
     
     def check_entry_conditions(self, indicators: Dict, market_state: Dict) -> bool:
-        """Check if entry conditions are met for CONVEX regime"""
-        # Regime must be CONVEX
+        """Check if entry conditions are met: production CONVEX (India VIX < 15 and range_compressed only)."""
         regime = market_state.get('regime', 'NEUTRAL')
-        if regime != 'CONVEX':
-            return False
-        
-        # IV percentile < 40%
-        iv_percentile = indicators.get('iv_percentile')
-        if not iv_percentile or iv_percentile >= 40:
-            return False
-        
-        # ATR percentile < 25%
-        atr_percentile = market_state.get('atr_percentile')
-        if atr_percentile and atr_percentile >= 25:
-            return False
-        
-        return True
+        return regime == 'CONVEX'
     
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
-        """Run backtest on historical data"""
+        """Run backtest on historical data using production regime detection (CONVEX = India VIX < 15 and range_compressed)."""
         logger.info(f"Starting Convex Backspread backtest from {start_date} to {end_date}")
         
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
+        historical_candles = []
+        _india_vix_by_date = {}
         
         while current_date <= end:
             date_str = current_date.strftime('%Y%m%d')
             logger.info(f"Processing {date_str}...")
             
-            # Load historical data
+            # Load options/spot for trades
             data = self.load_historical_data(date_str)
+            # Load futures for regime (15m candles)
+            futures_df = self.load_futures_data(date_str)
+            if not futures_df.empty:
+                day_candles = self.aggregate_to_15min_candles(futures_df)
+                if not day_candles.empty:
+                    historical_candles.extend(day_candles.to_dict('records'))
+            if len(historical_candles) > 100:
+                historical_candles = historical_candles[-100:]
+            
+            # India VIX: daily_metrics or synthetic 14 for backtest
+            if date_str not in _india_vix_by_date:
+                daily = load_daily_metrics(date_str)
+                _india_vix_by_date[date_str] = daily.get('india_vix') if daily else None
+            if _india_vix_by_date[date_str] is None:
+                _india_vix_by_date[date_str] = 14.0
+            
             if not data['timestamps']:
-                logger.warning(f"No data for {date_str}")
                 current_date += timedelta(days=1)
                 continue
             
-            # Process at intervals
             current_time = datetime.combine(current_date, datetime.min.time().replace(hour=9, minute=15))
             end_time = datetime.combine(current_date, datetime.min.time().replace(hour=15, minute=30))
             
             while current_time <= end_time:
-                # Get spot price
                 spot_price = self.get_spot_price_at_time(data, current_time)
                 if not spot_price:
                     current_time += check_interval
                     continue
                 
-                # Calculate indicators
                 indicators = self.calculate_indicators(data, current_time, spot_price)
                 
-                # Build market state
+                # Production regime from last 100 candles up to current_time
+                candles_up_to_now = [c for c in historical_candles if c.get('timestamp') <= current_time]
+                if len(candles_up_to_now) >= 100:
+                    recent_df = pd.DataFrame(candles_up_to_now[-100:])
+                    regime, range_compressed = self._regime_from_candles(
+                        recent_df, spot_price, iv_pct=indicators.get('iv_percentile') or 50.0,
+                        india_vix=_india_vix_by_date.get(date_str)
+                    )
+                else:
+                    regime, range_compressed = 'NEUTRAL', False
+                
                 market_state = {
                     'spot_price': spot_price,
-                    'regime': 'CONVEX',  # Simplified - would use regime detector
+                    'regime': regime,
                     'iv_percentile': indicators.get('iv_percentile'),
                     'adx_14': indicators.get('adx_14'),
                     'atr_percentile': indicators.get('atr_percentile'),
-                    'range_state': 'COMPRESSED',
-                    'expiry': current_date.strftime('%Y-%m-%d'),  # Simplified
+                    'range_state': 'COMPRESSED' if range_compressed else 'NORMAL',
+                    'expiry': current_date.strftime('%Y-%m-%d'),
                     'days_to_expiry': 7
                 }
                 
@@ -358,6 +464,7 @@ class ConvexBackspreadBacktester:
                 'losing_trades': 0,
                 'win_rate': 0.0,
                 'total_pnl': 0.0,
+                'avg_pnl': 0.0,
                 'initial_capital': self.initial_capital,
                 'final_capital': self.capital,
                 'total_return_pct': 0.0,

@@ -410,7 +410,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
                     f.write(json.dumps({"location":"trend_follow_futures.py:252","message":"Regime check failed","data":{"regime":regime,"expected":"TREND_CONTINUATION"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"T0a"})+"\n")
             except: pass
             # #endregion
-            logger.debug(f"Trend strategy rejected: regime is {regime}, not TREND_CONTINUATION")
+            logger.info(f"Trend strategy no trade: reason=REGIME_NOT_TREND (regime={regime})")
             return None
         
         # Validate required inputs
@@ -418,15 +418,15 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         atr = market_state.get('atr')
         
         if spot_price is None or spot_price <= 0:
-            logger.debug("Invalid or missing spot_price")
+            logger.info("Trend strategy no trade: reason=SPOT_OR_ATR_INVALID (spot_price invalid or missing)")
             return None
-        
+
         if atr is None or atr <= 0:
-            logger.debug("Invalid or missing ATR")
+            logger.info("Trend strategy no trade: reason=SPOT_OR_ATR_INVALID (ATR invalid or missing)")
             return None
-        
+
         if not api or not symbol_manager:
-            logger.debug("API or symbol_manager not provided")
+            logger.info("Trend strategy no trade: reason=API_OR_SYMBOL_MANAGER_MISSING")
             return None
         
         # Get all available futures contracts and select appropriate one
@@ -441,7 +441,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             all_contracts = symbol_manager.get_index_futures_all_expiries('NIFTY')
             
             if not all_contracts:
-                logger.warning("No NIFTY futures contracts available")
+                logger.info("Trend strategy no trade: reason=NO_NIFTY_FUTURES")
                 return None
             
             # Find the first contract with sufficient days to expiry
@@ -459,8 +459,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             
             if not selected_contract:
                 logger.info(
-                    f"Entry rejected: No viable futures contracts available. "
-                    f"All contracts too close to expiry: {skipped_contracts}"
+                    f"Trend strategy no trade: reason=ALL_CONTRACTS_NEAR_EXPIRY (skipped={skipped_contracts})"
                 )
                 return None
             
@@ -481,15 +480,16 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
                 futures_price = float(quote['lp'])
                 logger.debug(f"NIFTY futures price ({futures_symbol}): {futures_price}")
             else:
-                logger.warning(f"Could not get quote for {futures_symbol}")
+                logger.info(f"Trend strategy no trade: reason=NO_FUTURES_QUOTE (symbol={futures_symbol})")
                 return None
-                
+
         except Exception as e:
+            logger.info(f"Trend strategy no trade: reason=FUTURES_SELECT_ERROR (error={e!s})")
             logger.error(f"Error selecting futures contract: {str(e)}")
             return None
-        
+
         if not futures_price or futures_price <= 0:
-            logger.debug("Could not get valid NIFTY futures price")
+            logger.info("Trend strategy no trade: reason=FUTURES_PRICE_INVALID")
             return None
         
         # Get EMA structure
@@ -511,7 +511,7 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         # #endregion
         
         if not ema_structure:
-            logger.debug("Could not get EMA structure")
+            logger.info("Trend strategy no trade: reason=NO_EMA_STRUCTURE (insufficient 15m data or calc failed)")
             return None
         
         direction = ema_structure.get('direction')
@@ -524,15 +524,26 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         # #endregion
         
         if not direction:
-            logger.debug("EMA structure not aligned (no clear trend direction)")
+            logger.info(
+                "Trend strategy no trade: reason=DIRECTION_NONE (15m EMA: neither price<ema50<ema100 nor price>ema50>ema100)"
+            )
             return None
         
         # Calculate position size
-        # Get lot size from futures info if available, otherwise use default
+        # Get lot size from futures info (from NFO via symbol_manager) or from symbol_manager, else fallback
         if futures_info and 'lot_size' in futures_info:
             lot_size = futures_info['lot_size']
+        elif symbol_manager:
+            try:
+                contracts = symbol_manager.get_index_futures_all_expiries('NIFTY')
+                if contracts:
+                    lot_size = contracts[0]['lot_size']
+                else:
+                    lot_size = 50
+            except Exception:
+                lot_size = 50
         else:
-            lot_size = 50  # Default NIFTY futures lot size
+            lot_size = 50
         
         # #region agent log
         try:
@@ -551,7 +562,9 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         # #endregion
         
         if position_info['quantity'] == 0:
-            logger.debug("Position size is 0 (risk limits too tight)")
+            logger.info(
+                "Trend strategy no trade: reason=POSITION_SIZE_ZERO (risk limits or capital give 0 lots)"
+            )
             return None
         
         # Calculate stop loss price based on direction
@@ -609,5 +622,6 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         return trade_proposal
         
     except Exception as e:
+        logger.info(f"Trend strategy no trade: reason=EXCEPTION (error={e!s})")
         logger.error(f"Error generating trend follow trade: {str(e)}", exc_info=True)
         return None

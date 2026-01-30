@@ -20,6 +20,8 @@ import json
 
 logger = logging.getLogger('TechnicalIndicators')
 
+# Track contract rollovers already logged this process (log once per rollover pair)
+_logged_rollovers = set()
 
 # Risk-free rate (approximate for Indian market, can be updated)
 RISK_FREE_RATE = 0.06  # 6% annual
@@ -886,9 +888,12 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
                     older_last_price = day_data_list[i]['last_price']
                     rollover_gap = newer_first_price - older_last_price
                     cumulative_adjustment += rollover_gap
-                    
-                    logger.info(f"Contract rollover detected: {current_contract} -> {newer_contract}, "
-                               f"adjustment: {rollover_gap:.2f} pts (cumulative: {cumulative_adjustment:.2f})")
+                    # Log only once per rollover pair per process (avoids spam every 5 min)
+                    rollover_key = (current_contract, newer_contract)
+                    if rollover_key not in _logged_rollovers:
+                        _logged_rollovers.add(rollover_key)
+                        logger.info(f"Contract rollover detected: {current_contract} -> {newer_contract}, "
+                                   f"adjustment: {rollover_gap:.2f} pts (cumulative: {cumulative_adjustment:.2f})")
                     
                     # #region agent log
                     try:

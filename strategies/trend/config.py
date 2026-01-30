@@ -3,13 +3,13 @@ Configuration for Trend Following Futures Strategy
 """
 
 # Risk limits
-MAX_RISK_PCT_OF_CAPITAL = 0.05  # 5.0% of total capital per trade (allows ₹50k risk per lot with 3×ATR stop loss)
-MAX_POSITION_SIZE = 1  # Maximum 1 lot
-INITIAL_STOP_LOSS_ATR_MULTIPLIER = 3.0  # Initial SL = 3.0 × ATR(14)
+MAX_RISK_PCT_OF_CAPITAL = 0.05  # 5.0% of total capital per trade (₹50k max risk per trade)
+MAX_POSITION_SIZE = 5  # Maximum 5 lots
+INITIAL_STOP_LOSS_ATR_MULTIPLIER = 2.5  # Initial SL = 2.5 × ATR(14); 2.5× keeps 1 lot under 5% when ATR ~260 (lot 65)
 TRAILING_STOP_LOSS_ATR_MULTIPLIER = 2.0  # Trailing SL = 2 × ATR (Chandelier)
 
 # ATR-based profit target (book gains proactively)
-PROFIT_TARGET_ATR_MULTIPLIER = 0.25  # Exit when unrealized profit >= 0.25× ATR (in points)
+PROFIT_TARGET_ATR_MULTIPLIER = 0.5  # Exit when unrealized profit >= 0.5× ATR (in points); backtest showed net profitable at 0.5×
 
 # Hybrid Trailing Stop (profit-protection mode)
 # Phases: 1=No profit, 2=Breakeven, 3=Tight, 4=Very tight, 5=Very large profit
