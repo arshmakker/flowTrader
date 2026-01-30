@@ -48,6 +48,12 @@ market_data_iv/
 
 # Backtest Reports
 backtest_report_*.json
+backtest_regime_report_*.json
+backtest_convex_report_*.json
+backtest_trend_report_*.json
+backtest_trend_comparison_*.json
+backtest_calendar_report_*.json
+backtest_trailing_comparison_*.json
 
 # Trade Proposals
 trade_proposals/
