@@ -689,18 +689,19 @@ def main():
                                                 except: pass
                                                 # #endregion
                                                 
-                                                # Exit condition 2b: ATR profit target (book gains proactively)
+                                                # Exit condition 2b: ATR profit target (optional; None = trailing only)
                                                 if not should_exit and current_atr > 0:
                                                     from strategies.trend.config import PROFIT_TARGET_ATR_MULTIPLIER
-                                                    qty = position.get('quantity', 0)
-                                                    if qty and qty > 0:
-                                                        unrealized_pnl_points = abs(current_pnl) / qty if current_pnl > 0 else 0
-                                                        if current_pnl > 0 and unrealized_pnl_points >= (current_atr * PROFIT_TARGET_ATR_MULTIPLIER):
-                                                            should_exit = True
-                                                            exit_reason = 'PROFIT_TARGET_ATR'
-                                                            logger.info(
-                                                                f"ATR profit target hit: P&L=₹{current_pnl:.2f} (≥ {PROFIT_TARGET_ATR_MULTIPLIER}× ATR = {current_atr * PROFIT_TARGET_ATR_MULTIPLIER:.1f} pts), closing position"
-                                                            )
+                                                    if PROFIT_TARGET_ATR_MULTIPLIER is not None:
+                                                        qty = position.get('quantity', 0)
+                                                        if qty and qty > 0:
+                                                            unrealized_pnl_points = abs(current_pnl) / qty if current_pnl > 0 else 0
+                                                            if current_pnl > 0 and unrealized_pnl_points >= (current_atr * PROFIT_TARGET_ATR_MULTIPLIER):
+                                                                should_exit = True
+                                                                exit_reason = 'PROFIT_TARGET_ATR'
+                                                                logger.info(
+                                                                    f"ATR profit target hit: P&L=₹{current_pnl:.2f} (≥ {PROFIT_TARGET_ATR_MULTIPLIER}× ATR = {current_atr * PROFIT_TARGET_ATR_MULTIPLIER:.1f} pts), closing position"
+                                                                )
                                                 
                                                 # Exit condition 3: Expiry date approaching
                                                 if not should_exit:
@@ -842,14 +843,19 @@ def main():
                                                     # Import hybrid trailing stop config
                                                     from strategies.trend.config import (
                                                         USE_HYBRID_TRAILING_STOP,
+                                                        HYBRID_MIN_PNL_LOCK_INR,
                                                         HYBRID_BREAKEVEN_THRESHOLD_ATR,
                                                         HYBRID_PHASE2_THRESHOLD_ATR,
                                                         HYBRID_PHASE3_THRESHOLD_ATR,
                                                         HYBRID_PHASE4_THRESHOLD_ATR,
+                                                        HYBRID_PHASE5_THRESHOLD_ATR,
+                                                        HYBRID_PHASE6_THRESHOLD_ATR,
                                                         HYBRID_PHASE1_MULTIPLIER,
                                                         HYBRID_PHASE2_MULTIPLIER,
                                                         HYBRID_PHASE3_MULTIPLIER,
-                                                        HYBRID_PHASE4_MULTIPLIER
+                                                        HYBRID_PHASE4_MULTIPLIER,
+                                                        HYBRID_PHASE5_MULTIPLIER,
+                                                        HYBRID_PHASE6_MULTIPLIER,
                                                     )
                                                     
                                                     # Calculate unrealized P&L in points
@@ -878,25 +884,32 @@ def main():
                                                             trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
                                                             trail_phase = 'PHASE3_TIGHT'
                                                         elif unrealized_pnl_points < (current_atr * HYBRID_PHASE4_THRESHOLD_ATR):
-                                                            # Phase 4: Large profit - very tight 1× ATR
                                                             trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
                                                             trail_phase = 'PHASE4_VERY_TIGHT'
-                                                        else:
-                                                            # Phase 5: Very large profit - 0.75× ATR (tighter trail in big profit)
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE5_THRESHOLD_ATR):
                                                             trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
-                                                            trail_phase = 'PHASE5_VERY_LARGE_PROFIT'
+                                                            trail_phase = 'PHASE5_TIGHT'
+                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE6_THRESHOLD_ATR):
+                                                            trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
+                                                            trail_phase = 'PHASE6_VERY_TIGHT'
+                                                        else:
+                                                            trailing_multiplier = HYBRID_PHASE6_MULTIPLIER
+                                                            trail_phase = 'PHASE6_PLUS'
                                                     else:
                                                         # FIXED mode: Standard 2× ATR trailing
                                                         trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
                                                         trail_phase = 'FIXED'
+                                                    position['trail_phase'] = trail_phase
                                                     
                                                     trailing_stop_distance = current_atr * trailing_multiplier
                                                     
                                                     if direction == 'LONG':
                                                         new_trailing_stop = current_futures_price - trailing_stop_distance
                                                         
-                                                        # In profit phases, ensure stop is at least at breakeven
-                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_VERY_LARGE_PROFIT']:
+                                                        # In profit phases or P&L >= 300 INR: ensure stop at least at breakeven
+                                                        lock_be = (trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_TIGHT', 'PHASE6_VERY_TIGHT', 'PHASE6_PLUS']
+                                                                   or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
+                                                        if USE_HYBRID_TRAILING_STOP and lock_be:
                                                             new_trailing_stop = max(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves up (tightens) for LONG
@@ -904,8 +917,10 @@ def main():
                                                     else:  # SHORT
                                                         new_trailing_stop = current_futures_price + trailing_stop_distance
                                                         
-                                                        # In profit phases, ensure stop is at least at breakeven
-                                                        if USE_HYBRID_TRAILING_STOP and trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_VERY_LARGE_PROFIT']:
+                                                        # In profit phases or P&L >= 300 INR: ensure stop at least at breakeven
+                                                        lock_be = (trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_TIGHT', 'PHASE6_VERY_TIGHT', 'PHASE6_PLUS']
+                                                                   or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
+                                                        if USE_HYBRID_TRAILING_STOP and lock_be:
                                                             new_trailing_stop = min(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves down (tightens) for SHORT
@@ -999,17 +1014,28 @@ def main():
                                                         from strategies.trend.config import EMA_BREAK_CONFIRMATION_CHECKS
                                                         age_str += f", EMA_Break_Count={ema_break_count}/{EMA_BREAK_CONFIRMATION_CHECKS}"
                                                     
+                                                    # Profit locked if stop is beyond entry (trailing in profit)
+                                                    qty = position.get('quantity', 0)
+                                                    if direction == 'LONG' and current_stop > entry_price and qty:
+                                                        profit_locked = (current_stop - entry_price) * qty
+                                                    elif direction == 'SHORT' and current_stop < entry_price and qty:
+                                                        profit_locked = (entry_price - current_stop) * qty
+                                                    else:
+                                                        profit_locked = 0.0
+                                                    trail_phase = position.get('trail_phase', 'INITIAL')
+                                                    extra = f", Profit_locked=₹{profit_locked:.2f}, Trail={trail_phase}"
+                                                    
                                                     logger.info(
                                                         f"Futures position {position['trade_id']}: "
                                                         f"Price=₹{current_futures_price:.2f}, "
                                                         f"P&L=₹{current_pnl:.2f}, "
-                                                        f"Stop=₹{current_stop:.2f}{age_str}, "
+                                                        f"Stop=₹{current_stop:.2f}{extra}{age_str}, "
                                                         f"Regime={current_regime}{ema_status}"
                                                     )
                                                     # #region agent log
                                                     try:
                                                         with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                                                            f.write(json.dumps({"location":"main.py:609","message":"Position status logged successfully","data":{"position_id":position.get('trade_id'),"current_futures_price":current_futures_price,"current_pnl":current_pnl,"current_stop":current_stop,"current_regime":current_regime},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
+                                                            f.write(json.dumps({"location":"main.py:609","message":"Position status logged successfully","data":{"position_id":position.get('trade_id'),"current_futures_price":current_futures_price,"current_pnl":current_pnl,"current_stop":current_stop,"profit_locked":profit_locked,"trail_phase":trail_phase,"current_regime":current_regime},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"position-monitoring","hypothesisId":"H5"})+"\n")
                                                     except: pass
                                                     # #endregion
                                                 

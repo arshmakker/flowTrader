@@ -23,14 +23,19 @@ from strategies.trend.config import (
     EMA_SLOW_PERIOD,
     PROFIT_TARGET_ATR_MULTIPLIER,
     USE_HYBRID_TRAILING_STOP,
+    HYBRID_MIN_PNL_LOCK_INR,
     HYBRID_BREAKEVEN_THRESHOLD_ATR,
     HYBRID_PHASE2_THRESHOLD_ATR,
     HYBRID_PHASE3_THRESHOLD_ATR,
     HYBRID_PHASE4_THRESHOLD_ATR,
+    HYBRID_PHASE5_THRESHOLD_ATR,
+    HYBRID_PHASE6_THRESHOLD_ATR,
     HYBRID_PHASE1_MULTIPLIER,
     HYBRID_PHASE2_MULTIPLIER,
     HYBRID_PHASE3_MULTIPLIER,
     HYBRID_PHASE4_MULTIPLIER,
+    HYBRID_PHASE5_MULTIPLIER,
+    HYBRID_PHASE6_MULTIPLIER,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -44,7 +49,7 @@ BROKERAGE_PCT = 0.0003  # 0.03%
 BROKERAGE_MAX_PER_ORDER = 5.0  # Rs 5
 TX_CHARGES_PCT = 0.0000173  # 0.00173%
 SEBI_PER_CRORE = 10.0  # Rs 10 per crore turnover
-STT_PCT_SELL = 0.0002  # 0.02% on sell side
+STT_PCT_SELL = 0.0005  # 0.05% on sell side
 GST_PCT = 0.18  # 18% on (brokerage + SEBI + transaction charges)
 IPFT_PER_LAKH = 0.10  # Rs 0.10 per lakh turnover
 
@@ -509,8 +514,8 @@ class TrendFollowingBacktester:
         if regime != 'TREND_CONTINUATION':
             return True, 'REGIME_CHANGE'
 
-        # Exit condition 2b: ATR profit target (book gains proactively)
-        if atr > 0 and quantity > 0:
+        # Exit condition 2b: ATR profit target (optional; None = trailing only)
+        if self._profit_target_atr is not None and atr > 0 and quantity > 0:
             if current_pnl > 0 and unrealized_pnl_points >= (atr * self._profit_target_atr):
                 return True, 'PROFIT_TARGET_ATR'
 
@@ -525,7 +530,7 @@ class TrendFollowingBacktester:
                 if not (current_price < ema_50 < ema_100):
                     return True, 'EMA_STRUCTURE_BROKEN'
 
-        # Update trailing stop loss (hybrid phases 1–5, same as main.py)
+        # Update trailing stop loss (hybrid phases 1–6, same as main.py)
         if atr > 0:
             if USE_HYBRID_TRAILING_STOP:
                 if unrealized_pnl_points <= 0:
@@ -538,20 +543,26 @@ class TrendFollowingBacktester:
                     trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
                 elif unrealized_pnl_points < (atr * HYBRID_PHASE4_THRESHOLD_ATR):
                     trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
-                else:
+                elif unrealized_pnl_points < (atr * HYBRID_PHASE5_THRESHOLD_ATR):
                     trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
+                elif unrealized_pnl_points < (atr * HYBRID_PHASE6_THRESHOLD_ATR):
+                    trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
+                else:
+                    trailing_multiplier = HYBRID_PHASE6_MULTIPLIER
             else:
                 trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
 
+            lock_be = (USE_HYBRID_TRAILING_STOP and
+                       (unrealized_pnl_points > 0 or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
             trailing_stop_distance = atr * trailing_multiplier
             if direction == 'LONG':
                 new_trailing_stop = current_price - trailing_stop_distance
-                if USE_HYBRID_TRAILING_STOP and unrealized_pnl_points > 0:
+                if lock_be:
                     new_trailing_stop = max(new_trailing_stop, entry_price)
                 position['current_stop_price'] = max(current_stop, new_trailing_stop)
             else:  # SHORT
                 new_trailing_stop = current_price + trailing_stop_distance
-                if USE_HYBRID_TRAILING_STOP and unrealized_pnl_points > 0:
+                if lock_be:
                     new_trailing_stop = min(new_trailing_stop, entry_price)
                 position['current_stop_price'] = min(current_stop, new_trailing_stop)
 
