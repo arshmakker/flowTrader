@@ -1,0 +1,45 @@
+{
+  "start_date": "20251222",
+  "end_date": "20260116",
+  "check_interval_minutes": 15,
+  "trailing_only": {
+    "total_trades": 15,
+    "winning_trades": 7,
+    "losing_trades": 8,
+    "win_rate": 46.666666666666664,
+    "total_pnl": 37329.656504501625,
+    "total_pnl_gross": 106792.09821428437,
+    "total_charges": 69462.44170978277,
+    "total_return_pct": 3.732965650450182,
+    "exit_reasons": {
+      "STOP_LOSS_HIT": {
+        "count": 11,
+        "pnl": 33121.61702074709
+      },
+      "MARKET_CLOSE_APPROACHING": {
+        "count": 4,
+        "pnl": 4208.039483754526
+      }
+    }
+  },
+  "035_atr_target": {
+    "total_trades": 20,
+    "winning_trades": 11,
+    "losing_trades": 9,
+    "win_rate": 55.00000000000001,
+    "total_pnl": 27500.110448741398,
+    "total_pnl_gross": 120248.83928571371,
+    "total_charges": 92748.72883697232,
+    "total_return_pct": 2.7500110448741353,
+    "exit_reasons": {
+      "PROFIT_TARGET_ATR": {
+        "count": 16,
+        "pnl": 76871.11741896477
+      },
+      "STOP_LOSS_HIT": {
+        "count": 4,
+        "pnl": -49371.006970223374
+      }
+    }
+  }
+}

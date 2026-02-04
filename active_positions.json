@@ -1005,7 +1005,7 @@
     "strategy": "TREND_FOLLOW_FUTURE",
     "book": "TREND",
     "regime_at_entry": "TREND_CONTINUATION",
-    "status": "OPEN",
+    "status": "CLOSED",
     "symbol": "NIFTY24FEB26F",
     "expiry": "2026-02-24",
     "days_to_expiry": 22,
@@ -1023,6 +1023,10 @@
     "entry_range_state": null,
     "entry_iv_percentile": null,
     "entry_prices": {},
-    "ema_break_count": 0
+    "ema_break_count": 0,
+    "trail_phase": "PHASE1",
+    "exit_time": "2026-02-02T15:15:45.270759",
+    "exit_reason": "futures_exit_MARKET_CLOSE_APPROACHING",
+    "final_pnl": -18089.499999999953
   }
 ]

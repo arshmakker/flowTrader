@@ -5,32 +5,43 @@
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` (Iron Condor), `backtest_trend_following.py` (Trend Futures with ATR profit target and hybrid trailing) run against stored tick data.
 
-## Current state (2026-01-30)
+## Current state (2026-02-03)
 
-### CONVEX Regime: India VIX and range only (2026-01-30)
+### Regime hierarchy: TREND-first (2026-01-29)
 
-CONVEX regime uses **India VIX < 15** and **range compressed** only (no IV percentile or ATR criteria).
+**`regime_detector.detect_regime()`** enforces a strict hierarchy; only this function was refactored; exit logic and trailing stop-loss are unchanged.
+
+1. **TREND_CONTINUATION** (hard override): Determined only by price structure (ADX ≥ 30, ATR% ≥ 50, EMA alignment). If TREND is detected, VIX/IV/range are not evaluated; function returns immediately.
+2. **Volatility regimes** (only if NOT TREND): **CONVEX** when India VIX < VIX_LOW (12); **INCOME** when India VIX ≥ VIX_HIGH (18). Mid-band (12 ≤ VIX < 18) or missing VIX → NEUTRAL.
+3. **NEUTRAL**: Mid-band VIX or no structural edge.
+
+India VIX benchmarks: `VIX_LOW = 12.0`, `VIX_HIGH = 18.0` (used only when NOT TREND). Backtest stateless `classify_regime_from_indicators` still uses CONVEX_VIX_MAX/INCOME_VIX_MIN for compatibility.
+
+### CONVEX Regime: India VIX only when NOT TREND (2026-01-29)
+
+CONVEX regime (in `detect_regime`) uses **India VIX < VIX_LOW (12)** only; evaluated only when TREND was not detected. No range_compressed requirement in production detect_regime.
 
 - **strategy_runner**: `get_india_vix(api)` fetches India VIX from NSE (token 26017); `build_market_state_from_chain` adds `india_vix` to market_state; `save_daily_metrics` persists `india_vix` for backtest.
-- **regime_detector**: `CONVEX_VIX_MAX = 15`; CONVEX = (india_vix is not None and india_vix < 15) and range_compressed; regime_result includes `india_vix`.
+- **regime_detector**: `VIX_LOW = 12.0`; CONVEX = (india_vix is not None and india_vix < VIX_LOW) when NOT TREND. `classify_regime_from_indicators` (backtest) uses same TREND-first hierarchy and VIX_LOW/VIX_HIGH.
+- **get_recent_candles lookback (2026-01-29)**: All production calls to `regime_detector.get_recent_candles()` must pass `lookback_days=20` so that `rolling_avg_range` can be computed. Without it, CONVEX range_check fails. Fixed in `strategy_runner.py` and `main.py`. **Rolling avg threshold (2026-01-29)**: Regime detector uses `MIN_CANDLES_FOR_ROLLING = 15`; rolling_avg_range is computed when `len(recent_candles) >= 15` (using last min(20, len) candles). This allows CONVEX range check to run when API returns ~17 trading days (e.g. 20 calendar days).
 - **Backtests**: Trend and regime backtests load `india_vix` from daily_metrics when present and pass it to `classify_regime_from_indicators`.
 
-### INCOME Regime: India VIX or IV% (2026-01-30)
+### INCOME Regime: India VIX only when NOT TREND (2026-01-29)
 
-INCOME regime uses **high vol** (IV% &gt; 60 **or** India VIX ≥ 20) and **low trend** (ADX &lt; 20, ATR% &lt; 50).
+INCOME regime (in `detect_regime`) uses **India VIX ≥ VIX_HIGH (18)** only; evaluated only when TREND was not detected.
 
-- **regime_detector**: `INCOME_VIX_MIN = 20`; INCOME triggers when `(iv_percentile > 60 OR (india_vix is not None and india_vix >= 20))` and ADX &lt; 20 and ATR% &lt; 50. IV percentile remains supported; India VIX allows INCOME to trigger in backtest and live without IV history.
-- **Backtest**: Regime backtest passes `india_vix` from daily_metrics (or synthetic 14 when missing); INCOME can trigger on days where `daily_metrics.json` has India VIX ≥ 20 and ADX/ATR conditions are met.
+- **regime_detector**: `VIX_HIGH = 18.0`; INCOME = (india_vix is not None and india_vix >= VIX_HIGH) when NOT TREND. `classify_regime_from_indicators` (backtest) uses same TREND-first and VIX_HIGH.
+- **Backtest**: Regime backtest passes `india_vix` from daily_metrics (or synthetic 14 when missing); INCOME triggers when not TREND and India VIX ≥ 18.
 
 ### Regime Detection Backtest (2026-01-30)
 
-**`backtest_regime_detection.py`** now uses **production** regime logic (`classify_regime_from_indicators`) with the same thresholds (CONVEX, INCOME, TREND_CONTINUATION, NEUTRAL). IV source: optional CSV → `daily_metrics.json` → volatility proxy (ATR/close percentile). Accumulates 100 bars across days for EMA/ATR/range; reports regime distribution, transitions, and indicator stats by regime.
+**`backtest_regime_detection.py`** uses **production** regime logic (`classify_regime_from_indicators`) with TREND-first hierarchy and VIX_LOW (12) / VIX_HIGH (18). IV source: optional CSV → `daily_metrics.json` → volatility proxy. Accumulates 100 bars across days for EMA/ATR/range; reports regime distribution, transitions, and indicator stats by regime.
 
 **Run**: `python3 backtest_regime_detection.py [start_YYYYMMDD] [end_YYYYMMDD] [iv_csv_path]` (default 20251222–20260116). Report: `backtest_regime_report_YYYYMMDD_HHMMSS.json`.
 
-**CONVEX in regime backtest**: Report includes `convex_triggered` (count of bars where regime was CONVEX), `range_compressed_bars`, and `convex_note` (CONVEX requires India VIX &lt; 15 and range_compressed; note explains why CONVEX did or did not trigger). CONVEX triggers only when both conditions hold; in sample runs with no range compression, CONVEX stays 0.
+**CONVEX in regime backtest**: Report includes `convex_triggered`, `range_compressed_bars` (informational), and `convex_note`. CONVEX triggers when TREND is not detected and India VIX &lt; VIX_LOW (12).
 
-**Convex backspread backtest (production regime)** (2026-01-30): **`backtest_convex_backspread.py`** now uses **production** regime detection: loads NIFTY futures per date, builds 15m candles, keeps rolling 100 bars, and at each check time classifies regime via `classify_regime_from_indicators` (India VIX from `daily_metrics` or synthetic 14, range_compressed from last_range &lt; 0.6×rolling_avg_range). Convex **entries** occur only when regime is CONVEX (no separate IV/ATR entry filters). Report includes `avg_pnl`; 0-trades case returns all fields (e.g. avg_pnl 0) so the report prints without error.
+**Convex backspread backtest (production regime)** (2026-01-29): **`backtest_convex_backspread.py`** uses **production** regime (TREND-first; CONVEX when not TREND and India VIX &lt; VIX_LOW (12)): loads NIFTY futures per date, builds 15m candles, rolling 100 bars, classifies via `classify_regime_from_indicators`. Convex **entries** when regime is CONVEX. Report includes `avg_pnl`; 0-trades case returns all fields.
 
 ### IV for Backtest and Daily Metrics Persistence (2026-01-30)
 
@@ -98,6 +109,36 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 
 **Backtest** (`backtest_trend_following.py`): Imports and uses PHASE5/PHASE6 and `HYBRID_MIN_PNL_LOCK_INR`. Profit-target exit only when `_profit_target_atr is not None` (supports config `None` = trailing only). Breakeven lock uses `unrealized_pnl_points > 0 or current_pnl >= HYBRID_MIN_PNL_LOCK_INR`.
 
+### Iron Condor: Trailing PnL Lock (INCOME regime) (2026-01-29)
+
+**Config** (`strategies/iron_condor/exit_rules.py`):
+- **MIN_PNL_LOCK_INR = 300** — First lock when PnL ≥ ₹300.
+- **PNL_TRAIL_DISTANCE_INR = 200** — Lock trails at (current_pnl − 200); exit when PnL &lt; lock.
+
+**Logic**: Once PnL ≥ ₹300, set locked floor = 300. Thereafter lock = max(lock, current_pnl − 200). Exit when current_pnl &lt; profit_locked_inr (trailing stop hit). Lock is stored per position as `profit_locked_inr` and persisted in `active_positions.json`.
+
+**Live** (`main.py`): For positions with `book == 'INCOME'`, after calculating current PnL we call `position_tracker.update_trailing_lock_and_check(position, current_pnl)`. If it returns True, close with reason `trailing_stop_pnl`. Check runs before profit target, calendar, and convex exits.
+
+**Position tracker** (`strategies/iron_condor/position_tracker.py`): New options positions get `profit_locked_inr: 0`. `update_trailing_lock_and_check(position, current_pnl)` updates lock in place, saves when lock changes, and returns True when PnL drops below lock.
+
+### Trend Strategy: Loss-Control Circuit Breakers & Regime/EMA (2026-02-02)
+
+**Config** (`strategies/trend/config.py`):
+- **MAX_INTRADAY_LOSS_INR = 15000** — Exit if unrealized loss exceeds ₹15k (circuit breaker).
+- **MAX_TIME_IN_LOSS_MINUTES = 150** — Exit if position has been in loss for 2.5 hours.
+- **REGIME_CHANGE_CONFIRMATION_CHECKS = 2** — Require N consecutive regime ≠ TREND_CONTINUATION before REGIME_CHANGE exit (reduces whipsaw).
+- **EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS = 1** — When in loss, require only 1 consecutive EMA break (faster exit on trend flip); in profit still uses EMA_BREAK_CONFIRMATION_CHECKS (2).
+
+**Live** (`main.py`):
+- **MAX_LOSS_CAP**: If `current_pnl <= -MAX_INTRADAY_LOSS_INR`, exit with reason `MAX_LOSS_CAP`.
+- **TIME_IN_LOSS**: If `current_pnl < 0` and `position_age_minutes >= MAX_TIME_IN_LOSS_MINUTES`, exit with reason `TIME_IN_LOSS`.
+- **Regime change**: Per-position `regime_change_count` incremented when regime ≠ TREND_CONTINUATION, reset when regime is TREND_CONTINUATION. Exit with `REGIME_CHANGE` only when `regime_change_count >= REGIME_CHANGE_CONFIRMATION_CHECKS`.
+- **EMA break**: When `current_pnl < 0`, use `ema_required_checks = EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS` (1); otherwise use `EMA_BREAK_CONFIRMATION_CHECKS` (2). Status log shows `EMA_Break_Count=X/Y` with Y = 1 or 2 depending on PnL.
+
+### Parity: Production vs Backtest (Trend) (2026-02-02, sanity check 2026-02-03)
+
+**`PARITY_TREND_BACKTEST_VS_PRODUCTION.md`** (sanity check) compares backtest and production item-by-item: entry (regime, ADX, high-vol ADX, ATR%, EMA, cooldown, max trades/day), exit order and rules, hybrid trailing phases, breakeven lock, position sizing. **Breakeven lock aligned (2026-02-03):** Production previously locked BE when in phase 2 (profit ≥ 0.5× ATR). It now matches backtest: lock only when **profit ≥ 1× ATR** (HYBRID_PHASE2_THRESHOLD_ATR) **or PnL ≥ ₹300**. Re-run the parity doc after any trend entry/exit or config change.
+
 ### Trend Backtest: Exit Logic (ATR Profit Target + Hybrid Trail)
 
 **Logic** (aligned with live `main.py`):
@@ -127,6 +168,38 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 ### Trend Strategy: No-Trade Reason Logging (2026-01-30)
 
 **Implemented**: When the trend strategy returns no trade (NO_VALID_TRADE), the exact reason is now logged at INFO level so logs show why. Reason codes: `REGIME_NOT_TREND`, `SPOT_OR_ATR_INVALID`, `API_OR_SYMBOL_MANAGER_MISSING`, `NO_NIFTY_FUTURES`, `ALL_CONTRACTS_NEAR_EXPIRY`, `NO_FUTURES_QUOTE`, `FUTURES_SELECT_ERROR`, `FUTURES_PRICE_INVALID`, `NO_EMA_STRUCTURE`, `DIRECTION_NONE` (15m EMA not aligned), `POSITION_SIZE_ZERO`, `EXCEPTION`. Search logs for `Trend strategy no trade: reason=` to see the cause.
+
+### Trend Strategy: Entry Circuit Breakers — Cooldown, High-Vol ADX, Max Trades/Day (2026-02-03)
+
+**Config** (`strategies/trend/config.py`):
+- **REENTRY_COOLDOWN_MINUTES = 30** — After a trend position is closed with STOP_LOSS_HIT, block new trend entries for 30 minutes.
+- **HIGH_VOL_ATR_PERCENTILE_THRESHOLD = 90** — When ATR percentile ≥ this, require stronger trend (ADX ≥ HIGH_VOL_MIN_ADX).
+- **HIGH_VOL_MIN_ADX = 40** — On high-vol days (ATR% ≥ 90), require ADX ≥ 40 to allow trend entry (else ADX ≥ 30).
+- **MAX_TREND_TRADES_PER_DAY = 3** — Maximum trend entries per calendar day (circuit breaker).
+
+**Backtest** (`backtest_trend_following.py`):
+- After STOP_LOSS_HIT exit, set `_cooldown_until = exit_timestamp + REENTRY_COOLDOWN_MINUTES`; no new entry until timestamp ≥ cooldown_until.
+- Entry: `check_entry_conditions` uses min_adx = 40 when atr_percentile ≥ 90, else 30.
+- Per-day counter `_trades_entered_today` reset each date; entry allowed only if `_trades_entered_today < MAX_TREND_TRADES_PER_DAY`; incremented on each new position.
+- Single-day 1-lot 20260203: **3 trades** (capped by max/day), all STOP_LOSS_HIT; Net P&L **₹-15,143** (gross ₹-12,363, charges ₹2,780). Without cap there were 7 trades; cap reduces churn.
+
+**Production**:
+- **`strategies/trend/entry_state.py`**: `can_enter_trend(now)` → (allowed, reason); `record_stop_loss_exit(exit_time)`; `record_trend_entry(entry_date)`. State in **`trend_state.json`** (cooldown_until_iso, trades_entered_today, last_trade_date); file in project root, listed in .gitignore.
+- **`strategy_runner._run_trend_follow_strategy`**: At start, if not `can_enter_trend(now)` → log and return None. After `position_tracker.add_position(trade_proposal)` call `record_trend_entry(now.date())`.
+- **`main.py`**: When closing a trend (futures) position with `exit_reason == 'STOP_LOSS_HIT'`, after `position_tracker.close_position(...)` call `record_stop_loss_exit(datetime.now())`.
+- **`strategies/trend/trend_follow_futures.generate_trend_follow_trade`**: After regime check, ADX filter: if atr_percentile ≥ 90 require adx ≥ 40, else adx ≥ 30; else return None with reason ADX_TOO_LOW.
+
+### Trend Strategy: At Least 1 Lot When Regime Allows (2026-02-03)
+
+**Change**: When the regime allows a trend trade (TREND_FOLLOW_FUTURE) and all other checks pass (EMA structure, direction, etc.), but risk-based position sizing returns **0 lots** (e.g. high ATR so risk per lot &gt; max risk per trade), the system no longer skips the trade. It now takes **at least 1 lot** for that trade and **ignores the max-risk cap** for that single trade.
+
+**Live** (`strategies/trend/trend_follow_futures.py` → `generate_trend_follow_trade()`): After `calculate_position_size()`, if `position_info['quantity'] == 0`, we override to 1 lot: set `lots=1`, `quantity=lot_size`, and recompute `risk_amount` for 1 lot (lot_size × stop_loss_atr). A log line records: *"Trend strategy: regime allowed trade but risk limits gave 0 lots; taking 1 lot (ignoring max risk). Risk for this trade: ₹X"*. Stop loss and rest of the trade are unchanged.
+
+**Backtest** (`backtest_trend_following.py`): Same logic: after `calculate_position_size()`, if `position_info['quantity'] == 0` we override to 1 lot (lots=1, quantity=lot_size, recompute risk and stop_loss_price). Log: *"Backtest: regime allowed trade but risk gave 0 lots; taking 1 lot (ignoring max risk)."* Run single-day 1-lot PnL: `python3 backtest_trend_following.py --date 20260203 --force-1-lot`.
+
+**Trailing-stop breakeven lock (backtest aligned with production)**: Backtest now uses the same `lock_be` condition as main.py: lock breakeven only when **Phase 2+** (unrealized profit in points ≥ 1× ATR) or PnL ≥ ₹300. Previously the backtest locked on any profit (`unrealized_pnl_points > 0`), causing more whipsaw exits at breakeven.
+
+**Stop loss as limit order (backtest)**: Production places a **limit order** at the stop price, not a market order. Backtest now matches this: stop is "hit" when the bar's **low** (LONG) or **high** (SHORT) trades at or through the stop level (`bar_low <= current_stop` / `bar_high >= current_stop`). Exit price for STOP_LOSS_HIT is the **stop price** (limit filled at limit), not the bar close. When bar low/high are not provided, fallback remains close-based (market-order semantics).
 
 ### Trend Strategy: ATR Profit Target & Tighter Trail (2026-01-29)
 

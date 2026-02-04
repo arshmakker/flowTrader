@@ -2,9 +2,10 @@
 Regime Detection Validation Backtest
 
 Validates regime detection using production logic (classify_regime_from_indicators):
-- CONVEX, INCOME, TREND_CONTINUATION, NEUTRAL with production thresholds
+- TREND-first hierarchy: TREND_CONTINUATION (ADX/ATR/EMA) overrides VIX
+- CONVEX when not TREND and India VIX < VIX_LOW (12); INCOME when not TREND and India VIX >= VIX_HIGH (18)
+- NEUTRAL: mid-band VIX or no edge
 - IV from CSV, daily_metrics.json, or volatility proxy when no IV data
-- Indicator accuracy (IV%, ADX, ATR%, range, EMA direction)
 - Regime transitions and distribution report
 """
 
@@ -310,7 +311,7 @@ class RegimeDetectionBacktester:
                     else:
                         self._iv_by_date[date_str] = 50.0
             iv_pct = self._iv_by_date.get(date_str)
-            # Backtest: when India VIX not available, use synthetic 14 so CONVEX can trigger when range_compressed
+            # Backtest: when India VIX not available, use synthetic 14 for CONVEX/INCOME eligibility
             if date_str not in self._india_vix_by_date:
                 self._india_vix_by_date[date_str] = 14.0
             
@@ -368,21 +369,21 @@ class RegimeDetectionBacktester:
             if entry.get('regime_details', {}).get('range_state') == 'COMPRESSED':
                 range_compressed_count += 1
 
-        # CONVEX summary: triggered when india_vix < 15 and range_compressed
+        # CONVEX summary: triggered when not TREND and India VIX < VIX_LOW (12)
         convex_triggered = regime_counts.get('CONVEX', 0)
         convex_note = (
-            f"CONVEX requires India VIX < 15 and range_compressed. "
-            f"range_compressed was true in {range_compressed_count} bars."
+            "CONVEX requires TREND not detected and India VIX < VIX_LOW (12). "
+            f"range_compressed was true in {range_compressed_count} bars (informational only)."
         )
 
-        # INCOME summary: high vol (IV% > 60 OR India VIX >= 20), ADX < 20, ATR% < 50
+        # INCOME summary: triggered when not TREND and India VIX >= VIX_HIGH (18)
         income_triggered = regime_counts.get('INCOME', 0)
         bars_adx_lt_20 = sum(1 for e in self.regime_history if (e.get('indicators') or {}).get('adx_14') is not None and e['indicators']['adx_14'] < 20)
         iv_vals = [e.get('indicators', {}).get('iv_percentile') for e in self.regime_history]
         iv_max = max((v for v in iv_vals if v is not None), default=None)
         income_note = (
-            f"INCOME requires (IV% > 60 OR India VIX >= 20), ADX < 20, ATR% < 50. "
-            f"In this run: IV% max={iv_max}, bars with ADX<20={bars_adx_lt_20}."
+            "INCOME requires TREND not detected and India VIX >= VIX_HIGH (18). "
+            f"In this run: IV% max={iv_max}, bars with ADX<20={bars_adx_lt_20} (informational)."
         )
 
         # Indicator statistics by regime

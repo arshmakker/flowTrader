@@ -38,6 +38,10 @@ INCOME_ATR_PCT_MAX = 50
 TREND_ADX_MIN = 30
 TREND_ATR_PCT_MIN = 50
 
+# India VIX benchmarks for volatility regimes (used only when NOT TREND)
+VIX_LOW = 12.0   # Below this → CONVEX eligible
+VIX_HIGH = 18.0  # At or above this → INCOME eligible
+
 
 def classify_regime_from_indicators(
     iv_percentile: Optional[float],
@@ -48,35 +52,38 @@ def classify_regime_from_indicators(
     india_vix: Optional[float] = None,
 ) -> str:
     """
-    Stateless regime classification using production thresholds.
+    Stateless regime classification aligned with detect_regime hierarchy (TREND-first, then VIX).
     Use in backtest when you have bar-level IV, ADX, ATR%, range, and EMA direction.
 
+    Hierarchy:
+    1. TREND_CONTINUATION: ADX >= 30, ATR% >= 50, ema_direction in (LONG, SHORT).
+    2. CONVEX: India VIX < VIX_LOW (12), only if not TREND.
+    3. INCOME: India VIX >= VIX_HIGH (18), only if not TREND.
+    4. NEUTRAL: mid-band VIX or no edge.
+
     Args:
-        iv_percentile: 0-100; if None, treated as 50 (CONVEX/INCOME won't trigger).
+        iv_percentile: 0-100; if None, treated as 50.
         adx_14: ADX(14) value.
         atr_percentile: 0-100 (ATR percentile).
-        range_compressed: True if last_range < 0.6 * rolling_avg_range.
+        range_compressed: True if last_range < 0.6 * rolling_avg_range (kept for compatibility; not used for CONVEX).
         ema_direction: 'LONG' | 'SHORT' | None (from price vs EMA50 vs EMA100).
-        india_vix: India VIX from NSE (optional). CONVEX: india_vix < 15 and range_compressed.
-                   INCOME: india_vix >= 20 (or IV% > 60), ADX < 20, ATR% < 50.
+        india_vix: India VIX from NSE (optional). CONVEX: india_vix < VIX_LOW. INCOME: india_vix >= VIX_HIGH.
 
     Returns:
         'CONVEX' | 'INCOME' | 'TREND_CONTINUATION' | 'NEUTRAL'
     """
-    iv = iv_percentile if iv_percentile is not None else 50.0
     adx = adx_14 if adx_14 is not None else 0.0
     atr_pct = atr_percentile if atr_percentile is not None else 50.0
 
-    # CONVEX: India VIX < 15 (convexcall-style) and range compressed only (no IV% or ATR)
-    if (india_vix is not None and india_vix < CONVEX_VIX_MAX) and range_compressed:
-        return "CONVEX"
-    # INCOME: high vol (IV% > 60 OR India VIX >= 20), low trend (ADX < 20, ATR% < 50)
-    income_vol_ok = iv > INCOME_IV_PCT_MIN or (india_vix is not None and india_vix >= INCOME_VIX_MIN)
-    if income_vol_ok and adx < INCOME_ADX_MAX and atr_pct < INCOME_ATR_PCT_MAX:
-        return "INCOME"
-    # TREND_CONTINUATION (requires EMA direction)
+    # --- STEP 1: TREND (hard override) ---
     if adx >= TREND_ADX_MIN and atr_pct >= TREND_ATR_PCT_MIN and ema_direction in ("LONG", "SHORT"):
         return "TREND_CONTINUATION"
+
+    # --- STEP 2: Volatility regimes (only if not TREND) ---
+    if india_vix is not None and india_vix < VIX_LOW:
+        return "CONVEX"
+    if india_vix is not None and india_vix >= VIX_HIGH:
+        return "INCOME"
     return "NEUTRAL"
 
 
@@ -399,8 +406,25 @@ class RegimeDetector:
     def detect_regime(self, market_state: Dict, recent_candles: Optional[List[Dict]] = None,
                      api=None, symbol_manager=None) -> Dict:
         """
-        Detect current market regime
-        
+        REGIME HIERARCHY (STRICT):
+
+        1. TREND_CONTINUATION
+           - Determined only by price structure (ADX, EMA alignment, ATR expansion)
+           - If TREND is detected, VIX logic MUST NOT be evaluated
+
+        2. VOLATILITY REGIMES (only if NOT TREND)
+           - CONVEX  → Low India VIX
+           - INCOME  → High India VIX
+
+        3. NEUTRAL
+           - Mid-band VIX or no structural edge
+
+        NOTE:
+        - Exit logic and trailing stop-loss rules are handled elsewhere
+        - This function must NOT modify or interfere with exits
+
+        Detect current market regime.
+
         Args:
             market_state: Market state dictionary with:
                 - iv_percentile: float (0-100)
@@ -409,16 +433,18 @@ class RegimeDetector:
             recent_candles: Optional list of recent candle data
             api: ShoonyaApiPy instance (for fetching candles if not provided)
             symbol_manager: SymbolManager instance (for fetching candles if not provided)
-        
+
         Returns:
             Dictionary with regime information:
             {
                 "regime": "CONVEX" | "INCOME" | "TREND_CONTINUATION" | "NEUTRAL",
+                "detected_regime": ...,
                 "iv_percentile": float,
                 "adx": float,
                 "atr": float,
                 "atr_percentile": float,
-                "range_state": "COMPRESSED" | "NORMAL" | "EXPANDING"
+                "range_state": "COMPRESSED" | "NORMAL" | "EXPANDING",
+                ...
             }
         """
         try:
@@ -435,11 +461,11 @@ class RegimeDetector:
             india_vix = market_state.get('india_vix')
             spot_price = market_state.get('spot_price')
             
-            # #region agent log
+            # #region agent log (H-A: india_vix; H-B: adx, atr inputs)
             import json
             try:
                 with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"regime_detector.py:329","message":"Regime detection inputs","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"spot_price":spot_price,"has_all_inputs":iv_percentile is not None and adx_14 is not None and spot_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R1"})+"\n")
+                    f.write(json.dumps({"location":"regime_detector.py:329","message":"Regime detection inputs","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"india_vix":india_vix,"spot_price":spot_price,"has_all_inputs":iv_percentile is not None and adx_14 is not None and spot_price is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H-A,H-B"})+"\n")
             except: pass
             # #endregion
             
@@ -533,11 +559,14 @@ class RegimeDetector:
             # #endregion
             
             # Calculate rolling average range (for comparison)
+            # Require at least 15 candles so we can compute range when API returns ~17 days (e.g. 20 calendar days)
+            MIN_CANDLES_FOR_ROLLING = 15
             rolling_avg_range = None
-            if recent_candles and len(recent_candles) >= 20:
-                # Use last 20 candles to calculate average range
+            if recent_candles and len(recent_candles) >= MIN_CANDLES_FOR_ROLLING:
+                # Use last N candles (up to 20) for average range
+                n_use = min(20, len(recent_candles))
                 recent_ranges = []
-                for i in range(max(0, len(recent_candles) - 20), len(recent_candles)):
+                for i in range(max(0, len(recent_candles) - n_use), len(recent_candles)):
                     candle = recent_candles[i]
                     high = candle.get('high', candle.get('ltp', spot_price))
                     low = candle.get('low', candle.get('ltp', spot_price))
@@ -563,7 +592,7 @@ class RegimeDetector:
                 # #region agent log
                 try:
                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"regime_detector.py:442","message":"Rolling avg range - insufficient candles","data":{"recent_candles_count":len(recent_candles) if recent_candles else 0,"needs_20":True,"has_enough":recent_candles is not None and len(recent_candles) >= 20 if recent_candles else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3d"})+"\n")
+                        f.write(json.dumps({"location":"regime_detector.py:442","message":"Rolling avg range - insufficient candles","data":{"recent_candles_count":len(recent_candles) if recent_candles else 0,"needs_min":MIN_CANDLES_FOR_ROLLING,"has_enough":recent_candles is not None and len(recent_candles) >= MIN_CANDLES_FOR_ROLLING if recent_candles else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R3d"})+"\n")
                 except: pass
                 # #endregion
             
@@ -583,50 +612,18 @@ class RegimeDetector:
             except: pass
             # #endregion
             
-            # Regime detection rules (STRICT)
-            detected_regime = "NEUTRAL"
-            
-            # CONVEX regime: India VIX < 15 and range compressed only (no IV% or ATR)
-            convex_vix_check = india_vix is not None and india_vix < CONVEX_VIX_MAX
-            convex_range_check = last_range is not None and rolling_avg_range is not None and last_range < (rolling_avg_range * 0.6)
-            convex_all_met = convex_vix_check and convex_range_check
-            
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"regime_detector.py:415","message":"CONVEX regime check","data":{"vix_check":convex_vix_check,"india_vix":india_vix,"range_check":convex_range_check,"all_met":convex_all_met},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R4"})+"\n")
-            except: pass
-            # #endregion
-            
-            if convex_all_met:
-                detected_regime = "CONVEX"
-                logger.info(f"Regime detected: CONVEX (India VIX={india_vix:.1f}, Range=COMPRESSED)")
-            
-            # INCOME regime: high vol (IV% > 60 OR India VIX >= 20), low trend (ADX < 20, ATR% < 50)
-            elif (((iv_percentile is not None and iv_percentile > 60) or
-                   (india_vix is not None and india_vix >= INCOME_VIX_MIN)) and
-                  adx_14 is not None and adx_14 < 20 and
-                  atr_percentile is not None and atr_percentile < 50):
-                detected_regime = "INCOME"
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"regime_detector.py:424","message":"INCOME regime detected","data":{"iv_percentile":iv_percentile,"india_vix":india_vix,"adx_14":adx_14,"atr_percentile":atr_percentile},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R5"})+"\n")
-                except: pass
-                # #endregion
-                logger.info(
-                    f"Regime detected: INCOME (IV={iv_percentile or 'N/A'}%, India VIX={india_vix or 'N/A'}, "
-                    f"ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%)"
-                )
-            
-            # TREND_CONTINUATION regime
-            elif (adx_14 is not None and adx_14 >= 30 and
-                  atr_percentile is not None and atr_percentile >= 50):
-                # #region agent log
+            # --- STEP 1: TREND DETECTION (HARD OVERRIDE) ---
+            # TREND is determined only by price structure (ADX, EMA alignment, ATR expansion).
+            # No VIX/IV/range checks before this; if TREND, return immediately.
+            is_trend = False
+            if (adx_14 is not None and adx_14 >= TREND_ADX_MIN and
+                    atr_percentile is not None and atr_percentile >= TREND_ATR_PCT_MIN):
+                # #region agent log (H-B: TREND branch entered; H-E: why INCOME didn't trigger)
                 import json
+                income_vol_ok = (iv_percentile is not None and iv_percentile > 60) or (india_vix is not None and india_vix >= INCOME_VIX_MIN)
                 try:
                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"regime_detector.py:431","message":"TREND_CONTINUATION criteria met, checking EMA structure","data":{"adx":adx_14,"atr_percentile":atr_percentile,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None,"has_closes":closes is not None,"closes_len":len(closes) if closes else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"post-fix","hypothesisId":"A"})+"\n")
+                        f.write(json.dumps({"location":"regime_detector.py:431","message":"TREND branch entered","data":{"adx":adx_14,"atr_percentile":atr_percentile,"income_vol_ok":income_vol_ok,"adx_lt_20":adx_14 is not None and adx_14 < 20,"atr_lt_50":atr_percentile is not None and atr_percentile < 50,"has_api":api is not None,"has_symbol_manager":symbol_manager is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H-B,H-E"})+"\n")
                 except: pass
                 # #endregion
                 
@@ -712,20 +709,49 @@ class RegimeDetector:
                     # #endregion
                 
                 if directional_bias_stable:
-                    detected_regime = "TREND_CONTINUATION"
+                    is_trend = True
+                    confirmed_trend = self._apply_regime_persistence("TREND_CONTINUATION")
+                    if atr and atr > 0:
+                        self.save_atr_data(atr)
+                    regime_result = {
+                        "regime": confirmed_trend,
+                        "detected_regime": "TREND_CONTINUATION",
+                        "iv_percentile": iv_percentile,
+                        "india_vix": india_vix,
+                        "adx": adx_14,
+                        "atr": atr,
+                        "atr_percentile": atr_percentile,
+                        "range_state": range_state,
+                        "confirmation_count": RegimeDetector._confirmation_count_current,
+                        "last_confirmed_regime": RegimeDetector._last_confirmed_regime
+                    }
+                    self._cache_regime(regime_result)
                     logger.info(f"Regime detected: TREND_CONTINUATION (ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%, Direction={direction})")
-                else:
-                    # ADX and ATR meet criteria but EMA structure not stable
-                    detected_regime = "NEUTRAL"
-                    logger.debug(f"Regime: NEUTRAL (ADX={adx_14:.1f}>=30, ATR%={atr_percentile:.1f}>=50, but EMA structure not stable)")
+                    return regime_result
             
+            # --- STEP 2: VOLATILITY REGIMES (only if NOT TREND) ---
+            if india_vix is not None and india_vix < VIX_LOW:
+                detected_regime = "CONVEX"
+                logger.info(f"Regime detected: CONVEX (India VIX={india_vix:.1f} < {VIX_LOW})")
+            elif india_vix is not None and india_vix >= VIX_HIGH:
+                detected_regime = "INCOME"
+                logger.info(f"Regime detected: INCOME (India VIX={india_vix:.1f} >= {VIX_HIGH})")
             else:
                 detected_regime = "NEUTRAL"
-                logger.debug(f"Regime: NEUTRAL (IV={iv_percentile:.1f}%, ADX={adx_14:.1f}, ATR%={atr_percentile or 'N/A'})")
+                logger.debug(f"Regime: NEUTRAL (India VIX={india_vix}, mid-band or no edge)")
+            
+            # Safety invariant: TREND must never coexist with vol regimes
+            assert not (is_trend and detected_regime in ["CONVEX", "INCOME"]), "TREND must not coexist with CONVEX/INCOME"
             
             # Apply regime persistence (anti-whipsaw)
             confirmed_regime = self._apply_regime_persistence(detected_regime)
-            
+            # #region agent log (H-C: persistence may keep TREND)
+            try:
+                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"regime_detector.py:persist","message":"After persistence","data":{"detected_regime":detected_regime,"confirmed_regime":confirmed_regime,"confirmation_count_current":RegimeDetector._confirmation_count_current,"last_confirmed_regime":RegimeDetector._last_confirmed_regime},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H-C"})+"\n")
+            except: pass
+            # #endregion
+
             # Save ATR to history if calculated
             if atr and atr > 0:
                 self.save_atr_data(atr)

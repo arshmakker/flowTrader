@@ -677,11 +677,49 @@ def main():
                                                 except: pass
                                                 # #endregion
                                                 
-                                                # Exit condition 2: Regime change
-                                                if not should_exit and EXIT_ON_REGIME_CHANGE:
-                                                    if current_regime != 'TREND_CONTINUATION':
+                                                # Exit condition 1b: Max intraday loss (circuit breaker)
+                                                if not should_exit:
+                                                    from strategies.trend.config import MAX_INTRADAY_LOSS_INR
+                                                    if current_pnl <= -MAX_INTRADAY_LOSS_INR:
                                                         should_exit = True
-                                                        exit_reason = 'REGIME_CHANGE'
+                                                        exit_reason = 'MAX_LOSS_CAP'
+                                                        logger.info(
+                                                            f"Futures position {position['trade_id']}: unrealized loss ₹{current_pnl:.2f} "
+                                                            f"exceeds max cap ₹{MAX_INTRADAY_LOSS_INR}, closing position"
+                                                        )
+                                                
+                                                # Exit condition 1c: Time in loss (avoid holding wrong trade all day)
+                                                if not should_exit:
+                                                    from strategies.trend.config import MAX_TIME_IN_LOSS_MINUTES
+                                                    if current_pnl < 0 and position_age_minutes >= MAX_TIME_IN_LOSS_MINUTES:
+                                                        should_exit = True
+                                                        exit_reason = 'TIME_IN_LOSS'
+                                                        logger.info(
+                                                            f"Futures position {position['trade_id']}: in loss (₹{current_pnl:.2f}) for "
+                                                            f"{position_age_minutes:.0f} min (≥ {MAX_TIME_IN_LOSS_MINUTES} min), closing position"
+                                                        )
+                                                
+                                                # Exit condition 2: Regime change (with confirmation to reduce whipsaw)
+                                                if not should_exit and EXIT_ON_REGIME_CHANGE:
+                                                    from strategies.trend.config import REGIME_CHANGE_CONFIRMATION_CHECKS
+                                                    if 'regime_change_count' not in position:
+                                                        position['regime_change_count'] = 0
+                                                        position_tracker._save_active_positions()
+                                                    if current_regime != 'TREND_CONTINUATION':
+                                                        position['regime_change_count'] = position.get('regime_change_count', 0) + 1
+                                                        position_tracker._save_active_positions()
+                                                        if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
+                                                            should_exit = True
+                                                            exit_reason = 'REGIME_CHANGE'
+                                                            logger.info(
+                                                                f"Futures position {position['trade_id']}: regime {current_regime} for "
+                                                                f"{position['regime_change_count']} consecutive checks, closing position"
+                                                            )
+                                                    else:
+                                                        if position.get('regime_change_count', 0) > 0:
+                                                            position['regime_change_count'] = 0
+                                                            position_tracker._save_active_positions()
+                                                            logger.debug(f"Regime restored to TREND_CONTINUATION, reset regime_change_count for {position['trade_id']}")
                                                 # #region agent log
                                                 try:
                                                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
@@ -732,11 +770,14 @@ def main():
                                                 # #endregion
                                                 if not should_exit and EXIT_ON_EMA_BREAK and ema_structure:
                                                     from strategies.trend.config import (
-                                                        EMA_BREAK_CONFIRMATION_CHECKS, 
+                                                        EMA_BREAK_CONFIRMATION_CHECKS,
+                                                        EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS,
                                                         EMA_BREAK_TOLERANCE_PCT,
                                                         PRIORITIZE_TRAILING_STOP_IN_PROFIT,
                                                         TRAILING_STOP_PRIORITY_DISTANCE_ATR
                                                     )
+                                                    # When in loss, require fewer confirmations for faster exit on trend flip
+                                                    ema_required_checks = EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS if current_pnl < 0 else EMA_BREAK_CONFIRMATION_CHECKS
                                                     
                                                     ema_50 = ema_structure.get('ema_50')
                                                     ema_100 = ema_structure.get('ema_100')
@@ -795,14 +836,14 @@ def main():
                                                                 logger.debug(
                                                                     f"EMA structure broken but position in profit (₹{current_pnl:.2f}) "
                                                                     f"and far from stop (₹{distance_to_stop:.2f}), letting trailing stop handle exit. "
-                                                                    f"Break count: {position['ema_break_count']}/{EMA_BREAK_CONFIRMATION_CHECKS}"
+                                                                    f"Break count: {position['ema_break_count']}/{ema_required_checks}"
                                                                 )
                                                                 # Reset break count since we're ignoring it
                                                                 position['ema_break_count'] = 0
                                                                 position_tracker._save_active_positions()
                                                             else:
                                                                 # In loss OR close to stop - check confirmation count
-                                                                if position['ema_break_count'] >= EMA_BREAK_CONFIRMATION_CHECKS:
+                                                                if position['ema_break_count'] >= ema_required_checks:
                                                                     should_exit_on_ema = True
                                                                     logger.info(
                                                                         f"EMA structure broken for {position['ema_break_count']} consecutive checks, "
@@ -811,7 +852,7 @@ def main():
                                                                     )
                                                                 else:
                                                                     logger.debug(
-                                                                        f"EMA structure broken (count: {position['ema_break_count']}/{EMA_BREAK_CONFIRMATION_CHECKS}), "
+                                                                        f"EMA structure broken (count: {position['ema_break_count']}/{ema_required_checks}), "
                                                                         f"waiting for confirmation. P&L=₹{current_pnl:.2f}"
                                                                     )
                                                             
@@ -906,10 +947,11 @@ def main():
                                                     if direction == 'LONG':
                                                         new_trailing_stop = current_futures_price - trailing_stop_distance
                                                         
-                                                        # In profit phases or P&L >= 300 INR: ensure stop at least at breakeven
-                                                        lock_be = (trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_TIGHT', 'PHASE6_VERY_TIGHT', 'PHASE6_PLUS']
-                                                                   or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
-                                                        if USE_HYBRID_TRAILING_STOP and lock_be:
+                                                        # Align with backtest: lock breakeven only when profit >= 1× ATR or PnL >= ₹300
+                                                        lock_be = (USE_HYBRID_TRAILING_STOP and
+                                                                   (unrealized_pnl_points >= (current_atr * HYBRID_PHASE2_THRESHOLD_ATR)
+                                                                    or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
+                                                        if lock_be:
                                                             new_trailing_stop = max(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves up (tightens) for LONG
@@ -917,10 +959,11 @@ def main():
                                                     else:  # SHORT
                                                         new_trailing_stop = current_futures_price + trailing_stop_distance
                                                         
-                                                        # In profit phases or P&L >= 300 INR: ensure stop at least at breakeven
-                                                        lock_be = (trail_phase in ['PHASE2_BREAKEVEN', 'PHASE3_TIGHT', 'PHASE4_VERY_TIGHT', 'PHASE5_TIGHT', 'PHASE6_VERY_TIGHT', 'PHASE6_PLUS']
-                                                                   or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
-                                                        if USE_HYBRID_TRAILING_STOP and lock_be:
+                                                        # Align with backtest: lock breakeven only when profit >= 1× ATR or PnL >= ₹300
+                                                        lock_be = (USE_HYBRID_TRAILING_STOP and
+                                                                   (unrealized_pnl_points >= (current_atr * HYBRID_PHASE2_THRESHOLD_ATR)
+                                                                    or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
+                                                        if lock_be:
                                                             new_trailing_stop = min(new_trailing_stop, entry_price)
                                                         
                                                         # Trailing stop only moves down (tightens) for SHORT
@@ -970,13 +1013,21 @@ def main():
                                                             f.write(json.dumps({"location":"main.py:472","message":"Calling close_position","data":{"position_id":position.get('trade_id'),"exit_reason":exit_reason,"current_pnl":current_pnl},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"ema-exit-check","hypothesisId":"H5"})+"\n")
                                                     except: pass
                                                     # #endregion
-                                                    # Close position
+                                                    # Exit order: always use LIMIT (at stop price for STOP_LOSS_HIT, else current price).
+                                                    # Stored on position so execution layer places LMT at this price; matches backtest.
+                                                    position['exit_order_type'] = 'LMT'
+                                                    position['exit_price'] = (
+                                                        current_stop if exit_reason == 'STOP_LOSS_HIT' else current_futures_price
+                                                    )
                                                     try:
                                                         position_tracker.close_position(
                                                             position,
                                                             f"futures_exit_{exit_reason}",
                                                             current_pnl
                                                         )
+                                                        if exit_reason == 'STOP_LOSS_HIT':
+                                                            from strategies.trend.entry_state import record_stop_loss_exit
+                                                            record_stop_loss_exit(datetime.now())
                                                         # #region agent log
                                                         try:
                                                             with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
@@ -1011,8 +1062,9 @@ def main():
                                                     age_str = f", Age={position_age_minutes:.1f} min"
                                                     ema_break_count = position.get('ema_break_count', 0)
                                                     if ema_break_count > 0 and EXIT_ON_EMA_BREAK:
-                                                        from strategies.trend.config import EMA_BREAK_CONFIRMATION_CHECKS
-                                                        age_str += f", EMA_Break_Count={ema_break_count}/{EMA_BREAK_CONFIRMATION_CHECKS}"
+                                                        from strategies.trend.config import EMA_BREAK_CONFIRMATION_CHECKS, EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS
+                                                        ema_req = EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS if current_pnl < 0 else EMA_BREAK_CONFIRMATION_CHECKS
+                                                        age_str += f", EMA_Break_Count={ema_break_count}/{ema_req}"
                                                     
                                                     # Profit locked if stop is beyond entry (trailing in profit)
                                                     qty = position.get('quantity', 0)
@@ -1085,7 +1137,12 @@ def main():
                                             current_pnl = position_tracker.calculate_current_pnl(
                                                 position, current_prices
                                             )
-                                            
+                                            # Iron Condor trailing PnL lock: first lock at ₹300, then trail ₹200 below current
+                                            should_exit_trailing = False
+                                            if position.get('book') == 'INCOME':
+                                                should_exit_trailing = position_tracker.update_trailing_lock_and_check(
+                                                    position, current_pnl
+                                                )
                                             # Check for convex exit conditions (if convex position)
                                             should_exit_convex = False
                                             convex_exit_reason = None
@@ -1099,7 +1156,7 @@ def main():
                                                 )
                                                 if market_state:
                                                     regime_detector = RegimeDetector()
-                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
                                                     regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
                                                     current_regime = regime_info.get('regime', 'NEUTRAL')
                                                     
@@ -1136,7 +1193,7 @@ def main():
                                                 )
                                                 if market_state:
                                                     regime_detector = RegimeDetector()
-                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+                                                    recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
                                                     regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
                                                     current_regime = regime_info.get('regime', 'NEUTRAL')
                                                     
@@ -1165,8 +1222,21 @@ def main():
                                                         entry_iv_percentile=entry_iv_percentile
                                                     )
                                             
+                                            # Check trailing stop (Iron Condor: PnL dropped below locked level)
+                                            if should_exit_trailing:
+                                                lock = position.get('profit_locked_inr', 0)
+                                                logger.info(
+                                                    f"⚠️ Trailing stop hit for position {position['trade_id']}: "
+                                                    f"P&L=₹{current_pnl:.2f} below lock=₹{lock:.2f}"
+                                                )
+                                                position_tracker.close_position(
+                                                    position,
+                                                    "trailing_stop_pnl",
+                                                    current_pnl
+                                                )
+                                                logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
                                             # Check profit target (1% of margin) for Iron Condor
-                                            if not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
+                                            elif not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
                                                 logger.info(
                                                     f"✅ Profit target reached for position {position['trade_id']}: "
                                                     f"P&L=₹{current_pnl:.2f}, "

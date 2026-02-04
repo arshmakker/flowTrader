@@ -155,7 +155,7 @@ class ConvexBackspreadBacktester:
 
     def _regime_from_candles(self, candles_df: pd.DataFrame, spot_price: float,
                              iv_pct: Optional[float], india_vix: Optional[float]) -> Tuple[str, bool]:
-        """Production regime and range_compressed from last 100 candles. Needs len(candles_df) >= 100."""
+        """Production regime (TREND-first, then VIX) and range_compressed from last 100 candles. Needs len(candles_df) >= 100."""
         if len(candles_df) < 100:
             return 'NEUTRAL', False
         adx = calculate_adx(
@@ -282,12 +282,12 @@ class ConvexBackspreadBacktester:
         return indicators
     
     def check_entry_conditions(self, indicators: Dict, market_state: Dict) -> bool:
-        """Check if entry conditions are met: production CONVEX (India VIX < 15 and range_compressed only)."""
+        """Check if entry conditions are met: production CONVEX (regime CONVEX = not TREND and India VIX < VIX_LOW (12))."""
         regime = market_state.get('regime', 'NEUTRAL')
         return regime == 'CONVEX'
     
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
-        """Run backtest on historical data using production regime detection (CONVEX = India VIX < 15 and range_compressed)."""
+        """Run backtest using production regime (TREND-first; CONVEX when not TREND and India VIX < VIX_LOW (12))."""
         logger.info(f"Starting Convex Backspread backtest from {start_date} to {end_date}")
         
         start = datetime.strptime(start_date, '%Y%m%d').date()

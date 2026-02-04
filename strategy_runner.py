@@ -931,7 +931,16 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         
         # Step 5: Detect regime
         regime_detector = RegimeDetector()
-        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+        # Use 20 days so rolling_avg_range can be computed; CONVEX needs range_compressed (last_range < 0.6 * rolling_avg_range).
+        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
+        # #region agent log (hypotheses H-A, H-B, H-D, H-E: inputs and candle count)
+        try:
+            import json
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                f.write(json.dumps({"location":"strategy_runner.py:935","message":"Before detect_regime","data":{"india_vix":market_state.get('india_vix'),"iv_percentile":market_state.get('iv_percentile'),"adx_14":market_state.get('adx_14'),"recent_candles_len":len(recent_candles) if recent_candles else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H-A,H-B,H-D,H-E"})+"\n")
+        except Exception:
+            pass
+        # #endregion
         regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
         regime = regime_info.get('regime', 'NEUTRAL')
         detected_regime = regime_info.get('detected_regime', regime)
@@ -1230,7 +1239,7 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
         
         # Get regime info for entry range state (needed for convex exit checks)
         regime_detector = RegimeDetector()
-        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price)
+        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
         regime_info = regime_detector.detect_regime(market_state_expiry, recent_candles, api, symbol_manager)
         entry_range_state = regime_info.get('range_state')
         
@@ -1280,10 +1289,17 @@ def _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_sta
     """Run Trend Following Futures strategy"""
     try:
         logger.info("=== Running Trend Following Futures Strategy (TREND_CONTINUATION regime) ===")
-        
+
+        from strategies.trend.entry_state import can_enter_trend, record_trend_entry
+        now = datetime.now()
+        allowed, reason = can_enter_trend(now)
+        if not allowed:
+            logger.info(f"Trend strategy skipped: {reason}")
+            return None
+
         # Generate trade proposal
         trade_proposal = generate_trend_follow_trade(market_state, capital, api, symbol_manager)
-        
+
         if trade_proposal:
             logger.info("✅ Valid Trend Follow trade found!")
             logger.info(f"   Strategy: {trade_proposal['strategy']}")
@@ -1295,15 +1311,16 @@ def _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_sta
             logger.info(f"   Risk Amount: ₹{trade_proposal['risk_amount']:.2f} ({trade_proposal['risk_pct_of_capital']:.2f}%)")
             logger.info(f"   EMA 50: ₹{trade_proposal['ema_50']:.2f}")
             logger.info(f"   EMA 100: ₹{trade_proposal['ema_100']:.2f}")
-            
+
             # Save proposal
             save_trade_proposal(trade_proposal)
-            
+
             # Add to position tracker if provided
             if position_tracker is not None:
                 position_tracker.add_position(trade_proposal)
                 logger.info(f"Position added to tracker: {trade_proposal['lots']} lots")
-            
+                record_trend_entry(now.date())
+
             return trade_proposal
         else:
             logger.info("❌ No valid Trend Follow trade found")
@@ -1319,26 +1336,32 @@ def _run_neutral_calendar_strategy(api, symbol_manager, position_tracker, market
     try:
         logger.info("=== Running Neutral Calendar Strategy (NEUTRAL_ACTIVE regime) ===")
         
-        # Get weekly expiry (first expiry)
+        # Short leg: first (nearest) expiry. Long leg: any later expiry (weekly or monthly).
         expiry_weekly = available_expiries[0]
         expiry_weekly_obj = _get_date_object(expiry_weekly)
-        
-        # Get monthly expiry (find next monthly expiry after weekly)
         expiry_monthly = None
         expiry_monthly_obj = None
-        
-        # Look for monthly expiry (typically 4-5 weeks out)
+        # Use any later weekly: long leg must be at least 7 days after short (next week is fine)
+        CALENDAR_LONG_LEG_DAYS_MIN = 7
+        CALENDAR_LONG_LEG_DAYS_MAX = 42
         for expiry in available_expiries[1:]:
             expiry_obj = _get_date_object(expiry)
             days_diff = (expiry_obj - expiry_weekly_obj).days
-            # Monthly expiry is typically 21-35 days after weekly
-            if 21 <= days_diff <= 35:
+            if CALENDAR_LONG_LEG_DAYS_MIN <= days_diff <= CALENDAR_LONG_LEG_DAYS_MAX:
                 expiry_monthly = expiry
                 expiry_monthly_obj = expiry_obj
                 break
-        
         if not expiry_monthly:
-            logger.info("No suitable monthly expiry found for calendar")
+            diffs = []
+            for expiry in available_expiries[1:]:
+                eo = _get_date_object(expiry)
+                d = (eo - expiry_weekly_obj).days
+                diffs.append(f"{expiry}={d}d")
+            logger.info(
+                "No suitable long expiry for calendar "
+                f"(need {CALENDAR_LONG_LEG_DAYS_MIN}-{CALENDAR_LONG_LEG_DAYS_MAX} days after short {expiry_weekly}); "
+                f"other expiries: {', '.join(diffs) or 'none'}"
+            )
             return None
         
         days_to_expiry_weekly = (expiry_weekly_obj - datetime.now().date()).days

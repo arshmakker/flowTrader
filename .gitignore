@@ -59,6 +59,9 @@ backtest_trailing_comparison_*.json
 trade_proposals/
 *.trade_proposal.json
 
+# Trend entry state (cooldown, max trades per day)
+trend_state.json
+
 # IDE
 .vscode/
 .idea/

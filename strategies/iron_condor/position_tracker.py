@@ -100,7 +100,8 @@ class IronCondorPositionTracker:
                 'days_to_expiry_short': trade_proposal.get('days_to_expiry_short'),
                 'entry_range_state': None,  # Will be set from regime_info if available
                 'entry_iv_percentile': trade_proposal.get('entry_iv_percentile'),
-                'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])}
+                'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])},
+                'profit_locked_inr': 0,  # Trailing lock: first 300, then trail 200 below current PnL
             })
         
         self.active_positions.append(position)
@@ -163,7 +164,30 @@ class IronCondorPositionTracker:
             pnl = entry_credit - current_value
         
         return pnl
-    
+
+    def update_trailing_lock_and_check(self, position: Dict, current_pnl: float) -> bool:
+        """
+        Update trailing PnL lock for Iron Condor: first lock at ₹300, then trail ₹200 below current PnL.
+        Updates position['profit_locked_inr'] in place and persists. Call after calculating current_pnl.
+
+        Returns:
+            True if trailing stop hit (current_pnl < profit_locked_inr), else False.
+        """
+        from strategies.iron_condor.exit_rules import MIN_PNL_LOCK_INR, PNL_TRAIL_DISTANCE_INR
+        current_lock = position.get('profit_locked_inr', 0)
+        if current_pnl >= MIN_PNL_LOCK_INR:
+            if current_lock == 0:
+                new_lock = MIN_PNL_LOCK_INR
+            else:
+                new_lock = max(current_lock, current_pnl - PNL_TRAIL_DISTANCE_INR)
+            position['profit_locked_inr'] = new_lock
+            current_lock = new_lock
+        if current_lock > 0 and current_pnl < current_lock:
+            return True
+        if current_pnl >= MIN_PNL_LOCK_INR:
+            self._save_active_positions()
+        return False
+
     def check_profit_target(self, position: Dict, current_pnl: float) -> bool:
         """Check if profit target (1% of margin) is reached"""
         margin_used = position.get('margin_used')

@@ -30,7 +30,9 @@ from .config import (
     EMA_SLOW_PERIOD,
     EXIT_ON_REGIME_CHANGE,
     EXIT_ON_EMA_BREAK,
-    EXIT_DAYS_BEFORE_EXPIRY
+    EXIT_DAYS_BEFORE_EXPIRY,
+    HIGH_VOL_ATR_PERCENTILE_THRESHOLD,
+    HIGH_VOL_MIN_ADX,
 )
 
 logger = logging.getLogger(__name__)
@@ -412,6 +414,21 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             # #endregion
             logger.info(f"Trend strategy no trade: reason=REGIME_NOT_TREND (regime={regime})")
             return None
+
+        # ADX filter: on high-vol days (ATR% >= 90) require ADX >= 40; else >= 30
+        adx = market_state.get('adx_14')
+        atr_percentile = market_state.get('atr_percentile')
+        min_adx = (
+            HIGH_VOL_MIN_ADX
+            if (atr_percentile is not None and atr_percentile >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD)
+            else 30
+        )
+        if adx is None or adx < min_adx:
+            logger.info(
+                f"Trend strategy no trade: reason=ADX_TOO_LOW (adx={adx}, atr_pct={atr_percentile}, "
+                f"min_adx={min_adx} for high_vol={atr_percentile is not None and (atr_percentile or 0) >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD})"
+            )
+            return None
         
         # Validate required inputs
         spot_price = market_state.get('spot_price')
@@ -561,11 +578,21 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
         except: pass
         # #endregion
         
+        # If regime allowed trade but risk limits gave 0 lots, take at least 1 lot (ignoring max risk for this trade)
         if position_info['quantity'] == 0:
+            stop_loss_atr = atr * INITIAL_STOP_LOSS_ATR_MULTIPLIER
+            risk_per_share = stop_loss_atr
+            risk_amount_1_lot = lot_size * risk_per_share
+            position_info = {
+                'lots': 1,
+                'quantity': lot_size,
+                'risk_amount': risk_amount_1_lot,
+                'risk_per_share': risk_per_share,
+            }
             logger.info(
-                "Trend strategy no trade: reason=POSITION_SIZE_ZERO (risk limits or capital give 0 lots)"
+                f"Trend strategy: regime allowed trade but risk limits gave 0 lots; taking 1 lot (ignoring max risk). "
+                f"Risk for this trade: ₹{risk_amount_1_lot:,.2f}"
             )
-            return None
         
         # Calculate stop loss price based on direction
         stop_loss_atr = atr * INITIAL_STOP_LOSS_ATR_MULTIPLIER

@@ -36,6 +36,22 @@ from strategies.trend.config import (
     HYBRID_PHASE4_MULTIPLIER,
     HYBRID_PHASE5_MULTIPLIER,
     HYBRID_PHASE6_MULTIPLIER,
+    EXIT_BEFORE_MARKET_CLOSE,
+    MARKET_CLOSE_EXIT_MINUTES,
+    MAX_INTRADAY_LOSS_INR,
+    MAX_TIME_IN_LOSS_MINUTES,
+    EXIT_ON_REGIME_CHANGE,
+    REGIME_CHANGE_CONFIRMATION_CHECKS,
+    EXIT_ON_EMA_BREAK,
+    EMA_BREAK_CONFIRMATION_CHECKS,
+    EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS,
+    EMA_BREAK_TOLERANCE_PCT,
+    PRIORITIZE_TRAILING_STOP_IN_PROFIT,
+    TRAILING_STOP_PRIORITY_DISTANCE_ATR,
+    REENTRY_COOLDOWN_MINUTES,
+    HIGH_VOL_ATR_PERCENTILE_THRESHOLD,
+    HIGH_VOL_MIN_ADX,
+    MAX_TREND_TRADES_PER_DAY,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -405,13 +421,18 @@ class TrendFollowingBacktester:
         if regime != 'TREND_CONTINUATION':
             return False, None
         
-        # Check ADX
+        # Check ADX (stricter on high-vol days: require ADX >= 40 when ATR% >= 90)
         adx = indicators.get('adx_14')
-        if not adx or adx < 30:
-            return False, None
-        
-        # Check ATR percentile
         atr_percentile = market_state.get('atr_percentile')
+        min_adx = (
+            HIGH_VOL_MIN_ADX
+            if (atr_percentile is not None and atr_percentile >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD)
+            else 30
+        )
+        if not adx or adx < min_adx:
+            return False, None
+
+        # Check ATR percentile
         if not atr_percentile or atr_percentile < 50:
             return False, None
         
@@ -480,10 +501,16 @@ class TrendFollowingBacktester:
         }
     
     def check_exit_conditions(self, position: Dict, current_price: float, indicators: Dict,
-                            market_state: Dict) -> Tuple[bool, str]:
+                            market_state: Dict, current_timestamp: Optional[datetime] = None,
+                            bar_low: Optional[float] = None, bar_high: Optional[float] = None) -> Tuple[bool, str]:
         """
-        Check if exit conditions are met. Mirrors main.py: stop loss, regime change,
-        ATR profit target, EMA break; then update hybrid trailing stop.
+        Check if exit conditions are met. Mirrors main.py: market close, stop loss,
+        max loss cap, time in loss, regime change (with confirmation), ATR profit target,
+        EMA break (with tolerance and confirmation); then update hybrid trailing stop.
+
+        Stop loss: when bar_low/bar_high are provided, treat stop as a LIMIT order at the stop
+        price — stop is "hit" when price traded at that level (bar low <= stop for LONG,
+        bar high >= stop for SHORT). Otherwise use close (market-order semantics).
         Returns:
             (should_exit, exit_reason)
         """
@@ -497,38 +524,101 @@ class TrendFollowingBacktester:
         if direction == 'LONG':
             current_pnl = (current_price - entry_price) * quantity
             unrealized_pnl_points = current_price - entry_price
-        else:  # SHORT
+        else:  # SHORT:
             current_pnl = (entry_price - current_price) * quantity
             unrealized_pnl_points = entry_price - current_price
 
-        # Exit condition 1: Stop loss hit
-        if direction == 'LONG':
-            if current_price <= current_stop:
-                return True, 'STOP_LOSS_HIT'
-        else:  # SHORT
-            if current_price >= current_stop:
-                return True, 'STOP_LOSS_HIT'
+        # Position age (for time-in-loss; need current_timestamp)
+        position_age_minutes = 0.0
+        if current_timestamp is not None and position.get('entry_time') is not None:
+            delta = current_timestamp - position['entry_time']
+            position_age_minutes = delta.total_seconds() / 60.0
 
-        # Exit condition 2: Regime change
+        # Exit condition 0: Market close approaching (same as production)
+        if current_timestamp is not None and EXIT_BEFORE_MARKET_CLOSE:
+            market_close_time = current_timestamp.replace(hour=15, minute=30, second=0, microsecond=0)
+            exit_before_close_time = market_close_time - timedelta(minutes=MARKET_CLOSE_EXIT_MINUTES)
+            if current_timestamp.weekday() < 5 and current_timestamp >= exit_before_close_time:
+                return True, 'MARKET_CLOSE_APPROACHING'
+
+        # Exit condition 1: Stop loss hit (limit order at stop — hit when price traded at stop)
+        if bar_low is not None and bar_high is not None:
+            if direction == 'LONG':
+                if bar_low <= current_stop:
+                    return True, 'STOP_LOSS_HIT'
+            else:  # SHORT
+                if bar_high >= current_stop:
+                    return True, 'STOP_LOSS_HIT'
+        else:
+            if direction == 'LONG':
+                if current_price <= current_stop:
+                    return True, 'STOP_LOSS_HIT'
+            else:  # SHORT
+                if current_price >= current_stop:
+                    return True, 'STOP_LOSS_HIT'
+
+        # Exit condition 1b: Max intraday loss (circuit breaker)
+        if current_pnl <= -MAX_INTRADAY_LOSS_INR:
+            return True, 'MAX_LOSS_CAP'
+
+        # Exit condition 1c: Time in loss
+        if current_pnl < 0 and position_age_minutes >= MAX_TIME_IN_LOSS_MINUTES:
+            return True, 'TIME_IN_LOSS'
+
+        # Exit condition 2: Regime change (with confirmation to reduce whipsaw)
         regime = market_state.get('regime')
-        if regime != 'TREND_CONTINUATION':
-            return True, 'REGIME_CHANGE'
+        if EXIT_ON_REGIME_CHANGE:
+            if 'regime_change_count' not in position:
+                position['regime_change_count'] = 0
+            if regime != 'TREND_CONTINUATION':
+                position['regime_change_count'] = position.get('regime_change_count', 0) + 1
+                if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
+                    return True, 'REGIME_CHANGE'
+            else:
+                if position.get('regime_change_count', 0) > 0:
+                    position['regime_change_count'] = 0
 
         # Exit condition 2b: ATR profit target (optional; None = trailing only)
         if self._profit_target_atr is not None and atr > 0 and quantity > 0:
             if current_pnl > 0 and unrealized_pnl_points >= (atr * self._profit_target_atr):
                 return True, 'PROFIT_TARGET_ATR'
 
-        # Exit condition 3: EMA structure breaks
-        ema_50 = indicators.get('ema_50')
-        ema_100 = indicators.get('ema_100')
-        if ema_50 and ema_100:
-            if direction == 'LONG':
-                if not (current_price > ema_50 > ema_100):
-                    return True, 'EMA_STRUCTURE_BROKEN'
-            else:  # SHORT
-                if not (current_price < ema_50 < ema_100):
-                    return True, 'EMA_STRUCTURE_BROKEN'
+        # Exit condition 4: EMA structure breaks (with tolerance, confirmation, in-profit ignore)
+        if EXIT_ON_EMA_BREAK:
+            ema_50 = indicators.get('ema_50')
+            ema_100 = indicators.get('ema_100')
+            if ema_50 and ema_100:
+                if 'ema_break_count' not in position:
+                    position['ema_break_count'] = 0
+                # Structure valid with tolerance (same as production)
+                tol = EMA_BREAK_TOLERANCE_PCT / 100.0
+                if direction == 'LONG':
+                    price_above_ema50 = current_price > ema_50 * (1 - tol)
+                    ema50_above_ema100 = ema_50 > ema_100 * (1 - tol)
+                    structure_valid = price_above_ema50 and ema50_above_ema100
+                else:  # SHORT
+                    price_below_ema50 = current_price < ema_50 * (1 + tol)
+                    ema50_below_ema100 = ema_50 < ema_100 * (1 + tol)
+                    structure_valid = price_below_ema50 and ema50_below_ema100
+
+                if not structure_valid:
+                    position['ema_break_count'] = position.get('ema_break_count', 0) + 1
+                    in_profit = current_pnl > 0
+                    if direction == 'LONG':
+                        distance_to_stop = current_price - current_stop
+                    else:
+                        distance_to_stop = current_stop - current_price
+                    close_to_stop = (atr > 0 and
+                                     distance_to_stop < (atr * TRAILING_STOP_PRIORITY_DISTANCE_ATR))
+                    ema_required_checks = (EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS
+                                         if current_pnl < 0 else EMA_BREAK_CONFIRMATION_CHECKS)
+                    if PRIORITIZE_TRAILING_STOP_IN_PROFIT and in_profit and not close_to_stop:
+                        position['ema_break_count'] = 0
+                    elif position['ema_break_count'] >= ema_required_checks:
+                        return True, 'EMA_STRUCTURE_BROKEN'
+                else:
+                    if position.get('ema_break_count', 0) > 0:
+                        position['ema_break_count'] = 0
 
         # Update trailing stop loss (hybrid phases 1–6, same as main.py)
         if atr > 0:
@@ -552,8 +642,9 @@ class TrendFollowingBacktester:
             else:
                 trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
 
+            # Align with production: lock breakeven only when Phase 2+ (profit >= 1× ATR) or PnL >= ₹300
             lock_be = (USE_HYBRID_TRAILING_STOP and
-                       (unrealized_pnl_points > 0 or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
+                       (unrealized_pnl_points >= (atr * HYBRID_PHASE2_THRESHOLD_ATR) or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
             trailing_stop_distance = atr * trailing_multiplier
             if direction == 'LONG':
                 new_trailing_stop = current_price - trailing_stop_distance
@@ -596,6 +687,9 @@ class TrendFollowingBacktester:
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
 
+        self._market_close_exit_dates = set()  # No new entries after market-close exit that day
+        self._cooldown_until = None  # After STOP_LOSS_HIT, block new entry until this timestamp
+        self._trades_entered_today = 0  # Entries on current day (reset each date_str)
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
         last_processed_price = None  # Track last candle close price for end-of-backtest closing
@@ -656,11 +750,11 @@ class TrendFollowingBacktester:
                 historical_candles = historical_candles[-100:]
 
             self._days_with_data.add(date_str)
+            self._trades_entered_today = 0  # Reset per day for MAX_TREND_TRADES_PER_DAY
             had_convex_today = False
             had_income_today = False
             had_trend_today = False
             had_neutral_today = False
-
             # IV for regime: use CSV if provided; else daily_metrics if present; else volatility proxy
             if date_str not in self._iv_by_date:
                 daily_metrics = load_daily_metrics(date_str)
@@ -719,7 +813,7 @@ class TrendFollowingBacktester:
                 # Use production regime classifier (optional IV / India VIX from CSV or daily_metrics)
                 iv_pct = self._iv_by_date.get(date_str) if getattr(self, '_iv_by_date', None) else None
                 india_vix = getattr(self, '_india_vix_by_date', {}).get(date_str)
-                # Backtest: when India VIX not available, use synthetic 14 so CONVEX can trigger when range_compressed
+                # Backtest: when India VIX not available, use synthetic 14 for CONVEX/INCOME eligibility
                 if india_vix is None:
                     india_vix = 14.0
                 regime = classify_regime_from_indicators(
@@ -747,20 +841,28 @@ class TrendFollowingBacktester:
                     'regime': regime
                 }
 
-                # Check exit conditions for open positions
+                # Check exit conditions for open positions (pass bar low/high for limit-order-at-stop semantics)
+                bar_low = candle.get('low')
+                bar_high = candle.get('high')
                 for position in self.open_positions[:]:  # Copy list to allow modification
                     should_exit, exit_reason = self.check_exit_conditions(
-                        position, current_price, indicators, market_state
+                        position, current_price, indicators, market_state,
+                        current_timestamp=timestamp,
+                        bar_low=bar_low, bar_high=bar_high
                     )
                     
                     if should_exit:
+                        if exit_reason == 'MARKET_CLOSE_APPROACHING':
+                            self._market_close_exit_dates.add(date_str)
+                        # Exit price: for STOP_LOSS_HIT with limit order at stop, use stop price; else close
+                        exit_price = position['current_stop_price'] if exit_reason == 'STOP_LOSS_HIT' else current_price
                         # Calculate gross P&L
                         if position['direction'] == 'LONG':
-                            pnl_gross = (current_price - position['entry_price']) * position['quantity']
+                            pnl_gross = (exit_price - position['entry_price']) * position['quantity']
                         else:  # SHORT
-                            pnl_gross = (position['entry_price'] - current_price) * position['quantity']
+                            pnl_gross = (position['entry_price'] - exit_price) * position['quantity']
                         charges = charges_per_trade_futures(
-                            position['entry_price'], current_price, position['quantity']
+                            position['entry_price'], exit_price, position['quantity']
                         )
                         pnl = pnl_gross - charges
                         # Record trade (pnl is net of charges)
@@ -769,7 +871,7 @@ class TrendFollowingBacktester:
                             'exit_time': timestamp,
                             'direction': position['direction'],
                             'entry_price': position['entry_price'],
-                            'exit_price': current_price,
+                            'exit_price': exit_price,
                             'quantity': position['quantity'],
                             'lots': position['lots'],
                             'pnl': pnl,
@@ -782,15 +884,25 @@ class TrendFollowingBacktester:
                         self.trades.append(trade_record)
                         self.capital += pnl
                         self.open_positions.remove(position)
+                        if exit_reason == 'STOP_LOSS_HIT':
+                            self._cooldown_until = timestamp + timedelta(minutes=REENTRY_COOLDOWN_MINUTES)
                         
                         logger.info(
                             f"Exited {position['direction']} position: "
-                            f"Entry={position['entry_price']:.2f}, Exit={current_price:.2f}, "
+                            f"Entry={position['entry_price']:.2f}, Exit={exit_price:.2f}, "
                             f"P&L=₹{pnl:.2f} (gross ₹{pnl_gross:.2f}, charges ₹{charges:.2f}), Reason={exit_reason}"
                         )
                 
-                # Check entry conditions (only if no open position)
-                if not self.open_positions:
+                # Check entry conditions (only if no open position, no market-close exit today, past cooldown, under max trades/day)
+                in_cooldown = (
+                    getattr(self, '_cooldown_until', None) is not None
+                    and timestamp < self._cooldown_until
+                )
+                at_max_trades_today = getattr(self, '_trades_entered_today', 0) >= MAX_TREND_TRADES_PER_DAY
+                if (not self.open_positions
+                    and date_str not in getattr(self, '_market_close_exit_dates', set())
+                    and not in_cooldown
+                    and not at_max_trades_today):
                     can_enter, direction = self.check_entry_conditions(indicators, market_state)
                     
                     if can_enter and direction:
@@ -798,6 +910,26 @@ class TrendFollowingBacktester:
                         position_info = self.calculate_position_size(
                             current_price, indicators.get('atr_14', 0), direction
                         )
+                        # When regime allows trade but risk gives 0 lots, take at least 1 lot (ignore max risk for this trade)
+                        if position_info['quantity'] == 0:
+                            atr = indicators.get('atr_14', 0)
+                            stop_loss_atr = atr * INITIAL_STOP_LOSS_ATR_MULTIPLIER
+                            risk_per_share = stop_loss_atr
+                            if direction == 'LONG':
+                                stop_loss_price = current_price - stop_loss_atr
+                            else:
+                                stop_loss_price = current_price + stop_loss_atr
+                            position_info = {
+                                'lots': 1,
+                                'quantity': self.lot_size,
+                                'risk_amount': self.lot_size * risk_per_share,
+                                'stop_loss_price': stop_loss_price,
+                                'risk_per_share': risk_per_share,
+                            }
+                            logger.info(
+                                f"Backtest: regime allowed trade but risk gave 0 lots; taking 1 lot (ignoring max risk). "
+                                f"Risk for this trade: ₹{position_info['risk_amount']:.2f}"
+                            )
                         
                         if position_info['quantity'] > 0:
                             # Create position
@@ -812,10 +944,13 @@ class TrendFollowingBacktester:
                                 'regime_at_entry': market_state['regime'],
                                 'atr_at_entry': indicators.get('atr_14', 0),
                                 'ema_50_at_entry': indicators.get('ema_50', 0),
-                                'ema_100_at_entry': indicators.get('ema_100', 0)
+                                'ema_100_at_entry': indicators.get('ema_100', 0),
+                                'regime_change_count': 0,
+                                'ema_break_count': 0,
                             }
                             
                             self.open_positions.append(position)
+                            self._trades_entered_today = getattr(self, '_trades_entered_today', 0) + 1
                             
                             logger.info(
                                 f"Entered {direction} position: "
@@ -1232,13 +1367,174 @@ def run_comparison(start_date: str = '20251222', end_date: str = '20260116',
     return comparison
 
 
-def main():
-    """Run comparison: Baseline vs Lower ATR target vs Earlier breakeven"""
-    return run_comparison(
-        start_date='20251222',
-        end_date='20260116',
-        check_interval_minutes=15,
+def run_trailing_vs_035_comparison(start_date: str = '20251222', end_date: str = '20260116',
+                                   check_interval_minutes: int = 15) -> Dict:
+    """
+    Run two scenarios on the same period: (1) trailing only (no profit target),
+    (2) 0.35× ATR profit target. Return and print side-by-side comparison.
+    """
+    # Trailing only (production default)
+    bt_trailing = TrendFollowingBacktester(
+        initial_capital=1000000,
+        scenario_name='Trailing only (no target)',
+        profit_target_atr_multiplier=None,
     )
+    bt_trailing.run_backtest(start_date, end_date, check_interval_minutes=check_interval_minutes)
+    r_trailing = bt_trailing.generate_report()
+
+    # 0.35× ATR profit target
+    bt_035 = TrendFollowingBacktester(
+        initial_capital=1000000,
+        scenario_name='0.35× ATR profit target',
+        profit_target_atr_multiplier=0.35,
+    )
+    bt_035.run_backtest(start_date, end_date, check_interval_minutes=check_interval_minutes)
+    r_035 = bt_035.generate_report()
+
+    # Comparison table
+    print("\n" + "=" * 85)
+    print("TRAILING ONLY vs 0.35× ATR PROFIT TARGET")
+    print("=" * 85)
+    print(f"Period: {start_date} to {end_date}  |  Check interval: {check_interval_minutes} min")
+    print("=" * 85)
+    headers = ['Metric', 'Trailing only', '0.35× target']
+    col_w = [32, 24, 24]
+    fmt = "  ".join(f"{{:<{w}}}" for w in col_w)
+    print(fmt.format(*headers))
+    print("-" * 85)
+
+    def row(label, v_t, v_035, fmt_num=lambda x: f"{x:,.2f}" if isinstance(x, (int, float)) else str(x)):
+        print(fmt.format(label[:32], fmt_num(v_t), fmt_num(v_035)))
+
+    row('Total trades', r_trailing['total_trades'], r_035['total_trades'], lambda x: str(int(x)))
+    row('Winning / Losing', f"{r_trailing['winning_trades']} / {r_trailing['losing_trades']}",
+        f"{r_035['winning_trades']} / {r_035['losing_trades']}")
+    row('Win rate (%)', r_trailing['win_rate'], r_035['win_rate'])
+    row('Net P&L (₹)', r_trailing['total_pnl'], r_035['total_pnl'])
+    row('Gross P&L (₹)', r_trailing.get('total_pnl_gross', 0), r_035.get('total_pnl_gross', 0))
+    row('Charges (₹)', r_trailing.get('total_charges', 0), r_035.get('total_charges', 0))
+    row('Total return (%)', r_trailing.get('total_return_pct', 0), r_035.get('total_return_pct', 0))
+
+    print("-" * 85)
+    print("Exit reasons (count / P&L):")
+    all_reasons = set(r_trailing.get('exit_reasons', {})) | set(r_035.get('exit_reasons', {}))
+    for reason in sorted(all_reasons):
+        et = r_trailing.get('exit_reasons', {}).get(reason, {'count': 0, 'pnl': 0})
+        e35 = r_035.get('exit_reasons', {}).get(reason, {'count': 0, 'pnl': 0})
+        print(fmt.format(f"  {reason}", f"{et['count']} / ₹{et['pnl']:,.0f}", f"{e35['count']} / ₹{e35['pnl']:,.0f}"))
+    print("=" * 85 + "\n")
+
+    out = {
+        'start_date': start_date,
+        'end_date': end_date,
+        'check_interval_minutes': check_interval_minutes,
+        'trailing_only': {
+            'total_trades': r_trailing['total_trades'],
+            'winning_trades': r_trailing['winning_trades'],
+            'losing_trades': r_trailing['losing_trades'],
+            'win_rate': r_trailing['win_rate'],
+            'total_pnl': r_trailing['total_pnl'],
+            'total_pnl_gross': r_trailing.get('total_pnl_gross'),
+            'total_charges': r_trailing.get('total_charges'),
+            'total_return_pct': r_trailing.get('total_return_pct'),
+            'exit_reasons': r_trailing.get('exit_reasons'),
+        },
+        '035_atr_target': {
+            'total_trades': r_035['total_trades'],
+            'winning_trades': r_035['winning_trades'],
+            'losing_trades': r_035['losing_trades'],
+            'win_rate': r_035['win_rate'],
+            'total_pnl': r_035['total_pnl'],
+            'total_pnl_gross': r_035.get('total_pnl_gross'),
+            'total_charges': r_035.get('total_charges'),
+            'total_return_pct': r_035.get('total_return_pct'),
+            'exit_reasons': r_035.get('exit_reasons'),
+        },
+    }
+    out_file = f"backtest_trailing_vs_035_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(out_file, 'w') as f:
+        json.dump(out, f, indent=2, default=str)
+    print(f"Comparison saved to: {out_file}")
+    return out
+
+
+def run_single_day_1_lot(date_str: str, check_interval_minutes: int = 15) -> Dict:
+    """
+    Run trend backtest for a single day with 1 lot forced (ignore risk-based position sizing).
+    Use to answer: "If we had traded with 1 lot today, what would have been the PnL?"
+
+    Args:
+        date_str: Date in YYYYMMDD (e.g. '20260203').
+        check_interval_minutes: Bar interval in minutes.
+
+    Returns:
+        Report dict with total_pnl, trades, exit_reasons, etc.
+    """
+    backtester = TrendFollowingBacktester(
+        initial_capital=1000000,
+        scenario_name=f'1 lot fixed — {date_str}',
+        max_position_size=1,
+        force_max_lots=True,
+    )
+    backtester.run_backtest(date_str, date_str, check_interval_minutes=check_interval_minutes)
+    report = backtester.generate_report()
+
+    # Print summary
+    print("\n" + "=" * 60)
+    print(f"SINGLE-DAY 1-LOT PnL — {date_str}")
+    print("=" * 60)
+    print(f"Total trades:     {report['total_trades']}")
+    print(f"Winning / Losing: {report['winning_trades']} / {report['losing_trades']}")
+    print(f"Win rate:         {report['win_rate']:.1f}%")
+    print(f"Net P&L:          ₹{report['total_pnl']:,.2f}")
+    print(f"Gross P&L:        ₹{report.get('total_pnl_gross', report['total_pnl']):,.2f}")
+    print(f"Charges:          ₹{report.get('total_charges', 0):,.2f}")
+    if report.get('exit_reasons'):
+        print("Exit reasons:")
+        for reason, data in report['exit_reasons'].items():
+            print(f"  {reason}: {data.get('count', 0)} trades, P&L ₹{data.get('pnl', 0):,.2f}")
+    if report.get('trades'):
+        print("\nTrades:")
+        for i, t in enumerate(report['trades'], 1):
+            direction = t.get('direction', '')
+            entry = t.get('entry_price', 0)
+            exit_p = t.get('exit_price', 0)
+            pnl = t.get('pnl', 0)
+            reason = t.get('exit_reason', '')
+            print(f"  {i}. {direction} entry={entry:.2f} exit={exit_p:.2f} PnL=₹{pnl:,.2f} [{reason}]")
+    print("=" * 60 + "\n")
+    return report
+
+
+def main():
+    """Run comparison, or single-day 1-lot PnL if --date and --force-1-lot are given."""
+    import argparse
+    parser = argparse.ArgumentParser(description='Trend following backtest')
+    parser.add_argument('--date', type=str, help='Single date YYYYMMDD (e.g. 20260203)')
+    parser.add_argument('--force-1-lot', action='store_true', dest='force_1_lot',
+                        help='Run single-day with 1 lot fixed')
+    parser.add_argument('--comparison', action='store_true', help='Run full comparison (default if no --date)')
+    parser.add_argument('--trailing-vs-035', action='store_true', dest='trailing_vs_035',
+                        help='Compare trailing only vs 0.35× ATR profit target')
+    args = parser.parse_args()
+
+    if args.trailing_vs_035:
+        return run_trailing_vs_035_comparison(
+            start_date='20251222',
+            end_date='20260116',
+            check_interval_minutes=15,
+        )
+    if args.date and args.force_1_lot:
+        return run_single_day_1_lot(args.date)
+    if args.comparison or (not args.date and not args.force_1_lot):
+        return run_comparison(
+            start_date='20251222',
+            end_date='20260116',
+            check_interval_minutes=15,
+        )
+    if args.date:
+        print("Use --force-1-lot to run single-day 1-lot backtest for --date")
+    return None
 
 
 if __name__ == '__main__':
