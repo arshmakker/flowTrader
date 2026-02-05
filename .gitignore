@@ -35,16 +35,19 @@ cred.yml
 *.env
 .env
 .secrets
+*.pem
 
 # Logs
 logs/
 *.log
+.cursor/debug.log
 
 # Market Data
 market_data_*/
 data/raw_data/
 data/processed_data/
 market_data_iv/
+market_data_atr/
 
 # Backtest Reports
 backtest_report_*.json
@@ -54,6 +57,7 @@ backtest_trend_report_*.json
 backtest_trend_comparison_*.json
 backtest_calendar_report_*.json
 backtest_trailing_comparison_*.json
+backtest_trailing_vs_*.json
 
 # Trade Proposals
 trade_proposals/

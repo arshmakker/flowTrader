@@ -161,6 +161,24 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 
 **Change**: In `regime/regime_detector.py`, the default `confirmation_count` was increased from **2** to **3**. The reported regime now flips only after the new regime is detected **3 consecutive times** (reduces whipsaw / flickering regime exits).
 
+### Logging: logs directory and startup path (2026-01-29)
+
+**main.py** `setup_logging()`: Ensures `logs/` exists with `os.makedirs(log_dir, exist_ok=True)`, uses a single `log_path` for the daily file `logs/trading_system_YYYYMMDD.log`, and logs one line at startup: `Log file: <abs path>` so the file is created immediately and the path is visible in console and in the log file.
+
+### Convex: PnL formula and 1% profit target (2026-02-05)
+
+**PnL fix** (`strategies/iron_condor/position_tracker.py`): For Convex backspread, `current_value` already equals total P&L (entry credit + mark-to-market). The formula was incorrectly adding `entry_credit` again; it now uses `pnl = current_value` for Convex (Iron Condor unchanged: `pnl = entry_credit - current_value`).
+
+**Historical correction (2026-02-05)**: Three Convex trades closed before the PnL fix had inflated `final_pnl` (double-counted entry credit). Corrected in `active_positions.json` and `performance_by_regime.json`: trade 2026-02-05T12:42:43 → 14.63 (was 4293.25), 2026-02-05T12:48:16 → -6.5 (was 2515.50), 2026-02-05T12:53:01 → 42.25 (was 2640.62).
+
+**1% profit target for Convex**: Convex positions had no profit target (margin_used is null). Now: (1) `strategy_runner._run_convex_backspread_strategy` sets `trade_proposal['profit_target_inr'] = capital * 0.01` before adding to tracker. (2) Position tracker stores `profit_target_inr` on options positions and `check_profit_target()` returns True when `current_pnl >= profit_target_inr` (else falls back to 1% of margin for Iron Condor). (3) Main loop checks profit target before Convex mandatory exits; when hit, closes with reason `profit_target_margin` and logs Target=₹(profit_target_inr or profit_target_margin).
+
+**Convex regime-change confirmation (2026-02-05)**: To avoid exiting on brief regime flicker, Convex now requires **CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS = 3** consecutive monitoring cycles where regime ≠ CONVEX before exiting with REGIME_CHANGED. Per-position `convex_regime_change_count` is incremented when regime ≠ CONVEX and reset to 0 when regime is CONVEX; position is persisted so the count survives across runs. Other Convex exit conditions (time 40%, no ATR expansion, re-compression) still fire immediately.
+
+**Convex exit on regime change from entry (2026-02-05)**: Convex was exiting when regime ≠ CONVEX, so positions opened as **NEUTRAL fallback** (regime NEUTRAL) were closed after 3 checks because NEUTRAL ≠ CONVEX. Now: (1) **Actual regime at entry** is stored: `_run_convex_backspread_strategy(..., regime='CONVEX')` when called from CONVEX regime, and `regime='NEUTRAL'` when called from NEUTRAL fallback; `trade_proposal['regime_at_entry']` is set accordingly. (2) **Exit condition** in `check_convex_exit_conditions` is **current_regime != regime_at_entry** (with same 3-step confirmation and reset when current_regime == regime_at_entry). So Convex opened in NEUTRAL only exits when regime actually leaves NEUTRAL (e.g. to TREND or INCOME), not merely because it is not CONVEX.
+
+**Convex trailing stop loss (MTM-based) (2026-02-05)**: In `check_convex_exit_conditions` (and `add_position` for Convex), Convex-only state: `convex_tsl_active` (bool, default False), `convex_peak_mtm` (float, init at entry MTM). **Activation**: TSL activates when mtm ≥ +20% of entry premium (abs(entry_credit)) OR time_elapsed_pct ≥ 25%. **Peak**: Once active, `convex_peak_mtm = max(convex_peak_mtm, current_mtm)` each evaluation. **Trailing exit**: Base drawdown 35% from peak; tighten to 25% when time_elapsed_pct > 40% or ATR percentile < 30; exit when `current_mtm <= peak * (1 - trailing_pct)` → reason `CONVEX_TSL_HIT`. **Absolute protection**: Exit when `current_mtm <= -30%` of entry premium → reason `CONVEX_MAX_LOSS` (evaluated regardless of TSL state). Main passes `current_pnl` as `current_mtm`. Exit reasons surface as `convex_exit_CONVEX_TSL_HIT` and `convex_exit_CONVEX_MAX_LOSS`.
+
 ### Contract Rollover: Log Once per Process (2026-01-30)
 
 **Change**: In `technical_indicators.py`, "Contract rollover detected: …" is now logged at most once per (old_contract, new_contract) per process. A module-level set `_logged_rollovers` tracks which rollover pairs have been logged; subsequent 15m data loads still apply the same adjustment but do not repeat the INFO message (avoids spam every few minutes).
@@ -229,7 +247,7 @@ Strategy routing:
 - **CONVEX** → Call Backspread
 - **INCOME** → Iron Condor
 - **TREND_CONTINUATION** → Trend Following Futures
-- **NEUTRAL** → Calendar (NEUTRAL_ACTIVE) or no trade (NEUTRAL_PASSIVE)
+- **NEUTRAL** → Calendar (NEUTRAL_ACTIVE) or no trade (NEUTRAL_PASSIVE). **NEUTRAL fallback (2026-02-05)**: When regime is NEUTRAL and Calendar returns no valid trade, the runner now tries other strategies in order: Trend Following Futures, then Convex Backspread, then Iron Condor (each subject to mutual exclusion). If any produces a valid proposal, that trade is returned; otherwise NO_VALID_TRADE is logged.
 
 ### Recent Fix: Contract Rollover Adjustment (2026-01-28)
 

@@ -391,7 +391,7 @@ class TrendFollowingBacktester:
         if atr is None or not closes or closes[-1] <= 0:
             return None
         return float(atr) / float(closes[-1])
-
+    
     def detect_trend_direction(self, current_price: float, ema_50: float, ema_100: float) -> Optional[str]:
         """
         Detect trend direction from EMA structure
@@ -431,7 +431,7 @@ class TrendFollowingBacktester:
         )
         if not adx or adx < min_adx:
             return False, None
-
+        
         # Check ATR percentile
         if not atr_percentile or atr_percentile < 50:
             return False, None
@@ -500,14 +500,14 @@ class TrendFollowingBacktester:
             'risk_per_share': risk_per_share
         }
     
-    def check_exit_conditions(self, position: Dict, current_price: float, indicators: Dict,
+    def check_exit_conditions(self, position: Dict, current_price: float, indicators: Dict, 
                             market_state: Dict, current_timestamp: Optional[datetime] = None,
                             bar_low: Optional[float] = None, bar_high: Optional[float] = None) -> Tuple[bool, str]:
         """
         Check if exit conditions are met. Mirrors main.py: market close, stop loss,
         max loss cap, time in loss, regime change (with confirmation), ATR profit target,
         EMA break (with tolerance and confirmation); then update hybrid trailing stop.
-
+        
         Stop loss: when bar_low/bar_high are provided, treat stop as a LIMIT order at the stop
         price — stop is "hit" when price traded at that level (bar low <= stop for LONG,
         bar high >= stop for SHORT). Otherwise use close (market-order semantics).
@@ -550,13 +550,13 @@ class TrendFollowingBacktester:
                 if bar_high >= current_stop:
                     return True, 'STOP_LOSS_HIT'
         else:
-            if direction == 'LONG':
-                if current_price <= current_stop:
-                    return True, 'STOP_LOSS_HIT'
-            else:  # SHORT
-                if current_price >= current_stop:
-                    return True, 'STOP_LOSS_HIT'
-
+        if direction == 'LONG':
+            if current_price <= current_stop:
+                return True, 'STOP_LOSS_HIT'
+        else:  # SHORT
+            if current_price >= current_stop:
+                return True, 'STOP_LOSS_HIT'
+        
         # Exit condition 1b: Max intraday loss (circuit breaker)
         if current_pnl <= -MAX_INTRADAY_LOSS_INR:
             return True, 'MAX_LOSS_CAP'
@@ -570,10 +570,10 @@ class TrendFollowingBacktester:
         if EXIT_ON_REGIME_CHANGE:
             if 'regime_change_count' not in position:
                 position['regime_change_count'] = 0
-            if regime != 'TREND_CONTINUATION':
+        if regime != 'TREND_CONTINUATION':
                 position['regime_change_count'] = position.get('regime_change_count', 0) + 1
                 if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
-                    return True, 'REGIME_CHANGE'
+            return True, 'REGIME_CHANGE'
             else:
                 if position.get('regime_change_count', 0) > 0:
                     position['regime_change_count'] = 0
@@ -585,18 +585,18 @@ class TrendFollowingBacktester:
 
         # Exit condition 4: EMA structure breaks (with tolerance, confirmation, in-profit ignore)
         if EXIT_ON_EMA_BREAK:
-            ema_50 = indicators.get('ema_50')
-            ema_100 = indicators.get('ema_100')
-            if ema_50 and ema_100:
+        ema_50 = indicators.get('ema_50')
+        ema_100 = indicators.get('ema_100')
+        if ema_50 and ema_100:
                 if 'ema_break_count' not in position:
                     position['ema_break_count'] = 0
                 # Structure valid with tolerance (same as production)
                 tol = EMA_BREAK_TOLERANCE_PCT / 100.0
-                if direction == 'LONG':
+            if direction == 'LONG':
                     price_above_ema50 = current_price > ema_50 * (1 - tol)
                     ema50_above_ema100 = ema_50 > ema_100 * (1 - tol)
                     structure_valid = price_above_ema50 and ema50_above_ema100
-                else:  # SHORT
+            else:  # SHORT
                     price_below_ema50 = current_price < ema_50 * (1 + tol)
                     ema50_below_ema100 = ema_50 < ema_100 * (1 + tol)
                     structure_valid = price_below_ema50 and ema50_below_ema100
@@ -615,11 +615,11 @@ class TrendFollowingBacktester:
                     if PRIORITIZE_TRAILING_STOP_IN_PROFIT and in_profit and not close_to_stop:
                         position['ema_break_count'] = 0
                     elif position['ema_break_count'] >= ema_required_checks:
-                        return True, 'EMA_STRUCTURE_BROKEN'
+                    return True, 'EMA_STRUCTURE_BROKEN'
                 else:
                     if position.get('ema_break_count', 0) > 0:
                         position['ema_break_count'] = 0
-
+        
         # Update trailing stop loss (hybrid phases 1–6, same as main.py)
         if atr > 0:
             if USE_HYBRID_TRAILING_STOP:
@@ -656,14 +656,14 @@ class TrendFollowingBacktester:
                 if lock_be:
                     new_trailing_stop = min(new_trailing_stop, entry_price)
                 position['current_stop_price'] = min(current_stop, new_trailing_stop)
-
+        
         return False, None
     
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15,
                      iv_csv_path: Optional[str] = None):
         """
         Run backtest on historical data.
-
+        
         Args:
             start_date: Start date in YYYYMMDD format
             end_date: End date in YYYYMMDD format
@@ -683,10 +683,10 @@ class TrendFollowingBacktester:
             logger.info(
                 "No IV CSV: will use daily_metrics.json when present, else compute IV proxy from volatility (testing all four regimes)"
             )
-
+        
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
-
+        
         self._market_close_exit_dates = set()  # No new entries after market-close exit that day
         self._cooldown_until = None  # After STOP_LOSS_HIT, block new entry until this timestamp
         self._trades_entered_today = 0  # Entries on current day (reset each date_str)
@@ -702,7 +702,7 @@ class TrendFollowingBacktester:
         # ATR and ADX range over the backtest data (all bars where indicators were computed)
         self._atr_values = []
         self._adx_values = []
-
+        
         # Load all historical data for regime detection (across multiple days)
         historical_candles = []
         
@@ -748,7 +748,7 @@ class TrendFollowingBacktester:
             # This ensures we have enough data across days
             if len(historical_candles) > 100:
                 historical_candles = historical_candles[-100:]
-
+            
             self._days_with_data.add(date_str)
             self._trades_entered_today = 0  # Reset per day for MAX_TREND_TRADES_PER_DAY
             had_convex_today = False
@@ -929,7 +929,7 @@ class TrendFollowingBacktester:
                             logger.info(
                                 f"Backtest: regime allowed trade but risk gave 0 lots; taking 1 lot (ignoring max risk). "
                                 f"Risk for this trade: ₹{position_info['risk_amount']:.2f}"
-                            )
+                        )
                         
                         if position_info['quantity'] > 0:
                             # Create position
@@ -957,7 +957,7 @@ class TrendFollowingBacktester:
                                 f"Price={current_price:.2f}, Quantity={position_info['quantity']}, "
                                 f"Lots={position_info['lots']}, SL={position_info['stop_loss_price']:.2f}"
                             )
-
+            
             if had_convex_today:
                 self._days_with_convex.add(date_str)
             if had_income_today:

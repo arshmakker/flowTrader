@@ -161,8 +161,8 @@ def generate_daily_trade_summary(logger):
 def setup_logging():
     """Setup logging configuration"""
     log_dir = 'logs'
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f'trading_system_{datetime.now().strftime("%Y%m%d")}.log')
     
     # Create formatters
     detailed_formatter = logging.Formatter(
@@ -173,9 +173,7 @@ def setup_logging():
     )
     
     # File handler for detailed logging
-    file_handler = logging.FileHandler(
-        os.path.join(log_dir, f'trading_system_{datetime.now().strftime("%Y%m%d")}.log')
-    )
+    file_handler = logging.FileHandler(log_path)
     file_handler.setFormatter(detailed_formatter)
     file_handler.setLevel(logging.DEBUG)
     
@@ -189,6 +187,7 @@ def setup_logging():
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+    root_logger.info(f"Log file: {os.path.abspath(log_path)}")
     
     logging.info("Logging system initialized")
 
@@ -1177,7 +1176,8 @@ def main():
                                                         entry_days_to_expiry,
                                                         current_atr_percentile=regime_info.get('atr_percentile'),
                                                         entry_range_state=entry_range_state,
-                                                        current_range_state=regime_info.get('range_state')
+                                                        current_range_state=regime_info.get('range_state'),
+                                                        current_mtm=current_pnl
                                                     )
                                             
                                             # Check for calendar exit conditions (if calendar position)
@@ -1235,12 +1235,13 @@ def main():
                                                     current_pnl
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
-                                            # Check profit target (1% of margin) for Iron Condor
+                                            # Check profit target (Convex: 1% of capital; Iron Condor: 1% of margin)
                                             elif not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
+                                                target_inr = position.get('profit_target_inr') or position.get('profit_target_margin') or 0
                                                 logger.info(
                                                     f"✅ Profit target reached for position {position['trade_id']}: "
                                                     f"P&L=₹{current_pnl:.2f}, "
-                                                    f"Target=₹{position.get('profit_target_margin', 0):.2f}"
+                                                    f"Target=₹{target_inr:.2f}"
                                                 )
                                                 
                                                 # Close position

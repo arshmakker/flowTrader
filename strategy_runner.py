@@ -1037,8 +1037,8 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
                 return None
             
-            # Run Convex Backspread strategy
-            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital)
+            # Run Convex Backspread strategy (regime at entry = CONVEX)
+            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='CONVEX')
             strategy_executed = "CALL_BACKSPREAD" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
@@ -1088,16 +1088,117 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 # Run Calendar strategy
                 trade_proposal = _run_neutral_calendar_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime_info)
                 strategy_executed = "ATM_CALL_CALENDAR" if trade_proposal else None
-                if not trade_proposal:
-                    no_trade_reason = "NO_VALID_TRADE"
+                if trade_proposal:
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":True,"strategy_executed":strategy_executed},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
+                    except: pass
+                    # #endregion
+                    _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
+                    return trade_proposal
+
+                # No valid calendar trade: try other regimes (Trend -> Convex -> Iron Condor)
+                no_trade_reason = "NO_VALID_TRADE"
+                logger.info("Calendar had no valid trade; checking other regimes (Trend, Convex, Iron Condor)")
                 # #region agent log
                 try:
                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
+                        f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":False,"strategy_executed":None,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
                 except: pass
                 # #endregion
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
-                return trade_proposal
+
+                # Fallback 1: Try Trend
+                # #region agent log
+                try:
+                    _ce_trend = can_enter_strategy(STRATEGY_TREND, position_tracker)
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_trend","message":"NEUTRAL fallback Trend","data":{"can_enter":_ce_trend},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
+                except Exception as _e:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_trend","message":"NEUTRAL fallback Trend","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
+                    _ce_trend = False
+                # #endregion
+                if _ce_trend:
+                    strategy_allowed.append("TREND_FOLLOW_FUTURE")
+                    trade_proposal = _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_state, capital)
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"strategy_runner.py:fallback_trend_run","message":"Trend run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
+                    except: pass
+                    # #endregion
+                    if trade_proposal:
+                        strategy_executed = "TREND_FOLLOW_FUTURE"
+                        logger.info("NEUTRAL fallback: Trend strategy produced valid trade")
+                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
+                        return trade_proposal
+                    logger.info("NEUTRAL fallback: Trend had no valid trade")
+
+                # Fallback 2: Try Convex
+                # #region agent log
+                try:
+                    _ce_convex = can_enter_strategy(STRATEGY_CONVEX, position_tracker)
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_convex","message":"NEUTRAL fallback Convex","data":{"can_enter":_ce_convex},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
+                except Exception as _e:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_convex","message":"NEUTRAL fallback Convex","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
+                    _ce_convex = False
+                # #endregion
+                if _ce_convex:
+                    strategy_allowed.append("CALL_BACKSPREAD")
+                    trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='NEUTRAL')
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"strategy_runner.py:fallback_convex_run","message":"Convex run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
+                    except: pass
+                    # #endregion
+                    if trade_proposal:
+                        strategy_executed = "CALL_BACKSPREAD"
+                        logger.info("NEUTRAL fallback: Convex Backspread produced valid trade")
+                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
+                        return trade_proposal
+                    logger.info("NEUTRAL fallback: Convex had no valid trade")
+
+                # Fallback 3: Try Iron Condor
+                # #region agent log
+                try:
+                    _ce_iron = can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker)
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_iron","message":"NEUTRAL fallback Iron Condor","data":{"can_enter":_ce_iron},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
+                except Exception as _e:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_iron","message":"NEUTRAL fallback Iron Condor","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
+                    _ce_iron = False
+                # #endregion
+                if _ce_iron:
+                    strategy_allowed.append("IRON_CONDOR")
+                    trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
+                    # #region agent log
+                    try:
+                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({"location":"strategy_runner.py:fallback_iron_run","message":"Iron Condor run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
+                    except: pass
+                    # #endregion
+                    if trade_proposal:
+                        strategy_executed = "IRON_CONDOR"
+                        logger.info("NEUTRAL fallback: Iron Condor produced valid trade")
+                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
+                        return trade_proposal
+                    logger.info("NEUTRAL fallback: Iron Condor had no valid trade")
+
+                # All fallbacks failed
+                # #region agent log
+                try:
+                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({"location":"strategy_runner.py:fallback_all_failed","message":"NEUTRAL fallback all failed","data":{"strategy_allowed":strategy_allowed},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H4"})+"\n")
+                except: pass
+                # #endregion
+                no_trade_reason = "NO_VALID_TRADE"
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
+                return None
             else:
                 # NEUTRAL_PASSIVE or calendar disabled - stand aside
                 no_trade_reason = _determine_no_trade_reason(market_state, regime_info, neutral_sub_state)
@@ -1215,9 +1316,18 @@ def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, ma
         return None
 
 
-def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital):
-    """Run Convex Backspread strategy"""
+def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime=None):
+    """Run Convex Backspread strategy. regime: actual regime at entry ('CONVEX' or 'NEUTRAL' when fallback)."""
     try:
+        # #region agent log
+        try:
+            _exp = available_expiries[0] if available_expiries else None
+            _exp_obj = _get_date_object(_exp) if _exp else None
+            _dte = (_exp_obj - datetime.now().date()).days if _exp_obj else None
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
+                _f.write(json.dumps({"location":"strategy_runner.py:_run_convex_backspread_strategy","message":"Convex entry","data":{"len_available_expiries":len(available_expiries) if available_expiries else 0,"first_expiry":str(_exp),"days_to_expiry":_dte,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H2"})+"\n")
+        except Exception: pass
+        # #endregion
         logger.info("=== Running Convex Backspread Strategy (CONVEX regime) ===")
         
         # Use first expiry (weekly)
@@ -1227,12 +1337,25 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
         
         # Get option chain
         option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
+        # #region agent log
+        try:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
+                _f.write(json.dumps({"location":"strategy_runner.py:convex_option_chain","message":"Convex option chain","data":{"empty":option_chain_df.empty,"rows":len(option_chain_df) if hasattr(option_chain_df,'__len__') else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H3"})+"\n")
+        except Exception: pass
+        # #endregion
         if option_chain_df.empty:
             logger.warning("No option chain data for Convex strategy")
             return None
         
         # Build market state for this expiry
         market_state_expiry = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
+        # #region agent log
+        try:
+            _ms = market_state_expiry or {}
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
+                _f.write(json.dumps({"location":"strategy_runner.py:convex_market_state","message":"Convex market state","data":{"is_none":market_state_expiry is None,"has_expiry":'expiry' in _ms,"has_days_to_expiry":'days_to_expiry' in _ms,"days_to_expiry":_ms.get('days_to_expiry'),"expiry":_ms.get('expiry'),"spot_price":_ms.get('spot_price')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H5"})+"\n")
+        except Exception: pass
+        # #endregion
         if not market_state_expiry:
             logger.warning("Could not build market state for Convex strategy")
             return None
@@ -1245,10 +1368,15 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
         
         # Generate trade proposal
         trade_proposal = generate_nifty_call_backspread(market_state_expiry, option_chain_df, capital)
-        
+        # #region agent log
+        try:
+            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
+                _f.write(json.dumps({"location":"strategy_runner.py:convex_generate_result","message":"Convex generate result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+        except Exception: pass
+        # #endregion
         if trade_proposal:
-            # Add regime info and entry state for convex exit checks
-            trade_proposal['regime_at_entry'] = 'CONVEX'
+            # Actual regime at entry (CONVEX when in CONVEX regime, NEUTRAL when taken as fallback)
+            trade_proposal['regime_at_entry'] = regime if regime else 'CONVEX'
             trade_proposal['entry_range_state'] = entry_range_state
             
             logger.info("✅ Valid Convex Backspread trade found!")
@@ -1269,6 +1397,9 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
             
             # Save proposal
             save_trade_proposal(trade_proposal)
+            
+            # Convex profit target: 1% of capital (so exit logic can use it)
+            trade_proposal['profit_target_inr'] = capital * 0.01
             
             # Add to position tracker if provided
             if position_tracker is not None:

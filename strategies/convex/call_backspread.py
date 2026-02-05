@@ -14,10 +14,12 @@ Rules:
 import pandas as pd
 import numpy as np
 import logging
+import json
 from typing import Dict, Optional
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+DEBUG_LOG = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
 
 # Configuration
 MAX_NET_DEBIT_PCT = 0.0025  # 0.25% of spot value
@@ -73,18 +75,41 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         spot_price = market_state.get('spot_price')
         expiry = market_state.get('expiry')
         days_to_expiry = market_state.get('days_to_expiry')
-        
+        # #region agent log
+        try:
+            with open(DEBUG_LOG, 'a') as _f:
+                _f.write(json.dumps({"location":"call_backspread.py:generate_nifty_call_backspread","message":"Convex generator entry","data":{"spot_price":spot_price,"expiry":expiry,"days_to_expiry":days_to_expiry,"min_dte":MIN_DAYS_TO_EXPIRY},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+        except Exception: pass
+        # #endregion
         if spot_price is None or spot_price <= 0:
             logger.error("Invalid or missing spot_price in market_state")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"SPOT_INVALID","spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         if expiry is None:
             logger.error("Missing expiry in market_state")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"EXPIRY_MISSING"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Entry guard: Don't enter if too close to expiry
         # OTM calls need time for the asymmetric payoff to work
         if days_to_expiry is not None and days_to_expiry <= MIN_DAYS_TO_EXPIRY:
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"DAYS_TO_EXPIRY_LE_2","days_to_expiry":days_to_expiry,"min_required":MIN_DAYS_TO_EXPIRY+1},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H2"})+"\n")
+            except Exception: pass
+            # #endregion
             logger.info(
                 f"Call Backspread rejected: Expires in {days_to_expiry} days "
                 f"(minimum: {MIN_DAYS_TO_EXPIRY + 1} days). OTM calls need time value."
@@ -93,12 +118,24 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         if option_chain.empty:
             logger.warning("Empty option chain provided")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"OPTION_CHAIN_EMPTY"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H3"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Filter calls only
         calls = option_chain[option_chain['option_type'].str.upper() == 'CE'].copy()
         if calls.empty:
             logger.warning("No call options in chain")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"NO_CALL_OPTIONS"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Sort by strike
@@ -110,6 +147,12 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         if atm_call.empty:
             logger.warning("Could not find ATM call")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"ATM_CALL_NOT_FOUND"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Find OTM calls (~1% above ATM strike)
@@ -121,11 +164,23 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         if otm_call.empty:
             logger.warning("Could not find OTM call")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"OTM_CALL_NOT_FOUND"},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Validate strikes
         if otm_call['strike'] <= atm_call['strike']:
             logger.warning(f"OTM call strike {otm_call['strike']} not above ATM {atm_call['strike']}")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"OTM_NOT_ABOVE_ATM","otm_strike":float(otm_call['strike']),"atm_strike":float(atm_call['strike'])},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Get prices (use mid_price if available, else ltp)
@@ -134,6 +189,12 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         if atm_price <= 0 or otm_price <= 0:
             logger.warning(f"Invalid prices: ATM={atm_price}, OTM={otm_price}")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"INVALID_PRICES","atm_price":float(atm_price) if atm_price is not None else None,"otm_price":float(otm_price) if otm_price is not None else None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Calculate net debit
@@ -142,32 +203,45 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         # Validate net debit (must be ≤ 0.25% of spot value)
         max_debit = spot_price * MAX_NET_DEBIT_PCT
+        # Allow debit (pay to open) or credit/zero (receive at open)
         if net_debit > max_debit:
             logger.info(f"Net debit {net_debit:.2f} exceeds max {max_debit:.2f} (0.25% of spot)")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"NET_DEBIT_EXCEEDS_MAX","net_debit":net_debit,"max_debit":max_debit},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
-        if net_debit <= 0:
-            logger.info(f"Net debit {net_debit:.2f} is not a debit (should be positive)")
-            return None
-        
-        # Calculate max loss
-        # Max loss occurs if price expires at or below ATM strike
-        # Loss = Net debit paid
-        max_loss_per_lot = net_debit
-        
-        # Validate max loss (must be ≤ 1% of capital)
+        # Max loss: when we pay a debit, loss at expiry at/below ATM = debit paid; when we receive credit, that scenario has no loss
+        max_loss_per_lot = max(0.0, net_debit)
         max_allowed_loss = capital * MAX_LOSS_PCT_OF_CAPITAL
-        if max_loss_per_lot > max_allowed_loss:
+        if max_loss_per_lot > 0 and max_loss_per_lot > max_allowed_loss:
             logger.info(f"Max loss {max_loss_per_lot:.2f} exceeds {max_allowed_loss:.2f} (1% of capital)")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"MAX_LOSS_EXCEEDS_CAPITAL","max_loss_per_lot":max_loss_per_lot,"max_allowed_loss":max_allowed_loss},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Calculate lot size
         lot_size = option_chain.iloc[0].get('lot_size', 50)
-        
-        # Calculate number of lots based on max loss constraint
-        lots = int(max_allowed_loss / (max_loss_per_lot * lot_size))
+        # When net credit/zero: max_loss_per_lot is 0, use 1 lot (conservative). When debit: size by max loss constraint.
+        if max_loss_per_lot <= 0:
+            lots = 1
+        else:
+            lots = int(max_allowed_loss / (max_loss_per_lot * lot_size))
         if lots <= 0:
             logger.info("Position sizing resulted in 0 lots")
+            # #region agent log
+            try:
+                with open(DEBUG_LOG, 'a') as _f:
+                    _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"LOTS_ZERO","lots":lots,"max_allowed_loss":max_allowed_loss,"max_loss_per_lot":max_loss_per_lot,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+            except Exception: pass
+            # #endregion
             return None
         
         # Build trade proposal
@@ -219,7 +293,12 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             f"Call Backspread proposal: {lots} lots, "
             f"debit=₹{net_debit:.2f}/lot, max_loss=₹{max_loss_per_lot:.2f}/lot"
         )
-        
+        # #region agent log
+        try:
+            with open(DEBUG_LOG, 'a') as _f:
+                _f.write(json.dumps({"location":"call_backspread.py:success","message":"Convex proposal","data":{"lots":lots,"net_debit":net_debit},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
+        except Exception: pass
+        # #endregion
         return trade_proposal
         
     except Exception as e:

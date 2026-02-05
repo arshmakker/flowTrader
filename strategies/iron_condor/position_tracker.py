@@ -7,9 +7,42 @@ import json
 import os
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
+
+# Require N consecutive regime != CONVEX before exiting Convex position on regime change (reduces whipsaw)
+CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS = 3
+
+# Convex trailing stop loss (MTM-based)
+CONVEX_TSL_ACTIVATION_MTM_PCT = 0.20   # Activate TSL when mtm >= +20% of entry premium
+CONVEX_TSL_ACTIVATION_TIME_PCT = 0.25  # Or when time elapsed >= 25% of expiry
+CONVEX_TSL_TRAIL_PCT = 0.35            # Base trailing drawdown 35% from peak
+CONVEX_TSL_TRAIL_TIGHT_PCT = 0.25      # Tighten to 25% when time > 40% or ATR% < 30
+CONVEX_TSL_TIGHT_TIME_PCT = 0.40
+CONVEX_TSL_ATR_TIGHT_THRESHOLD = 30
+CONVEX_MAX_LOSS_MTM_PCT = 0.30         # Absolute exit if mtm <= -30% of entry premium
+
+
+def _to_json_serializable(obj: Any) -> Any:
+    """Convert numpy/pandas scalar types to native Python for JSON serialization."""
+    try:
+        import numpy as np
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.bool_,)):
+            return bool(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+    except ImportError:
+        pass
+    if isinstance(obj, dict):
+        return {k: _to_json_serializable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_serializable(v) for v in obj]
+    return obj
 
 
 class IronCondorPositionTracker:
@@ -34,8 +67,9 @@ class IronCondorPositionTracker:
     def _save_active_positions(self):
         """Save active positions to file"""
         try:
+            serializable = _to_json_serializable(self.active_positions)
             with open(self.active_positions_file, 'w') as f:
-                json.dump(self.active_positions, f, indent=2)
+                json.dump(serializable, f, indent=2)
         except Exception as e:
             logger.error(f"Error saving active positions: {e}")
     
@@ -95,6 +129,7 @@ class IronCondorPositionTracker:
                 'entry_credit': trade_proposal.get('net_credit_total', trade_proposal.get('net_debit_total', 0)),
                 'margin_used': trade_proposal.get('margin_used'),
                 'profit_target_margin': trade_proposal.get('profit_target_margin'),
+                'profit_target_inr': trade_proposal.get('profit_target_inr'),  # Convex: 1% of capital
                 'max_loss': trade_proposal.get('max_loss', 0),
                 'days_to_expiry': trade_proposal.get('days_to_expiry'),
                 'days_to_expiry_short': trade_proposal.get('days_to_expiry_short'),
@@ -103,6 +138,10 @@ class IronCondorPositionTracker:
                 'entry_prices': {leg['option_type'] + str(int(leg['strike'])): leg['price'] for leg in trade_proposal.get('legs', [])},
                 'profit_locked_inr': 0,  # Trailing lock: first 300, then trail 200 below current PnL
             })
+            # Convex-only trailing stop state (MTM-based)
+            if position.get('book') == 'CONVEX' or 'BACKSPREAD' in strategy:
+                position['convex_tsl_active'] = False
+                position['convex_peak_mtm'] = 0.0  # Entry MTM at open
         
         self.active_positions.append(position)
         self._save_active_positions()
@@ -155,9 +194,9 @@ class IronCondorPositionTracker:
         # P&L calculation depends on strategy type
         strategy = position.get('strategy', '').upper()
         if 'BACKSPREAD' in strategy or position.get('book') == 'CONVEX':
-            # For convex backspread: entry_credit is actually net_debit (negative)
-            # P&L = current_value - entry_credit (where entry_credit is negative)
-            pnl = current_value - entry_credit
+            # For convex backspread: current_value already is total P&L (entry credit + mark-to-market).
+            # entry_credit is stored as net_debit (negative when we received credit); do not add it again.
+            pnl = current_value
         else:
             # For Iron Condor: entry_credit is positive (we received it)
             # P&L = entry_credit - current_value
@@ -189,7 +228,11 @@ class IronCondorPositionTracker:
         return False
 
     def check_profit_target(self, position: Dict, current_pnl: float) -> bool:
-        """Check if profit target (1% of margin) is reached"""
+        """Check if profit target is reached. Convex: 1% of capital (profit_target_inr). Iron Condor: 1% of margin."""
+        profit_target_inr = position.get('profit_target_inr')
+        if profit_target_inr is not None and profit_target_inr > 0:
+            if current_pnl >= profit_target_inr:
+                return True
         margin_used = position.get('margin_used')
         if margin_used and margin_used > 0:
             profit_target = margin_used * 0.01  # 1% of margin
@@ -202,7 +245,8 @@ class IronCondorPositionTracker:
                                      days_to_expiry: int, entry_days_to_expiry: int,
                                      current_atr_percentile: float = None,
                                      entry_range_state: str = None,
-                                     current_range_state: str = None):
+                                     current_range_state: str = None,
+                                     current_mtm: float = None):
         """
         Check mandatory exit conditions for Convex Backspread strategy
         
@@ -211,6 +255,8 @@ class IronCondorPositionTracker:
         - Exit if no ATR expansion within 40% of expiry time
         - Exit if time elapsed > 40% of expiry duration
         - Exit if price re-enters compression range after entry
+        - (MTM-based) Exit if current_mtm <= -30% of entry premium (CONVEX_MAX_LOSS)
+        - (MTM-based) Trailing stop: activate at +20% mtm or 25% time; exit on drawdown from peak (CONVEX_TSL_HIT)
         
         Args:
             position: Position dictionary
@@ -222,6 +268,7 @@ class IronCondorPositionTracker:
             current_atr_percentile: Current ATR percentile (optional)
             entry_range_state: Range state at entry (optional)
             current_range_state: Current range state (optional)
+            current_mtm: Current mark-to-market PnL (required for TSL / max-loss checks)
         
         Returns:
             Tuple of (should_exit: bool, exit_reason: str)
@@ -232,9 +279,20 @@ class IronCondorPositionTracker:
                 # Not a convex position, use standard exit logic
                 return False, None
             
-            # Exit condition 1: Regime changed from CONVEX
-            if current_regime != "CONVEX":
-                return True, "REGIME_CHANGED"
+            # Exit condition 1: Regime changed from regime at entry (with confirmation to reduce whipsaw)
+            # Use actual regime at entry so e.g. Convex opened in NEUTRAL only exits when regime leaves NEUTRAL
+            regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
+            if current_regime != regime_at_entry:
+                count = position.get('convex_regime_change_count', 0) + 1
+                position['convex_regime_change_count'] = count
+                self._save_active_positions()
+                if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
+                    return True, "REGIME_CHANGED"
+                return False, None
+            else:
+                if position.get('convex_regime_change_count', 0) > 0:
+                    position['convex_regime_change_count'] = 0
+                    self._save_active_positions()
             
             # Exit condition 2: Time elapsed > 40% of expiry duration
             if entry_days_to_expiry > 0:
@@ -264,6 +322,40 @@ class IronCondorPositionTracker:
                     time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
                     if time_elapsed_pct > 0.30 and price_change_pct < 0.005:  # Less than 0.5% movement
                         return True, "RE_COMPRESSION"
+            
+            # Time elapsed for TSL / absolute protection (reuse in this block)
+            time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry if entry_days_to_expiry and entry_days_to_expiry > 0 else 0.0
+            
+            # Absolute protection (fail-safe): exit if mtm <= -30% of entry premium (regardless of TSL state)
+            if current_mtm is not None:
+                entry_premium = abs(position.get('entry_credit') or 0)
+                if entry_premium > 0 and current_mtm <= -CONVEX_MAX_LOSS_MTM_PCT * entry_premium:
+                    return True, "CONVEX_MAX_LOSS"
+                
+                # Initialize peak MTM if not set (entry MTM = 0 at open)
+                if 'convex_peak_mtm' not in position:
+                    position['convex_peak_mtm'] = float(current_mtm)
+                    self._save_active_positions()
+                
+                # Activation gate: activate TSL if mtm >= +20% of entry premium OR time >= 25%
+                if not position.get('convex_tsl_active', False):
+                    mtm_pct = (current_mtm / entry_premium) if entry_premium > 0 else 0.0
+                    if (entry_premium > 0 and mtm_pct >= CONVEX_TSL_ACTIVATION_MTM_PCT) or time_elapsed_pct >= CONVEX_TSL_ACTIVATION_TIME_PCT:
+                        position['convex_tsl_active'] = True
+                        self._save_active_positions()
+                
+                # Trailing stop: once active, track peak and exit on drawdown
+                if position.get('convex_tsl_active', False):
+                    old_peak = position.get('convex_peak_mtm', current_mtm)
+                    peak = max(old_peak, current_mtm)
+                    position['convex_peak_mtm'] = float(peak)
+                    if peak != old_peak:
+                        self._save_active_positions()
+                    trailing_pct = CONVEX_TSL_TRAIL_PCT
+                    if time_elapsed_pct > CONVEX_TSL_TIGHT_TIME_PCT or (current_atr_percentile is not None and current_atr_percentile < CONVEX_TSL_ATR_TIGHT_THRESHOLD):
+                        trailing_pct = CONVEX_TSL_TRAIL_TIGHT_PCT
+                    if current_mtm <= peak * (1.0 - trailing_pct):
+                        return True, "CONVEX_TSL_HIT"
             
             return False, None
             
