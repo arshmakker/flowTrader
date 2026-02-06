@@ -5,6 +5,10 @@ Backtests the Call Backspread strategy:
 - Sell 1 ATM Call
 - Buy 2 OTM Calls (~ +1% strike)
 - Same weekly expiry
+
+Exit: Production uses TSL only (no profit target). This backtest uses simplified
+exit: end of day or regime change; full Convex TSL (activate +20% MTM, trail from peak)
+is not simulated here.
 """
 
 import pandas as pd
@@ -29,7 +33,7 @@ logger = logging.getLogger('ConvexBacktest')
 class ConvexBackspreadBacktester:
     """Backtest Convex Backspread strategy on historical data"""
     
-    def __init__(self, data_dir='market_data_*', initial_capital=100000):
+    def __init__(self, data_dir='market_data_*', initial_capital=100000, vix_low_override=None, vix_high_override=None):
         self.data_dir = data_dir
         self.initial_capital = initial_capital
         self.capital = initial_capital
@@ -38,6 +42,8 @@ class ConvexBackspreadBacktester:
         self.regime_detector = RegimeDetector()
         self.lot_size = 50  # NIFTY options lot size
         self.max_quote_staleness_minutes = 10
+        self.vix_low_override = vix_low_override
+        self.vix_high_override = vix_high_override
         
     def load_historical_data(self, date_str: str) -> Dict:
         """Load all historical data for a specific date"""
@@ -184,6 +190,8 @@ class ConvexBackspreadBacktester:
             range_compressed=range_compressed,
             ema_direction=ema_direction,
             india_vix=india_vix,
+            vix_low_override=self.vix_low_override,
+            vix_high_override=self.vix_high_override,
         )
         return regime, range_compressed
     
@@ -493,19 +501,81 @@ class ConvexBackspreadBacktester:
         }
 
 
+def get_available_date_range():
+    """Return (start_date_str, end_date_str) from market_data_* dirs, or (None, None)."""
+    dirs = glob.glob("market_data_[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]")
+    dates = sorted([d.replace("market_data_", "") for d in dirs if len(d.replace("market_data_", "")) == 8])
+    if not dates:
+        return None, None
+    return dates[0], dates[-1]
+
+
+def run_comparison(start_date: str, end_date: str, check_interval_minutes: int = 15):
+    """Run backtest with VIX_LOW=12 and VIX_LOW=14 and print comparison."""
+    print("\n" + "=" * 64)
+    print("CONVEX BACKTEST COMPARISON: VIX_LOW=12 vs VIX_LOW=14")
+    print("=" * 64)
+    print(f"Date range: {start_date} to {end_date}\n")
+
+    results = {}
+    for vix_low, label in [(12.0, "VIX_LOW=12"), (14.0, "VIX_LOW=14")]:
+        backtester = ConvexBackspreadBacktester(initial_capital=100000, vix_low_override=vix_low)
+        backtester.run_backtest(start_date, end_date, check_interval_minutes=check_interval_minutes)
+        report = backtester.generate_report()
+        results[label] = report
+        print(f"  {label}: trades={report['total_trades']}, win_rate={report['win_rate']:.1f}%, "
+              f"total_pnl=₹{report['total_pnl']:.2f}, avg_pnl=₹{report['avg_pnl']:.2f}")
+
+    r12 = results["VIX_LOW=12"]
+    r14 = results["VIX_LOW=14"]
+    print("\n--- Summary ---")
+    print(f"  VIX_LOW=12  →  Trades: {r12['total_trades']},  Total P&L: ₹{r12['total_pnl']:.2f},  Win rate: {r12['win_rate']:.1f}%")
+    print(f"  VIX_LOW=14  →  Trades: {r14['total_trades']},  Total P&L: ₹{r14['total_pnl']:.2f},  Win rate: {r14['win_rate']:.1f}%")
+    if r12['total_pnl'] > r14['total_pnl']:
+        print("  → VIX_LOW=12 had better total P&L in this period.")
+    elif r14['total_pnl'] > r12['total_pnl']:
+        print("  → VIX_LOW=14 had better total P&L in this period.")
+    else:
+        print("  → Same total P&L (or zero trades).")
+    print("=" * 64 + "\n")
+
+    comparison = {
+        "start_date": start_date,
+        "end_date": end_date,
+        "VIX_LOW_12": r12,
+        "VIX_LOW_14": r14,
+    }
+    out_file = f"backtest_convex_vix_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(out_file, "w") as f:
+        json.dump(comparison, f, indent=2, default=str)
+    print(f"Comparison saved to: {out_file}\n")
+    return results
+
+
 def main():
-    """Run Convex Backspread backtest"""
+    """Run Convex Backspread backtest. Use --compare to run VIX_LOW=12 vs 14."""
+    import sys
+    do_compare = "--compare" in sys.argv
+    args = [a for a in sys.argv[1:] if a != "--compare" and not a.startswith("-")]
+
+    start_date = args[0] if len(args) >= 1 else None
+    end_date = args[1] if len(args) >= 2 else None
+    if not start_date or not end_date:
+        start_date, end_date = get_available_date_range()
+        if not start_date:
+            start_date, end_date = "20251222", "20260116"
+            logger.warning(f"No market_data_* dirs found; using default range {start_date}–{end_date}")
+
+    if do_compare:
+        return run_comparison(start_date, end_date, check_interval_minutes=15)
+
     backtester = ConvexBackspreadBacktester(initial_capital=100000)
-    
-    # Backtest on available data
-    backtester.run_backtest('20251222', '20260116', check_interval_minutes=15)
-    
-    # Generate report
+    backtester.run_backtest(start_date, end_date, check_interval_minutes=15)
     report = backtester.generate_report()
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("CONVEX BACKSPREAD BACKTEST REPORT")
-    print("="*60)
+    print("=" * 60)
     print(f"Total Trades: {report['total_trades']}")
     print(f"Winning Trades: {report['winning_trades']}")
     print(f"Losing Trades: {report['losing_trades']}")
@@ -515,17 +585,14 @@ def main():
     print(f"\nInitial Capital: ₹{report['initial_capital']:.2f}")
     print(f"Final Capital: ₹{report['final_capital']:.2f}")
     print(f"Total Return: {report['total_return_pct']:.2f}%")
-    print("="*60)
-    
-    # Save detailed report
+    print("=" * 60)
+
     report_file = f"backtest_convex_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    with open(report_file, 'w') as f:
+    with open(report_file, "w") as f:
         json.dump(report, f, indent=2, default=str)
-    
     print(f"\nDetailed report saved to: {report_file}")
-    
     return report
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -61,6 +61,8 @@ MAX_TIME_IN_LOSS_MINUTES = 150  # Exit if position has been in loss for this man
 
 # Regime-change exit: require N consecutive non-TREND checks (reduce whipsaw)
 REGIME_CHANGE_CONFIRMATION_CHECKS = 2  # Require N consecutive regime != TREND_CONTINUATION before exit
+# When True, do not exit on regime change if position is in profit (reduces regime-change losses; let trailing stop handle exit)
+IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT = True
 
 # Entry filters (reduce churn on choppy / high-vol days)
 REENTRY_COOLDOWN_MINUTES = 30  # After STOP_LOSS_HIT, block new trend entry for this many minutes

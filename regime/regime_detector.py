@@ -50,6 +50,8 @@ def classify_regime_from_indicators(
     range_compressed: bool,
     ema_direction: Optional[str],
     india_vix: Optional[float] = None,
+    vix_low_override: Optional[float] = None,
+    vix_high_override: Optional[float] = None,
 ) -> str:
     """
     Stateless regime classification aligned with detect_regime hierarchy (TREND-first, then VIX).
@@ -68,21 +70,25 @@ def classify_regime_from_indicators(
         range_compressed: True if last_range < 0.6 * rolling_avg_range (kept for compatibility; not used for CONVEX).
         ema_direction: 'LONG' | 'SHORT' | None (from price vs EMA50 vs EMA100).
         india_vix: India VIX from NSE (optional). CONVEX: india_vix < VIX_LOW. INCOME: india_vix >= VIX_HIGH.
+        vix_low_override: If set, use instead of VIX_LOW (for backtest comparison).
+        vix_high_override: If set, use instead of VIX_HIGH (for backtest comparison).
 
     Returns:
         'CONVEX' | 'INCOME' | 'TREND_CONTINUATION' | 'NEUTRAL'
     """
     adx = adx_14 if adx_14 is not None else 0.0
     atr_pct = atr_percentile if atr_percentile is not None else 50.0
+    vix_low = vix_low_override if vix_low_override is not None else VIX_LOW
+    vix_high = vix_high_override if vix_high_override is not None else VIX_HIGH
 
     # --- STEP 1: TREND (hard override) ---
     if adx >= TREND_ADX_MIN and atr_pct >= TREND_ATR_PCT_MIN and ema_direction in ("LONG", "SHORT"):
         return "TREND_CONTINUATION"
 
     # --- STEP 2: Volatility regimes (only if not TREND) ---
-    if india_vix is not None and india_vix < VIX_LOW:
+    if india_vix is not None and india_vix < vix_low:
         return "CONVEX"
-    if india_vix is not None and india_vix >= VIX_HIGH:
+    if india_vix is not None and india_vix >= vix_high:
         return "INCOME"
     return "NEUTRAL"
 

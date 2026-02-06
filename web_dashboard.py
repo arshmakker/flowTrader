@@ -12,6 +12,8 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from strategy_runner import get_now_ist, is_market_hours as is_market_hours_ist
+
 app = Flask(__name__)
 
 # Store the process reference (in production, use a proper process manager)
@@ -114,17 +116,12 @@ def get_main_process_pid():
     return None
 
 def can_start_system():
-    """Check if system can be started (after 9:15 AM, weekday)"""
-    now = datetime.now()
+    """Check if system can be started (9:15 AM - 3:30 PM IST, weekday). Uses IST."""
+    now = get_now_ist()
     market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    
-    # Check if it's a weekday
     is_weekday = now.weekday() < 5
-    
-    # Can start if: it's a weekday AND (it's after 9:15 AM AND before 3:30 PM)
-    can_start = is_weekday and (now >= market_open and now < market_close)
-    
+    can_start = is_market_hours_ist()
     return can_start, {
         'is_weekday': is_weekday,
         'current_time': now.strftime('%H:%M:%S'),
@@ -135,19 +132,12 @@ def can_start_system():
     }
 
 def is_market_hours():
-    """Check if current time is during market hours (9:15 AM - 3:30 PM IST)"""
-    now = datetime.now()
-    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    
-    # Check if it's a weekday (Monday=0, Sunday=6)
-    is_weekday = now.weekday() < 5
-    
-    return is_weekday and market_open <= now <= market_close
+    """Check if current time is during market hours (9:15 AM - 3:30 PM IST). Uses IST."""
+    return is_market_hours_ist()
 
 def get_system_status():
-    """Get system status information"""
-    now = datetime.now()
+    """Get system status information (times in IST)."""
+    now = get_now_ist()
     process_running = is_main_process_running()
     last_log_time = get_last_log_timestamp()
     market_open = is_market_hours()

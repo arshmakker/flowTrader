@@ -13,6 +13,12 @@ import json
 import re
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
+
+try:
+    from zoneinfo import ZoneInfo
+    IST = ZoneInfo("Asia/Kolkata")
+except ImportError:
+    IST = None  # Python < 3.9; fallback to local time
 from strategies.iron_condor import generate_iron_condor_trade
 from strategies.convex import generate_nifty_call_backspread
 from strategies.neutral import generate_neutral_call_calendar
@@ -114,7 +120,7 @@ def get_weekly_expiry(date=None):
         datetime object for the weekly expiry
     """
     if date is None:
-        now = datetime.now()
+        now = get_now_ist()
         reference_date = now.date()
         reference_datetime = now
     else:
@@ -1398,8 +1404,7 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
             # Save proposal
             save_trade_proposal(trade_proposal)
             
-            # Convex profit target: 1% of capital (so exit logic can use it)
-            trade_proposal['profit_target_inr'] = capital * 0.01
+            # Convex: exit by TSL only (no hardcoded profit target)
             
             # Add to position tracker if provided
             if position_tracker is not None:
@@ -1594,19 +1599,36 @@ def run_iron_condor_strategy(api, symbol_manager, position_tracker=None):
         return None
 
 
+def get_now_ist():
+    """Current time in India Standard Time (IST). Used for market hours and 3:30 PM close."""
+    if IST is not None:
+        return datetime.now(IST)
+    return datetime.now()
+
+
+def is_market_closed_ist():
+    """
+    True if it is past 3:30 PM IST on a weekday (NSE market closed).
+    Use this to stop the main loop at market close regardless of server timezone.
+    """
+    now = get_now_ist()
+    if now.weekday() >= 5:
+        return False
+    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return now >= market_close
+
+
 def is_market_hours():
     """
     Check if current time is during market hours (9:15 AM - 3:30 PM IST).
+    Uses IST so behaviour is correct regardless of server timezone.
     
     Returns:
         bool: True if market is open
     """
-    now = datetime.now()
+    now = get_now_ist()
     market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    
-    # Check if it's a weekday (Monday=0, Sunday=6)
     is_weekday = now.weekday() < 5
-    
     return is_weekday and market_open <= now <= market_close
 

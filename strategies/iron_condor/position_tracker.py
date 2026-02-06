@@ -228,16 +228,7 @@ class IronCondorPositionTracker:
         return False
 
     def check_profit_target(self, position: Dict, current_pnl: float) -> bool:
-        """Check if profit target is reached. Convex: 1% of capital (profit_target_inr). Iron Condor: 1% of margin."""
-        profit_target_inr = position.get('profit_target_inr')
-        if profit_target_inr is not None and profit_target_inr > 0:
-            if current_pnl >= profit_target_inr:
-                return True
-        margin_used = position.get('margin_used')
-        if margin_used and margin_used > 0:
-            profit_target = margin_used * 0.01  # 1% of margin
-            if current_pnl >= profit_target:
-                return True
+        """Profit-target exit disabled: we use only TSL (trailing stop) for Convex and Iron Condor."""
         return False
     
     def check_convex_exit_conditions(self, position: Dict, current_regime: str, 
@@ -280,20 +271,21 @@ class IronCondorPositionTracker:
                 return False, None
             
             # Exit condition 1: Regime changed from regime at entry (with confirmation to reduce whipsaw)
-            # Use actual regime at entry so e.g. Convex opened in NEUTRAL only exits when regime leaves NEUTRAL
-            regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
-            if current_regime != regime_at_entry:
-                count = position.get('convex_regime_change_count', 0) + 1
-                position['convex_regime_change_count'] = count
-                self._save_active_positions()
-                if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
-                    return True, "REGIME_CHANGED"
-                return False, None
-            else:
-                if position.get('convex_regime_change_count', 0) > 0:
-                    position['convex_regime_change_count'] = 0
+            # Skip regime-change exit once TSL is active: let TSL or max loss handle exit (reduces regime-change losses)
+            if not position.get('convex_tsl_active', False):
+                regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
+                if current_regime != regime_at_entry:
+                    count = position.get('convex_regime_change_count', 0) + 1
+                    position['convex_regime_change_count'] = count
                     self._save_active_positions()
-            
+                    if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
+                        return True, "REGIME_CHANGED"
+                    return False, None
+                else:
+                    if position.get('convex_regime_change_count', 0) > 0:
+                        position['convex_regime_change_count'] = 0
+                        self._save_active_positions()
+
             # Exit condition 2: Time elapsed > 40% of expiry duration
             if entry_days_to_expiry > 0:
                 time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry

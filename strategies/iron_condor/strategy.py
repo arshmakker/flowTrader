@@ -284,7 +284,7 @@ def generate_iron_condor_trade(
             "generated_at": datetime.now().isoformat(),
             "lot_size": lot_size,
             "margin_used": margin_used,
-            "profit_target_margin": margin_used * PROFIT_TARGET_MARGIN_PCT if margin_used else None,
+            "profit_target_margin": None,  # Exit by TSL only (no hardcoded profit target)
             "exit_rules": {
                 "profit_target_margin_pct": PROFIT_TARGET_MARGIN_PCT,
                 "profit_target_pct": PROFIT_TARGET_PCT,

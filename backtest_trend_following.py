@@ -42,6 +42,7 @@ from strategies.trend.config import (
     MAX_TIME_IN_LOSS_MINUTES,
     EXIT_ON_REGIME_CHANGE,
     REGIME_CHANGE_CONFIRMATION_CHECKS,
+    IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT,
     EXIT_ON_EMA_BREAK,
     EMA_BREAK_CONFIRMATION_CHECKS,
     EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS,
@@ -550,12 +551,12 @@ class TrendFollowingBacktester:
                 if bar_high >= current_stop:
                     return True, 'STOP_LOSS_HIT'
         else:
-        if direction == 'LONG':
-            if current_price <= current_stop:
-                return True, 'STOP_LOSS_HIT'
-        else:  # SHORT
-            if current_price >= current_stop:
-                return True, 'STOP_LOSS_HIT'
+            if direction == 'LONG':
+                if current_price <= current_stop:
+                    return True, 'STOP_LOSS_HIT'
+            else:  # SHORT
+                if current_price >= current_stop:
+                    return True, 'STOP_LOSS_HIT'
         
         # Exit condition 1b: Max intraday loss (circuit breaker)
         if current_pnl <= -MAX_INTRADAY_LOSS_INR:
@@ -565,15 +566,15 @@ class TrendFollowingBacktester:
         if current_pnl < 0 and position_age_minutes >= MAX_TIME_IN_LOSS_MINUTES:
             return True, 'TIME_IN_LOSS'
 
-        # Exit condition 2: Regime change (with confirmation to reduce whipsaw)
+        # Exit condition 2: Regime change (with confirmation to reduce whipsaw; skip when in profit if configured)
         regime = market_state.get('regime')
-        if EXIT_ON_REGIME_CHANGE:
+        if EXIT_ON_REGIME_CHANGE and not (IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT and current_pnl > 0):
             if 'regime_change_count' not in position:
                 position['regime_change_count'] = 0
-        if regime != 'TREND_CONTINUATION':
+            if regime != 'TREND_CONTINUATION':
                 position['regime_change_count'] = position.get('regime_change_count', 0) + 1
                 if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
-            return True, 'REGIME_CHANGE'
+                    return True, 'REGIME_CHANGE'
             else:
                 if position.get('regime_change_count', 0) > 0:
                     position['regime_change_count'] = 0
@@ -585,18 +586,18 @@ class TrendFollowingBacktester:
 
         # Exit condition 4: EMA structure breaks (with tolerance, confirmation, in-profit ignore)
         if EXIT_ON_EMA_BREAK:
-        ema_50 = indicators.get('ema_50')
-        ema_100 = indicators.get('ema_100')
-        if ema_50 and ema_100:
+            ema_50 = indicators.get('ema_50')
+            ema_100 = indicators.get('ema_100')
+            if ema_50 and ema_100:
                 if 'ema_break_count' not in position:
                     position['ema_break_count'] = 0
                 # Structure valid with tolerance (same as production)
                 tol = EMA_BREAK_TOLERANCE_PCT / 100.0
-            if direction == 'LONG':
+                if direction == 'LONG':
                     price_above_ema50 = current_price > ema_50 * (1 - tol)
                     ema50_above_ema100 = ema_50 > ema_100 * (1 - tol)
                     structure_valid = price_above_ema50 and ema50_above_ema100
-            else:  # SHORT
+                else:  # SHORT
                     price_below_ema50 = current_price < ema_50 * (1 + tol)
                     ema50_below_ema100 = ema_50 < ema_100 * (1 + tol)
                     structure_valid = price_below_ema50 and ema50_below_ema100
@@ -615,7 +616,7 @@ class TrendFollowingBacktester:
                     if PRIORITIZE_TRAILING_STOP_IN_PROFIT and in_profit and not close_to_stop:
                         position['ema_break_count'] = 0
                     elif position['ema_break_count'] >= ema_required_checks:
-                    return True, 'EMA_STRUCTURE_BROKEN'
+                        return True, 'EMA_STRUCTURE_BROKEN'
                 else:
                     if position.get('ema_break_count', 0) > 0:
                         position['ema_break_count'] = 0

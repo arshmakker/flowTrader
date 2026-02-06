@@ -9,7 +9,7 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
-from strategy_runner import run_strategy_with_regime, run_iron_condor_strategy, is_market_hours, get_nifty_spot_price, get_option_chain_data
+from strategy_runner import run_strategy_with_regime, run_iron_condor_strategy, is_market_hours, is_market_closed_ist, get_now_ist, get_nifty_spot_price, get_option_chain_data
 from strategy_runner import get_all_eligible_expiries
 from strategies.iron_condor.position_tracker import IronCondorPositionTracker
 from technical_indicators import calculate_iv_percentile
@@ -379,13 +379,10 @@ def main():
                 #     except Exception as e:
                 #         logger.error(f"Error in paper trader: {str(e)}")
                 
-                # Check if market has closed (after 3:30 PM)
+                # Check if market has closed (3:30 PM IST)
                 current_time = datetime.now()
-                market_close_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
-                
-                # If it's past 3:30 PM on a weekday, stop the system
-                if current_time.weekday() < 5 and current_time >= market_close_time:
-                    logger.info(Fore.YELLOW + "Market has closed (3:30 PM). Stopping system...")
+                if is_market_closed_ist():
+                    logger.info(Fore.YELLOW + "Market has closed (3:30 PM IST). Stopping system...")
                     
                     # Generate end-of-day trade summary
                     generate_daily_trade_summary(logger)
@@ -473,8 +470,7 @@ def main():
                                     logger.info(Fore.GREEN + f"✅ Iron Condor trade proposal generated: {lots} lots, "
                                               f"Credit: ₹{trade_proposal.get('net_credit_total', 0):.2f}")
                                     if trade_proposal.get('margin_used'):
-                                        logger.info(f"   Margin used: ₹{trade_proposal['margin_used']:.2f}, "
-                                                  f"Profit target: ₹{trade_proposal.get('profit_target_margin', 0):.2f}")
+                                        logger.info(f"   Margin used: ₹{trade_proposal['margin_used']:.2f}, exit by TSL only")
                             else:
                                 logger.debug("No valid trade proposal generated")
                         except Exception as e:
@@ -641,15 +637,15 @@ def main():
                                                 should_exit = False
                                                 exit_reason = None
                                                 
-                                                # Exit condition 0: Market close approaching (overnight position management)
+                                                # Exit condition 0: Market close approaching (3:30 PM IST)
                                                 if not should_exit:
                                                     from strategies.trend.config import EXIT_BEFORE_MARKET_CLOSE, MARKET_CLOSE_EXIT_MINUTES
                                                     if EXIT_BEFORE_MARKET_CLOSE:
-                                                        market_close_time = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+                                                        now_ist = get_now_ist()
+                                                        market_close_time = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
                                                         exit_before_close_time = market_close_time - timedelta(minutes=MARKET_CLOSE_EXIT_MINUTES)
-                                                        
-                                                        # Exit all futures positions N minutes before market close
-                                                        if current_time.weekday() < 5 and current_time >= exit_before_close_time:
+                                                        # Exit all futures positions N minutes before market close (IST)
+                                                        if now_ist.weekday() < 5 and now_ist >= exit_before_close_time:
                                                             should_exit = True
                                                             exit_reason = 'MARKET_CLOSE_APPROACHING'
                                                             # Set flag to prevent re-entry for rest of day
@@ -700,25 +696,32 @@ def main():
                                                 
                                                 # Exit condition 2: Regime change (with confirmation to reduce whipsaw)
                                                 if not should_exit and EXIT_ON_REGIME_CHANGE:
-                                                    from strategies.trend.config import REGIME_CHANGE_CONFIRMATION_CHECKS
-                                                    if 'regime_change_count' not in position:
-                                                        position['regime_change_count'] = 0
-                                                        position_tracker._save_active_positions()
-                                                    if current_regime != 'TREND_CONTINUATION':
-                                                        position['regime_change_count'] = position.get('regime_change_count', 0) + 1
-                                                        position_tracker._save_active_positions()
-                                                        if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
-                                                            should_exit = True
-                                                            exit_reason = 'REGIME_CHANGE'
-                                                            logger.info(
-                                                                f"Futures position {position['trade_id']}: regime {current_regime} for "
-                                                                f"{position['regime_change_count']} consecutive checks, closing position"
-                                                            )
+                                                    from strategies.trend.config import (
+                                                        REGIME_CHANGE_CONFIRMATION_CHECKS,
+                                                        IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT,
+                                                    )
+                                                    # When in profit, optionally skip regime-change exit (reduce regime-change losses)
+                                                    if IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT and current_pnl > 0:
+                                                        pass  # do not exit on regime change; let trailing stop / other exits handle
                                                     else:
-                                                        if position.get('regime_change_count', 0) > 0:
+                                                        if 'regime_change_count' not in position:
                                                             position['regime_change_count'] = 0
                                                             position_tracker._save_active_positions()
-                                                            logger.debug(f"Regime restored to TREND_CONTINUATION, reset regime_change_count for {position['trade_id']}")
+                                                        if current_regime != 'TREND_CONTINUATION':
+                                                            position['regime_change_count'] = position.get('regime_change_count', 0) + 1
+                                                            position_tracker._save_active_positions()
+                                                            if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
+                                                                should_exit = True
+                                                                exit_reason = 'REGIME_CHANGE'
+                                                                logger.info(
+                                                                    f"Futures position {position['trade_id']}: regime {current_regime} for "
+                                                                    f"{position['regime_change_count']} consecutive checks, closing position"
+                                                                )
+                                                        else:
+                                                            if position.get('regime_change_count', 0) > 0:
+                                                                position['regime_change_count'] = 0
+                                                                position_tracker._save_active_positions()
+                                                                logger.debug(f"Regime restored to TREND_CONTINUATION, reset regime_change_count for {position['trade_id']}")
                                                 # #region agent log
                                                 try:
                                                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
@@ -1235,7 +1238,7 @@ def main():
                                                     current_pnl
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
-                                            # Check profit target (Convex: 1% of capital; Iron Condor: 1% of margin)
+                                            # Profit-target exit disabled: Convex and Iron Condor use TSL only
                                             elif not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
                                                 target_inr = position.get('profit_target_inr') or position.get('profit_target_margin') or 0
                                                 logger.info(
@@ -1288,13 +1291,10 @@ def main():
                                                 logger.info(f"Position {position['trade_id']} marked for exit (convex)")
                                             
                                             else:
-                                                # Log current status
-                                                margin_used = position.get('margin_used', 0)
-                                                profit_target = margin_used * 0.01 if margin_used else 0
-                                                logger.debug(
-                                                    f"Position {position['trade_id']}: "
-                                                    f"P&L=₹{current_pnl:.2f}, "
-                                                    f"Target=₹{profit_target:.2f}"
+                                                # Log current status with PnL (exit by TSL only, no profit target)
+                                                logger.info(
+                                                    f"Position {position['trade_id']} ({position.get('book', '?')}): "
+                                                    f"current_pnl=₹{current_pnl:.2f}, TSL only, no exit"
                                                 )
                                                 
                                         except Exception as e:

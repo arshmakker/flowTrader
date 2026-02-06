@@ -399,31 +399,28 @@ class IronCondorBacktester:
     def check_exit_conditions(self, position: Dict, current_prices: Dict, 
                              current_time: datetime, expiry_date: date) -> Tuple[bool, str]:
         """
-        Check if position should be exited
-        
-        Returns:
-            (should_exit, reason)
+        Check if position should be exited. TSL only (no hardcoded profit target):
+        trailing PnL lock (₹300 then trail ₹200), stop loss, mandatory DTE/time.
         """
         # Calculate current P&L
         entry_credit = position['net_credit_total']
         current_value = self.calculate_position_value(position, current_prices)
         current_pnl = current_value - entry_credit
-        
-        # Check profit target: 1% of margin used (PRIORITY)
-        margin_used = position.get('margin_used')
-        if margin_used and margin_used > 0:
-            profit_target = margin_used * 0.01  # 1% of margin
-            if current_pnl >= profit_target:
-                return True, f"profit_target_margin (₹{profit_target:.2f})"
-        
-        # Fallback: Check old profit target (50-60% of max profit)
-        max_profit = position['max_profit']
-        profit_target_low = max_profit * 0.50
-        profit_target_high = max_profit * 0.60
-        
-        if profit_target_low <= current_pnl <= profit_target_high:
-            return True, "profit_target"
-        
+
+        # Trailing PnL lock (same as production: MIN_PNL_LOCK_INR 300, PNL_TRAIL_DISTANCE_INR 200)
+        MIN_PNL_LOCK_INR = 300
+        PNL_TRAIL_DISTANCE_INR = 200
+        current_lock = position.get('profit_locked_inr', 0)
+        if current_pnl >= MIN_PNL_LOCK_INR:
+            if current_lock == 0:
+                new_lock = MIN_PNL_LOCK_INR
+            else:
+                new_lock = max(current_lock, current_pnl - PNL_TRAIL_DISTANCE_INR)
+            position['profit_locked_inr'] = new_lock
+            current_lock = new_lock
+        if current_lock > 0 and current_pnl < current_lock:
+            return True, "trailing_stop_pnl"
+
         # Check stop loss (1.2x max loss)
         max_loss = position['max_loss']
         stop_loss = max_loss * 1.2

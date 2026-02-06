@@ -5,7 +5,15 @@
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` (Iron Condor), `backtest_trend_following.py` (Trend Futures with ATR profit target and hybrid trailing) run against stored tick data.
 
-## Current state (2026-02-03)
+## Current state (2026-02-06)
+
+### Market hours: 3:30 PM IST (2026-02-06)
+
+All market open/close checks use **India Standard Time (IST, Asia/Kolkata)** so behaviour is correct regardless of server timezone.
+
+- **strategy_runner.py**: `zoneinfo.ZoneInfo("Asia/Kolkata")` (fallback if Python &lt; 3.9). `get_now_ist()` returns current time in IST. `is_market_closed_ist()` true when weekday and IST ≥ 15:30. `is_market_hours()` uses 9:15–15:30 IST. `get_weekly_expiry(date=None)` uses `get_now_ist()` so "after 3:30" is in IST.
+- **main.py**: Main loop stops when `is_market_closed_ist()`. Trend futures "exit before close" uses `get_now_ist()` for 15:30 and exit window (IST).
+- **web_dashboard.py**: `can_start_system()` and `is_market_hours()` use `get_now_ist` and strategy_runner's `is_market_hours` (IST).
 
 ### Regime hierarchy: TREND-first (2026-01-29)
 
@@ -133,6 +141,7 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 - **MAX_LOSS_CAP**: If `current_pnl <= -MAX_INTRADAY_LOSS_INR`, exit with reason `MAX_LOSS_CAP`.
 - **TIME_IN_LOSS**: If `current_pnl < 0` and `position_age_minutes >= MAX_TIME_IN_LOSS_MINUTES`, exit with reason `TIME_IN_LOSS`.
 - **Regime change**: Per-position `regime_change_count` incremented when regime ≠ TREND_CONTINUATION, reset when regime is TREND_CONTINUATION. Exit with `REGIME_CHANGE` only when `regime_change_count >= REGIME_CHANGE_CONFIRMATION_CHECKS`.
+- **Regime-change losses (2026-02-06)**: (1) **Trend**: `IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT = True` — do not exit on regime change when `current_pnl > 0`; let trailing stop or other exits handle. Reduces crystallized losses when regime flickers in profit. (2) **Convex**: Regime-change exit is **skipped once `convex_tsl_active` is True**; TSL or CONVEX_MAX_LOSS handle exit. Same logic in `backtest_trend_following.py` for parity.
 - **EMA break**: When `current_pnl < 0`, use `ema_required_checks = EMA_BREAK_CONFIRMATION_CHECKS_WHEN_IN_LOSS` (1); otherwise use `EMA_BREAK_CONFIRMATION_CHECKS` (2). Status log shows `EMA_Break_Count=X/Y` with Y = 1 or 2 depending on PnL.
 
 ### Parity: Production vs Backtest (Trend) (2026-02-02, sanity check 2026-02-03)
@@ -165,13 +174,13 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 
 **main.py** `setup_logging()`: Ensures `logs/` exists with `os.makedirs(log_dir, exist_ok=True)`, uses a single `log_path` for the daily file `logs/trading_system_YYYYMMDD.log`, and logs one line at startup: `Log file: <abs path>` so the file is created immediately and the path is visible in console and in the log file.
 
-### Convex: PnL formula and 1% profit target (2026-02-05)
+### Convex: PnL formula and TSL-only exit (2026-02-05 / 2026-02-06)
 
 **PnL fix** (`strategies/iron_condor/position_tracker.py`): For Convex backspread, `current_value` already equals total P&L (entry credit + mark-to-market). The formula was incorrectly adding `entry_credit` again; it now uses `pnl = current_value` for Convex (Iron Condor unchanged: `pnl = entry_credit - current_value`).
 
 **Historical correction (2026-02-05)**: Three Convex trades closed before the PnL fix had inflated `final_pnl` (double-counted entry credit). Corrected in `active_positions.json` and `performance_by_regime.json`: trade 2026-02-05T12:42:43 → 14.63 (was 4293.25), 2026-02-05T12:48:16 → -6.5 (was 2515.50), 2026-02-05T12:53:01 → 42.25 (was 2640.62).
 
-**1% profit target for Convex**: Convex positions had no profit target (margin_used is null). Now: (1) `strategy_runner._run_convex_backspread_strategy` sets `trade_proposal['profit_target_inr'] = capital * 0.01` before adding to tracker. (2) Position tracker stores `profit_target_inr` on options positions and `check_profit_target()` returns True when `current_pnl >= profit_target_inr` (else falls back to 1% of margin for Iron Condor). (3) Main loop checks profit target before Convex mandatory exits; when hit, closes with reason `profit_target_margin` and logs Target=₹(profit_target_inr or profit_target_margin).
+**TSL only, no hardcoded profit targets (2026-02-06)**: Convex and Iron Condor exit by **trailing stop only**; no fixed profit target. (1) `strategy_runner` no longer sets `profit_target_inr` for Convex. (2) Iron Condor proposal has `profit_target_margin: None`. (3) `check_profit_target()` always returns False. (4) Main loop logs "TSL only, no exit" for options positions. Convex uses MTM-based TSL (activate at +20% or 25% time; trail 35%/25% from peak; max loss -30%). Iron Condor uses trailing PnL lock (MIN_PNL_LOCK_INR ₹300, PNL_TRAIL_DISTANCE_INR ₹200). **Backtests**: `backtest_iron_condor.py` now uses TSL only (trailing PnL lock ₹300/₹200, no 1% margin or 50–60% max-profit target). `backtest_convex_backspread.py` docstring notes production is TSL-only; convex backtest keeps simplified exit (end of day). Trend backtest default remains trailing only (config `PROFIT_TARGET_ATR_MULTIPLIER = None`).
 
 **Convex regime-change confirmation (2026-02-05)**: To avoid exiting on brief regime flicker, Convex now requires **CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS = 3** consecutive monitoring cycles where regime ≠ CONVEX before exiting with REGIME_CHANGED. Per-position `convex_regime_change_count` is incremented when regime ≠ CONVEX and reset to 0 when regime is CONVEX; position is persisted so the count survives across runs. Other Convex exit conditions (time 40%, no ATR expansion, re-compression) still fire immediately.
 
