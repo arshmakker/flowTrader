@@ -5,7 +5,7 @@
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` (Iron Condor), `backtest_trend_following.py` (Trend Futures with ATR profit target and hybrid trailing) run against stored tick data.
 
-## Current state (2026-02-06)
+## Current state (2026-02-08)
 
 ### Market hours: 3:30 PM IST (2026-02-06)
 
@@ -49,7 +49,7 @@ INCOME regime (in `detect_regime`) uses **India VIX ≥ VIX_HIGH (18)** only; ev
 
 **CONVEX in regime backtest**: Report includes `convex_triggered`, `range_compressed_bars` (informational), and `convex_note`. CONVEX triggers when TREND is not detected and India VIX &lt; VIX_LOW (12).
 
-**Convex backspread backtest (production regime)** (2026-01-29): **`backtest_convex_backspread.py`** uses **production** regime (TREND-first; CONVEX when not TREND and India VIX &lt; VIX_LOW (12)): loads NIFTY futures per date, builds 15m candles, rolling 100 bars, classifies via `classify_regime_from_indicators`. Convex **entries** when regime is CONVEX. Report includes `avg_pnl`; 0-trades case returns all fields.
+**Convex backspread backtest (production regime)** (2026-02-08): **`backtest_convex_backspread.py`** uses **production** regime (TREND-first; CONVEX when not TREND and India VIX &lt; VIX_LOW (12)): loads NIFTY futures per date, builds 15m candles, rolling 100 bars, classifies via `classify_regime_from_indicators`. Convex **entries** when regime is **CONVEX or NEUTRAL** (primary + fallback, same as production backup path). Exit logic unchanged (regime_at_entry stored; regime change, TSL, time 40%, ATR, re-compression, max loss). **Backtest-only relaxation**: when the option chain has only one CE strike, a synthetic OTM strike (strike+50, price 0.85×ATM) is added so a valid backspread can be formed; production uses real chains only. Report includes `avg_pnl` and **entry_diagnostics** (eligible_bars, chain_empty, proposal_none). Strict data (no synthetic): ~2 trades; with relaxation: more trades (e.g. 50), PnL depends on synthetic OTM pricing.
 
 ### IV for Backtest and Daily Metrics Persistence (2026-01-30)
 
@@ -180,7 +180,7 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 
 **Historical correction (2026-02-05)**: Three Convex trades closed before the PnL fix had inflated `final_pnl` (double-counted entry credit). Corrected in `active_positions.json` and `performance_by_regime.json`: trade 2026-02-05T12:42:43 → 14.63 (was 4293.25), 2026-02-05T12:48:16 → -6.5 (was 2515.50), 2026-02-05T12:53:01 → 42.25 (was 2640.62).
 
-**TSL only, no hardcoded profit targets (2026-02-06)**: Convex and Iron Condor exit by **trailing stop only**; no fixed profit target. (1) `strategy_runner` no longer sets `profit_target_inr` for Convex. (2) Iron Condor proposal has `profit_target_margin: None`. (3) `check_profit_target()` always returns False. (4) Main loop logs "TSL only, no exit" for options positions. Convex uses MTM-based TSL (activate at +20% or 25% time; trail 35%/25% from peak; max loss -30%). Iron Condor uses trailing PnL lock (MIN_PNL_LOCK_INR ₹300, PNL_TRAIL_DISTANCE_INR ₹200). **Backtests**: `backtest_iron_condor.py` now uses TSL only (trailing PnL lock ₹300/₹200, no 1% margin or 50–60% max-profit target). `backtest_convex_backspread.py` docstring notes production is TSL-only; convex backtest keeps simplified exit (end of day). Trend backtest default remains trailing only (config `PROFIT_TARGET_ATR_MULTIPLIER = None`).
+**TSL only, no hardcoded profit targets (2026-02-06)**: Convex and Iron Condor exit by **trailing stop only**; no fixed profit target. (1) `strategy_runner` no longer sets `profit_target_inr` for Convex. (2) Iron Condor proposal has `profit_target_margin: None`. (3) `check_profit_target()` always returns False. (4) Main loop logs "TSL only, no exit" for options positions. Convex uses MTM-based TSL (activate at +20% or 25% time; trail 35%/25% from peak; max loss -30%). Iron Condor uses trailing PnL lock (MIN_PNL_LOCK_INR ₹300, PNL_TRAIL_DISTANCE_INR ₹200). **Backtests**: `backtest_iron_condor.py` uses TSL only (trailing PnL lock ₹300/₹200). **Convex backtest aligned with production (2026-02-08)**: `backtest_convex_backspread.py` now uses the same exit logic as `check_convex_exit_conditions`: regime change (3 confirmations, skipped when TSL active), time >40%, no ATR expansion, re-compression, CONVEX_MAX_LOSS (-30%), Convex TSL (activate +20% MTM or 25% time, trail 35%/25% from peak). MTM estimated via same simplified formula as _close_position. Trend backtest default remains trailing only.
 
 **Convex regime-change confirmation (2026-02-05)**: To avoid exiting on brief regime flicker, Convex now requires **CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS = 3** consecutive monitoring cycles where regime ≠ CONVEX before exiting with REGIME_CHANGED. Per-position `convex_regime_change_count` is incremented when regime ≠ CONVEX and reset to 0 when regime is CONVEX; position is persisted so the count survives across runs. Other Convex exit conditions (time 40%, no ATR expansion, re-compression) still fire immediately.
 

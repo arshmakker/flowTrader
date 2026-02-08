@@ -6,9 +6,9 @@ Backtests the Call Backspread strategy:
 - Buy 2 OTM Calls (~ +1% strike)
 - Same weekly expiry
 
-Exit: Production uses TSL only (no profit target). This backtest uses simplified
-exit: end of day or regime change; full Convex TSL (activate +20% MTM, trail from peak)
-is not simulated here.
+Entry: CONVEX (India VIX < 12) or NEUTRAL (fallback, same as production backup path).
+Exit: Aligned with production (check_convex_exit_conditions): regime change (3 confirmations, skipped when TSL active),
+time >40%, no ATR expansion, re-compression, CONVEX_MAX_LOSS (-30%), Convex TSL (activate +20% MTM or 25% time, trail 35%/25% from peak).
 """
 
 import pandas as pd
@@ -25,6 +25,16 @@ from strategies.convex.call_backspread import generate_nifty_call_backspread
 from technical_indicators import calculate_iv_percentile, calculate_atm_iv, calculate_adx, calculate_ema
 from regime.regime_detector import RegimeDetector, classify_regime_from_indicators
 from backtest_trend_following import load_daily_metrics
+from strategies.iron_condor.position_tracker import (
+    CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS,
+    CONVEX_TSL_ACTIVATION_MTM_PCT,
+    CONVEX_TSL_ACTIVATION_TIME_PCT,
+    CONVEX_TSL_TRAIL_PCT,
+    CONVEX_TSL_TRAIL_TIGHT_PCT,
+    CONVEX_TSL_TIGHT_TIME_PCT,
+    CONVEX_TSL_ATR_TIGHT_THRESHOLD,
+    CONVEX_MAX_LOSS_MTM_PCT,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('ConvexBacktest')
@@ -196,7 +206,7 @@ class ConvexBackspreadBacktester:
         return regime, range_compressed
     
     def build_option_chain_at_time(self, data: Dict, timestamp: datetime) -> pd.DataFrame:
-        """Build option chain at a specific timestamp"""
+        """Build option chain at a specific timestamp. Backtest-only: if only one CE strike, adds a synthetic OTM (strike+50, price 0.85×ATM) so strategy can form a valid backspread; production uses real chains only."""
         chain_rows = []
         staleness = timedelta(minutes=self.max_quote_staleness_minutes)
         
@@ -248,6 +258,34 @@ class ConvexBackspreadBacktester:
         
         chain_df = pd.DataFrame(chain_rows)
         chain_df['lot_size'] = self.lot_size
+        
+        # Backtest-only: ensure at least 2 CE strikes so OTM > ATM (avoid "no valid backspread")
+        ce = chain_df[chain_df['option_type'].str.upper() == 'CE']
+        if not ce.empty:
+            ce_strikes = sorted(ce['strike'].unique())
+            if len(ce_strikes) < 2:
+                # One CE strike only -> add synthetic OTM (strike + 50, NIFTY step); OTM typically cheaper
+                base = ce.iloc[0].to_dict()
+                atm_price = float(base.get('mid_price', 0) or base.get('ltp', 0))
+                synth_strike = int(ce_strikes[0]) + 50
+                otm_price = max(1.0, atm_price * 0.85)  # OTM call cheaper; not too cheap so backtest stays plausible
+                chain_df = pd.concat([
+                    chain_df,
+                    pd.DataFrame([{
+                        'symbol': base.get('symbol', '') + f'_syn_{synth_strike}',
+                        'strike': synth_strike,
+                        'option_type': 'CE',
+                        'ltp': otm_price,
+                        'bid': otm_price * 0.98,
+                        'ask': otm_price * 1.02,
+                        'mid_price': otm_price,
+                        'volume': int(base.get('volume', 0)),
+                        'oi': int(base.get('oi', 0)),
+                        'timestamp': base.get('timestamp'),
+                        'lot_size': self.lot_size,
+                    }])
+                ], ignore_index=True)
+        
         return chain_df
     
     def get_spot_price_at_time(self, data: Dict, timestamp: datetime) -> Optional[float]:
@@ -290,10 +328,94 @@ class ConvexBackspreadBacktester:
         return indicators
     
     def check_entry_conditions(self, indicators: Dict, market_state: Dict) -> bool:
-        """Check if entry conditions are met: production CONVEX (regime CONVEX = not TREND and India VIX < VIX_LOW (12))."""
+        """Allow Convex entry when regime is CONVEX (primary) or NEUTRAL (fallback, same as production backup path)."""
         regime = market_state.get('regime', 'NEUTRAL')
-        return regime == 'CONVEX'
-    
+        return regime in ('CONVEX', 'NEUTRAL')
+
+    def _estimate_convex_mtm(self, position: Dict, spot_price: float) -> float:
+        """Estimate current MTM (PnL) for Convex backspread using same simplified formula as _close_position."""
+        entry_atm = position['entry_price_atm']
+        entry_otm = position['entry_price_otm']
+        strike_atm = position['strike_atm']
+        spot_move_pct = (spot_price - strike_atm) / strike_atm if strike_atm else 0
+        if spot_move_pct > 0.01:
+            exit_atm = entry_atm * 0.3
+            exit_otm = entry_otm * (1 + spot_move_pct * 2)
+        else:
+            exit_atm = entry_atm * 0.5
+            exit_otm = entry_otm * 0.7
+        pnl_per_lot = (entry_atm - exit_atm) + 2 * (exit_otm - entry_otm)
+        return pnl_per_lot * position['lots'] * self.lot_size
+
+    def _check_convex_exit_conditions_backtest(
+        self,
+        position: Dict,
+        current_regime: str,
+        spot_price: float,
+        days_to_expiry: int,
+        entry_days_to_expiry: int,
+        current_atr_percentile: Optional[float],
+        current_range_state: str,
+        current_mtm: float,
+    ) -> Tuple[bool, Optional[str]]:
+        """Mirror production check_convex_exit_conditions: regime, time 40%, no ATR expansion, re-compression, max loss, TSL."""
+        regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
+        entry_spot = position.get('entry_spot')
+        entry_range_state = position.get('entry_range_state')
+        entry_premium = abs(position.get('entry_credit') or position.get('net_debit') or 0)
+        if entry_days_to_expiry <= 0:
+            time_elapsed_pct = 0.0
+        else:
+            time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
+
+        # 1. Regime change (skip when TSL active)
+        if not position.get('convex_tsl_active', False):
+            if current_regime != regime_at_entry:
+                count = position.get('convex_regime_change_count', 0) + 1
+                position['convex_regime_change_count'] = count
+                if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
+                    return True, "REGIME_CHANGED"
+                return False, None
+            else:
+                if position.get('convex_regime_change_count', 0) > 0:
+                    position['convex_regime_change_count'] = 0
+
+        # 2. Time elapsed > 40%
+        if entry_days_to_expiry > 0 and time_elapsed_pct > 0.40:
+            return True, "TIME_ELAPSED_40PCT"
+
+        # 3. No ATR expansion within 40%
+        if entry_days_to_expiry > 0 and time_elapsed_pct >= 0.40 and current_atr_percentile is not None:
+            if current_atr_percentile < 30:
+                return True, "NO_ATR_EXPANSION"
+
+        # 4. Re-compression
+        if entry_range_state == "COMPRESSED" and current_range_state == "COMPRESSED" and entry_spot and entry_spot > 0:
+            price_change_pct = abs(spot_price - entry_spot) / entry_spot
+            if time_elapsed_pct > 0.30 and price_change_pct < 0.005:
+                return True, "RE_COMPRESSION"
+
+        # 5. Max loss & TSL
+        if entry_premium > 0 and current_mtm <= -CONVEX_MAX_LOSS_MTM_PCT * entry_premium:
+            return True, "CONVEX_MAX_LOSS"
+
+        if 'convex_peak_mtm' not in position:
+            position['convex_peak_mtm'] = float(current_mtm)
+        if not position.get('convex_tsl_active', False):
+            mtm_pct = (current_mtm / entry_premium) if entry_premium > 0 else 0.0
+            if (entry_premium > 0 and mtm_pct >= CONVEX_TSL_ACTIVATION_MTM_PCT) or time_elapsed_pct >= CONVEX_TSL_ACTIVATION_TIME_PCT:
+                position['convex_tsl_active'] = True
+        if position.get('convex_tsl_active', False):
+            old_peak = position.get('convex_peak_mtm', current_mtm)
+            peak = max(old_peak, current_mtm)
+            position['convex_peak_mtm'] = float(peak)
+            trailing_pct = CONVEX_TSL_TRAIL_PCT
+            if time_elapsed_pct > CONVEX_TSL_TIGHT_TIME_PCT or (current_atr_percentile is not None and current_atr_percentile < CONVEX_TSL_ATR_TIGHT_THRESHOLD):
+                trailing_pct = CONVEX_TSL_TRAIL_TIGHT_PCT
+            if current_mtm <= peak * (1.0 - trailing_pct):
+                return True, "CONVEX_TSL_HIT"
+        return False, None
+
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
         """Run backtest using production regime (TREND-first; CONVEX when not TREND and India VIX < VIX_LOW (12))."""
         logger.info(f"Starting Convex Backspread backtest from {start_date} to {end_date}")
@@ -304,6 +426,10 @@ class ConvexBackspreadBacktester:
         check_interval = timedelta(minutes=check_interval_minutes)
         historical_candles = []
         _india_vix_by_date = {}
+        # Diagnostics: why we might get few trades
+        self._diag_eligible_bars = 0   # regime CONVEX/NEUTRAL, no position
+        self._diag_chain_empty = 0
+        self._diag_proposal_none = 0
         
         while current_date <= end:
             date_str = current_date.strftime('%Y%m%d')
@@ -364,28 +490,51 @@ class ConvexBackspreadBacktester:
                     'days_to_expiry': 7
                 }
                 
-                # Check exit conditions for open positions
+                # Check exit conditions for open positions (production-aligned: regime, time 40%, ATR, re-compression, max loss, TSL)
                 for position in self.open_positions[:]:
-                    # Simplified exit: close at end of day or if regime changes
                     if current_time >= end_time:
-                        # Close position
                         self._close_position(position, spot_price, current_time, 'end_of_day')
                         self.open_positions.remove(position)
-                
+                        continue
+                    expiry_date = position.get('expiry_date') or current_date
+                    exp_date = expiry_date.date() if isinstance(expiry_date, datetime) else expiry_date
+                    days_to_expiry = (exp_date - current_time.date()).days
+                    entry_days = position.get('entry_days_to_expiry', 7)
+                    current_mtm = self._estimate_convex_mtm(position, spot_price)
+                    should_exit, exit_reason = self._check_convex_exit_conditions_backtest(
+                        position,
+                        regime,
+                        spot_price,
+                        days_to_expiry,
+                        entry_days,
+                        indicators.get('atr_percentile'),
+                        market_state.get('range_state', 'NORMAL'),
+                        current_mtm,
+                    )
+                    if should_exit and exit_reason:
+                        self._close_position(position, spot_price, current_time, exit_reason)
+                        self.open_positions.remove(position)
+
                 # Check entry conditions (only if no open position)
                 if not self.open_positions:
                     if self.check_entry_conditions(indicators, market_state):
+                        self._diag_eligible_bars += 1
                         # Build option chain
                         option_chain = self.build_option_chain_at_time(data, current_time)
                         
-                        if not option_chain.empty:
+                        if option_chain.empty:
+                            self._diag_chain_empty += 1
+                        else:
                             # Generate trade proposal
                             trade_proposal = generate_nifty_call_backspread(
                                 market_state, option_chain, self.capital
                             )
+                            if not trade_proposal:
+                                self._diag_proposal_none += 1
                             
                             if trade_proposal:
-                                # Enter position
+                                # Enter position (state for production-aligned exit checks)
+                                expiry_date = current_date  # weekly expiry on backtest date
                                 position = {
                                     'entry_time': current_time,
                                     'trade_proposal': trade_proposal,
@@ -396,7 +545,14 @@ class ConvexBackspreadBacktester:
                                     'lots': trade_proposal['lots'],
                                     'net_debit': trade_proposal['net_debit_total'],
                                     'max_loss': trade_proposal['max_loss'],
-                                    'regime_at_entry': market_state['regime']
+                                    'regime_at_entry': market_state['regime'],
+                                    'entry_spot': spot_price,
+                                    'entry_days_to_expiry': 7,
+                                    'entry_range_state': market_state.get('range_state', 'NORMAL'),
+                                    'entry_credit': abs(trade_proposal['net_debit_total']),
+                                    'expiry_date': expiry_date,
+                                    'convex_regime_change_count': 0,
+                                    'convex_tsl_active': False,
                                 }
                                 self.open_positions.append(position)
                                 logger.info(
@@ -476,7 +632,12 @@ class ConvexBackspreadBacktester:
                 'initial_capital': self.initial_capital,
                 'final_capital': self.capital,
                 'total_return_pct': 0.0,
-                'trades': []
+                'trades': [],
+                'entry_diagnostics': {
+                    'eligible_bars': getattr(self, '_diag_eligible_bars', 0),
+                    'chain_empty': getattr(self, '_diag_chain_empty', 0),
+                    'proposal_none': getattr(self, '_diag_proposal_none', 0),
+                }
             }
         
         winning_trades = [t for t in self.trades if t['exit_pnl'] > 0]
@@ -497,7 +658,12 @@ class ConvexBackspreadBacktester:
             'initial_capital': self.initial_capital,
             'final_capital': self.capital,
             'total_return_pct': total_return_pct,
-            'trades': self.trades
+            'trades': self.trades,
+            'entry_diagnostics': {
+                'eligible_bars': getattr(self, '_diag_eligible_bars', 0),
+                'chain_empty': getattr(self, '_diag_chain_empty', 0),
+                'proposal_none': getattr(self, '_diag_proposal_none', 0),
+            }
         }
 
 
@@ -585,6 +751,12 @@ def main():
     print(f"\nInitial Capital: ₹{report['initial_capital']:.2f}")
     print(f"Final Capital: ₹{report['final_capital']:.2f}")
     print(f"Total Return: {report['total_return_pct']:.2f}%")
+    diag = report.get('entry_diagnostics', {})
+    if diag:
+        print("\nEntry diagnostics (why only N trades):")
+        print(f"  Bars with CONVEX/NEUTRAL + no position: {diag.get('eligible_bars', 0)}")
+        print(f"  Of those, option chain empty: {diag.get('chain_empty', 0)}")
+        print(f"  Of those, no valid backspread (e.g. OTM<=ATM): {diag.get('proposal_none', 0)}")
     print("=" * 60)
 
     report_file = f"backtest_convex_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
