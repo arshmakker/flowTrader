@@ -4,34 +4,44 @@ Configuration for Trend Following Futures Strategy
 
 # Risk limits
 MAX_RISK_PCT_OF_CAPITAL = 0.05  # 5.0% of total capital per trade (₹50k max risk per trade)
-MAX_POSITION_SIZE = 5  # Maximum 5 lots
+MAX_POSITION_SIZE = 10  # Maximum 10 lots
 INITIAL_STOP_LOSS_ATR_MULTIPLIER = 2.5  # Initial SL = 2.5 × ATR(14); 2.5× keeps 1 lot under 5% when ATR ~260 (lot 65)
 TRAILING_STOP_LOSS_ATR_MULTIPLIER = 2.0  # Trailing SL = 2 × ATR (Chandelier)
 
 # Stop loss exit order: use LIMIT at stop price (not market). Backtest assumes fill at stop price; production should match.
 
 # --- Profit lock & exit (TREND_CONTINUATION: INR first, then ATR ladder; no fixed profit target) ---
-# First lock: move stop to breakeven as soon as P&L >= this (INR)
-HYBRID_MIN_PNL_LOCK_INR = 300  # Lock breakeven when P&L >= ₹300
-# Production: trailing only (no fixed profit target). None = do not exit on profit target.
-# Backtest showed trailing-only beat 0.35× ATR target on 20251222–20260116 (higher net P&L and return).
-PROFIT_TARGET_ATR_MULTIPLIER = None  # Trailing stop locks gains; no cap on upside
+# First lock: when P&L >= this, move stop so we lock at least LOCK_PROFIT_MIN_INR (not just breakeven)
+HYBRID_MIN_PNL_LOCK_INR = 300  # Allow lock when P&L >= ₹300
+LOCK_PROFIT_MIN_INR = 300      # When locking, lock at least this much profit (stop = entry ± this/qty)
+# Production: exit at profit when unrealized >= this × ATR (align with profitable backtest)
+PROFIT_TARGET_ATR_MULTIPLIER = 0.35  # Exit when profit >= 0.35× ATR (backtest: +ve PnL with 10 lots, ADX≥35)
 
-# Hybrid Trailing Stop (incremental phases; no cap at 2.5× ATR)
-# Phases: 1=No profit, 2=Breakeven, 3–4=Tight, 5=3× ATR, 6=4× ATR+
+# Hybrid Trailing Stop (incremental phases; thresholds in PnL terms, INR)
+# Phases: 1=No profit, 2=Breakeven lock, 3–6=Tighter trail as PnL increases
 USE_HYBRID_TRAILING_STOP = True
-HYBRID_BREAKEVEN_THRESHOLD_ATR = 0.5  # Breakeven phase at 0.5× ATR profit
-HYBRID_PHASE2_THRESHOLD_ATR = 1.0  # 1× ATR → 1.5× ATR trail
-HYBRID_PHASE3_THRESHOLD_ATR = 2.0  # 2× ATR → 1× ATR trail
-HYBRID_PHASE4_THRESHOLD_ATR = 2.5  # 2.5× ATR → 0.75× ATR trail
-HYBRID_PHASE5_THRESHOLD_ATR = 3.0  # 3× ATR → 0.5× ATR trail
-HYBRID_PHASE6_THRESHOLD_ATR = 4.0  # 4× ATR+ → 0.25× ATR trail
+# Phase thresholds in ₹ (current_pnl used for phase and breakeven lock)
+HYBRID_BREAKEVEN_THRESHOLD_INR = 300   # Lock breakeven when PnL >= this (same as MIN_PNL_LOCK)
+HYBRID_PHASE2_THRESHOLD_INR = 300     # Phase 2: at/above breakeven lock
+HYBRID_PHASE3_THRESHOLD_INR = 1000    # Phase 3: 1.5× ATR trail
+HYBRID_PHASE4_THRESHOLD_INR = 2000    # Phase 4: 1× ATR trail
+HYBRID_PHASE5_THRESHOLD_INR = 3000    # Phase 5: 0.75× ATR trail
+HYBRID_PHASE6_THRESHOLD_INR = 5000    # Phase 6: 0.5× ATR trail
+HYBRID_PHASE6_PLUS_THRESHOLD_INR = 7500  # Phase 6+: 0.25× ATR trail
+# ATR multipliers per phase (unchanged)
 HYBRID_PHASE1_MULTIPLIER = 2.0
 HYBRID_PHASE2_MULTIPLIER = 1.5
 HYBRID_PHASE3_MULTIPLIER = 1.0
 HYBRID_PHASE4_MULTIPLIER = 0.75
 HYBRID_PHASE5_MULTIPLIER = 0.5
 HYBRID_PHASE6_MULTIPLIER = 0.25
+# Legacy ATR thresholds (backtest / reference only; production uses INR above)
+HYBRID_BREAKEVEN_THRESHOLD_ATR = 0.5
+HYBRID_PHASE2_THRESHOLD_ATR = 1.0
+HYBRID_PHASE3_THRESHOLD_ATR = 2.0
+HYBRID_PHASE4_THRESHOLD_ATR = 2.5
+HYBRID_PHASE5_THRESHOLD_ATR = 3.0
+HYBRID_PHASE6_THRESHOLD_ATR = 4.0
 
 # Entry conditions
 EMA_FAST_PERIOD = 50
@@ -65,6 +75,7 @@ REGIME_CHANGE_CONFIRMATION_CHECKS = 2  # Require N consecutive regime != TREND_C
 IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT = True
 
 # Entry filters (reduce churn on choppy / high-vol days)
+MIN_ADX_TREND_ENTRY = 35  # Require ADX >= this for trend entry (stricter trend filter; backtest aligned)
 REENTRY_COOLDOWN_MINUTES = 30  # After STOP_LOSS_HIT, block new trend entry for this many minutes
 HIGH_VOL_ATR_PERCENTILE_THRESHOLD = 90  # When ATR% >= this, require stronger trend (ADX >= HIGH_VOL_MIN_ADX)
 HIGH_VOL_MIN_ADX = 40  # When ATR% >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD, require ADX >= this to allow trend entry

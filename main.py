@@ -883,16 +883,18 @@ def main():
                                                 
                                                 # Update trailing stop loss (if not exiting)
                                                 if not should_exit and current_atr > 0:
-                                                    # Import hybrid trailing stop config
+                                                    # Import hybrid trailing stop config (PnL in INR for phases and lock)
                                                     from strategies.trend.config import (
                                                         USE_HYBRID_TRAILING_STOP,
                                                         HYBRID_MIN_PNL_LOCK_INR,
-                                                        HYBRID_BREAKEVEN_THRESHOLD_ATR,
-                                                        HYBRID_PHASE2_THRESHOLD_ATR,
-                                                        HYBRID_PHASE3_THRESHOLD_ATR,
-                                                        HYBRID_PHASE4_THRESHOLD_ATR,
-                                                        HYBRID_PHASE5_THRESHOLD_ATR,
-                                                        HYBRID_PHASE6_THRESHOLD_ATR,
+                                                        LOCK_PROFIT_MIN_INR,
+                                                        HYBRID_BREAKEVEN_THRESHOLD_INR,
+                                                        HYBRID_PHASE2_THRESHOLD_INR,
+                                                        HYBRID_PHASE3_THRESHOLD_INR,
+                                                        HYBRID_PHASE4_THRESHOLD_INR,
+                                                        HYBRID_PHASE5_THRESHOLD_INR,
+                                                        HYBRID_PHASE6_THRESHOLD_INR,
+                                                        HYBRID_PHASE6_PLUS_THRESHOLD_INR,
                                                         HYBRID_PHASE1_MULTIPLIER,
                                                         HYBRID_PHASE2_MULTIPLIER,
                                                         HYBRID_PHASE3_MULTIPLIER,
@@ -901,91 +903,84 @@ def main():
                                                         HYBRID_PHASE6_MULTIPLIER,
                                                     )
                                                     
-                                                    # Calculate unrealized P&L in points
-                                                    if direction == 'LONG':
-                                                        unrealized_pnl_points = current_futures_price - entry_price
-                                                    else:  # SHORT
-                                                        unrealized_pnl_points = entry_price - current_futures_price
+                                                    # Use current P&L in ₹ for phase and breakeven lock (not points/ATR)
+                                                    pnl_inr = current_pnl if current_pnl is not None else 0.0
                                                     
-                                                    # Determine trailing multiplier based on profit phase
+                                                    # Determine trailing multiplier based on profit phase (PnL terms)
                                                     if USE_HYBRID_TRAILING_STOP:
-                                                        # HYBRID mode: Profit-protection trailing
-                                                        if unrealized_pnl_points <= 0:
-                                                            # Phase 1: Not in profit - use standard trailing
+                                                        # HYBRID mode: Phase thresholds in ₹
+                                                        if pnl_inr <= 0:
                                                             trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
                                                             trail_phase = 'PHASE1'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_BREAKEVEN_THRESHOLD_ATR):
-                                                            # Not yet at breakeven threshold - standard trailing
+                                                        elif pnl_inr < HYBRID_BREAKEVEN_THRESHOLD_INR:
                                                             trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
                                                             trail_phase = 'PHASE1_NEAR_BE'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE2_THRESHOLD_ATR):
-                                                            # Phase 2: Small profit - ensure breakeven
-                                                            trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
-                                                            trail_phase = 'PHASE2_BREAKEVEN'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE3_THRESHOLD_ATR):
-                                                            # Phase 3: Medium profit - tighter 1.5× ATR
+                                                        elif pnl_inr < HYBRID_PHASE3_THRESHOLD_INR:
                                                             trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
-                                                            trail_phase = 'PHASE3_TIGHT'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE4_THRESHOLD_ATR):
+                                                            trail_phase = 'PHASE2_BREAKEVEN'
+                                                        elif pnl_inr < HYBRID_PHASE4_THRESHOLD_INR:
                                                             trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
-                                                            trail_phase = 'PHASE4_VERY_TIGHT'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE5_THRESHOLD_ATR):
+                                                            trail_phase = 'PHASE3_TIGHT'
+                                                        elif pnl_inr < HYBRID_PHASE5_THRESHOLD_INR:
                                                             trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
+                                                            trail_phase = 'PHASE4_VERY_TIGHT'
+                                                        elif pnl_inr < HYBRID_PHASE6_THRESHOLD_INR:
+                                                            trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
                                                             trail_phase = 'PHASE5_TIGHT'
-                                                        elif unrealized_pnl_points < (current_atr * HYBRID_PHASE6_THRESHOLD_ATR):
+                                                        elif pnl_inr < HYBRID_PHASE6_PLUS_THRESHOLD_INR:
                                                             trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
                                                             trail_phase = 'PHASE6_VERY_TIGHT'
                                                         else:
                                                             trailing_multiplier = HYBRID_PHASE6_MULTIPLIER
                                                             trail_phase = 'PHASE6_PLUS'
                                                     else:
-                                                        # FIXED mode: Standard 2× ATR trailing
                                                         trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
                                                         trail_phase = 'FIXED'
                                                     position['trail_phase'] = trail_phase
                                                     
                                                     trailing_stop_distance = current_atr * trailing_multiplier
                                                     
+                                                    # Lock at least LOCK_PROFIT_MIN_INR when PnL >= threshold (₹)
+                                                    lock_be = (USE_HYBRID_TRAILING_STOP and
+                                                               (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
+                                                    qty = position.get('quantity', 0) or (position.get('lots', 0) * position.get('lot_size', 65))
+                                                    
                                                     if direction == 'LONG':
                                                         new_trailing_stop = current_futures_price - trailing_stop_distance
-                                                        
-                                                        # Align with backtest: lock breakeven only when profit >= 1× ATR or PnL >= ₹300
-                                                        lock_be = (USE_HYBRID_TRAILING_STOP and
-                                                                   (unrealized_pnl_points >= (current_atr * HYBRID_PHASE2_THRESHOLD_ATR)
-                                                                    or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
-                                                        if lock_be:
-                                                            new_trailing_stop = max(new_trailing_stop, entry_price)
-                                                        
-                                                        # Trailing stop only moves up (tightens) for LONG
+                                                        if lock_be and qty > 0:
+                                                            min_stop_lock = entry_price + (LOCK_PROFIT_MIN_INR / qty)
+                                                            new_trailing_stop = max(new_trailing_stop, min_stop_lock)
                                                         updated_stop = max(current_stop, new_trailing_stop)
+                                                        # Never relax once in profit: keep at least LOCK_PROFIT_MIN_INR locked
+                                                        if current_stop >= entry_price and qty > 0:
+                                                            min_lock = entry_price + (LOCK_PROFIT_MIN_INR / qty)
+                                                            updated_stop = max(updated_stop, min_lock)
                                                     else:  # SHORT
                                                         new_trailing_stop = current_futures_price + trailing_stop_distance
-                                                        
-                                                        # Align with backtest: lock breakeven only when profit >= 1× ATR or PnL >= ₹300
-                                                        lock_be = (USE_HYBRID_TRAILING_STOP and
-                                                                   (unrealized_pnl_points >= (current_atr * HYBRID_PHASE2_THRESHOLD_ATR)
-                                                                    or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
-                                                        if lock_be:
-                                                            new_trailing_stop = min(new_trailing_stop, entry_price)
-                                                        
-                                                        # Trailing stop only moves down (tightens) for SHORT
+                                                        if lock_be and qty > 0:
+                                                            min_stop_lock = entry_price - (LOCK_PROFIT_MIN_INR / qty)
+                                                            new_trailing_stop = min(new_trailing_stop, min_stop_lock)
                                                         updated_stop = min(current_stop, new_trailing_stop)
+                                                        # Never relax once in profit: keep at least LOCK_PROFIT_MIN_INR locked
+                                                        if current_stop <= entry_price and qty > 0:
+                                                            max_lock = entry_price - (LOCK_PROFIT_MIN_INR / qty)
+                                                            updated_stop = min(updated_stop, max_lock)
                                                     
                                                     # Update position with new trailing stop
                                                     if updated_stop != current_stop:
-                                                        # Check if we moved to breakeven
-                                                        moved_to_breakeven = False
+                                                        # Check if we moved to lock (stop now at/above entry for LONG, at/below for SHORT)
+                                                        moved_to_lock = False
                                                         if direction == 'LONG' and current_stop < entry_price and updated_stop >= entry_price:
-                                                            moved_to_breakeven = True
+                                                            moved_to_lock = True
                                                         elif direction == 'SHORT' and current_stop > entry_price and updated_stop <= entry_price:
-                                                            moved_to_breakeven = True
+                                                            moved_to_lock = True
                                                         
                                                         position['current_stop_price'] = updated_stop
                                                         position_tracker._save_active_positions()
                                                         
-                                                        if moved_to_breakeven:
+                                                        if moved_to_lock:
                                                             logger.info(
-                                                                f"🛡️ Moved to BREAKEVEN for position {position['trade_id']}: "
+                                                                f"🛡️ Locked min ₹{LOCK_PROFIT_MIN_INR} profit for position {position['trade_id']}: "
                                                                 f"Stop ₹{current_stop:.2f} → ₹{updated_stop:.2f} (entry: ₹{entry_price:.2f})"
                                                             )
                                                         else:

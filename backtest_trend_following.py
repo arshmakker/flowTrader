@@ -24,12 +24,15 @@ from strategies.trend.config import (
     PROFIT_TARGET_ATR_MULTIPLIER,
     USE_HYBRID_TRAILING_STOP,
     HYBRID_MIN_PNL_LOCK_INR,
-    HYBRID_BREAKEVEN_THRESHOLD_ATR,
-    HYBRID_PHASE2_THRESHOLD_ATR,
-    HYBRID_PHASE3_THRESHOLD_ATR,
-    HYBRID_PHASE4_THRESHOLD_ATR,
-    HYBRID_PHASE5_THRESHOLD_ATR,
-    HYBRID_PHASE6_THRESHOLD_ATR,
+    LOCK_PROFIT_MIN_INR,
+    HYBRID_BREAKEVEN_THRESHOLD_ATR,  # legacy: for __init__ hybrid_breakeven_threshold_atr override
+    HYBRID_BREAKEVEN_THRESHOLD_INR,
+    HYBRID_PHASE2_THRESHOLD_INR,
+    HYBRID_PHASE3_THRESHOLD_INR,
+    HYBRID_PHASE4_THRESHOLD_INR,
+    HYBRID_PHASE5_THRESHOLD_INR,
+    HYBRID_PHASE6_THRESHOLD_INR,
+    HYBRID_PHASE6_PLUS_THRESHOLD_INR,
     HYBRID_PHASE1_MULTIPLIER,
     HYBRID_PHASE2_MULTIPLIER,
     HYBRID_PHASE3_MULTIPLIER,
@@ -191,7 +194,7 @@ class TrendFollowingBacktester:
     def __init__(self, data_dir='market_data_*', initial_capital=1000000,
                  profit_target_atr_multiplier=None, hybrid_breakeven_threshold_atr=None,
                  scenario_name=None, max_position_size=None, max_risk_pct_of_capital=None,
-                 force_max_lots=False):
+                 force_max_lots=False, min_adx_entry=None):
         self.data_dir = data_dir
         self.initial_capital = initial_capital
         self.capital = initial_capital
@@ -217,6 +220,7 @@ class TrendFollowingBacktester:
             else MAX_RISK_PCT_OF_CAPITAL
         )
         self._force_max_lots = bool(force_max_lots)  # True = always take max_position_size lots
+        self._min_adx_entry = min_adx_entry  # If set, require ADX >= this for entry (stricter filter)
         self.scenario_name = scenario_name or 'default'
         
     def load_futures_data(self, date_str: str) -> pd.DataFrame:
@@ -422,14 +426,17 @@ class TrendFollowingBacktester:
         if regime != 'TREND_CONTINUATION':
             return False, None
         
-        # Check ADX (stricter on high-vol days: require ADX >= 40 when ATR% >= 90)
+        # Check ADX (stricter on high-vol days: require ADX >= 40 when ATR% >= 90; or use min_adx_entry override)
         adx = indicators.get('adx_14')
         atr_percentile = market_state.get('atr_percentile')
-        min_adx = (
-            HIGH_VOL_MIN_ADX
-            if (atr_percentile is not None and atr_percentile >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD)
-            else 30
-        )
+        if getattr(self, '_min_adx_entry', None) is not None:
+            min_adx = self._min_adx_entry
+        else:
+            min_adx = (
+                HIGH_VOL_MIN_ADX
+                if (atr_percentile is not None and atr_percentile >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD)
+                else 30
+            )
         if not adx or adx < min_adx:
             return False, None
         
@@ -621,42 +628,55 @@ class TrendFollowingBacktester:
                     if position.get('ema_break_count', 0) > 0:
                         position['ema_break_count'] = 0
         
-        # Update trailing stop loss (hybrid phases 1–6, same as main.py)
+        # Update trailing stop loss (hybrid phases 1–6 in PnL terms, aligned with main.py)
+        pnl_inr = current_pnl if current_pnl is not None else 0.0
         if atr > 0:
             if USE_HYBRID_TRAILING_STOP:
-                if unrealized_pnl_points <= 0:
+                if pnl_inr <= 0:
                     trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
-                elif unrealized_pnl_points < (atr * self._hybrid_breakeven_atr):
+                elif pnl_inr < HYBRID_BREAKEVEN_THRESHOLD_INR:
                     trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
-                elif unrealized_pnl_points < (atr * HYBRID_PHASE2_THRESHOLD_ATR):
-                    trailing_multiplier = HYBRID_PHASE1_MULTIPLIER
-                elif unrealized_pnl_points < (atr * HYBRID_PHASE3_THRESHOLD_ATR):
+                elif pnl_inr < HYBRID_PHASE3_THRESHOLD_INR:
                     trailing_multiplier = HYBRID_PHASE2_MULTIPLIER
-                elif unrealized_pnl_points < (atr * HYBRID_PHASE4_THRESHOLD_ATR):
+                elif pnl_inr < HYBRID_PHASE4_THRESHOLD_INR:
                     trailing_multiplier = HYBRID_PHASE3_MULTIPLIER
-                elif unrealized_pnl_points < (atr * HYBRID_PHASE5_THRESHOLD_ATR):
+                elif pnl_inr < HYBRID_PHASE5_THRESHOLD_INR:
                     trailing_multiplier = HYBRID_PHASE4_MULTIPLIER
-                elif unrealized_pnl_points < (atr * HYBRID_PHASE6_THRESHOLD_ATR):
+                elif pnl_inr < HYBRID_PHASE6_THRESHOLD_INR:
+                    trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
+                elif pnl_inr < HYBRID_PHASE6_PLUS_THRESHOLD_INR:
                     trailing_multiplier = HYBRID_PHASE5_MULTIPLIER
                 else:
                     trailing_multiplier = HYBRID_PHASE6_MULTIPLIER
             else:
                 trailing_multiplier = TRAILING_STOP_LOSS_ATR_MULTIPLIER
 
-            # Align with production: lock breakeven only when Phase 2+ (profit >= 1× ATR) or PnL >= ₹300
+            # Lock at least LOCK_PROFIT_MIN_INR when PnL >= ₹300 (same as production)
             lock_be = (USE_HYBRID_TRAILING_STOP and
-                       (unrealized_pnl_points >= (atr * HYBRID_PHASE2_THRESHOLD_ATR) or (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR)))
+                       (current_pnl is not None and current_pnl >= HYBRID_MIN_PNL_LOCK_INR))
             trailing_stop_distance = atr * trailing_multiplier
             if direction == 'LONG':
                 new_trailing_stop = current_price - trailing_stop_distance
-                if lock_be:
-                    new_trailing_stop = max(new_trailing_stop, entry_price)
-                position['current_stop_price'] = max(current_stop, new_trailing_stop)
+                if lock_be and quantity > 0:
+                    min_stop_lock = entry_price + (LOCK_PROFIT_MIN_INR / quantity)
+                    new_trailing_stop = max(new_trailing_stop, min_stop_lock)
+                updated_stop = max(current_stop, new_trailing_stop)
+                # Never relax once in profit: keep at least LOCK_PROFIT_MIN_INR locked
+                if current_stop >= entry_price and quantity > 0:
+                    min_lock = entry_price + (LOCK_PROFIT_MIN_INR / quantity)
+                    updated_stop = max(updated_stop, min_lock)
+                position['current_stop_price'] = updated_stop
             else:  # SHORT
                 new_trailing_stop = current_price + trailing_stop_distance
-                if lock_be:
-                    new_trailing_stop = min(new_trailing_stop, entry_price)
-                position['current_stop_price'] = min(current_stop, new_trailing_stop)
+                if lock_be and quantity > 0:
+                    min_stop_lock = entry_price - (LOCK_PROFIT_MIN_INR / quantity)
+                    new_trailing_stop = min(new_trailing_stop, min_stop_lock)
+                updated_stop = min(current_stop, new_trailing_stop)
+                # Never relax once in profit: keep at least LOCK_PROFIT_MIN_INR locked
+                if current_stop <= entry_price and quantity > 0:
+                    max_lock = entry_price - (LOCK_PROFIT_MIN_INR / quantity)
+                    updated_stop = min(updated_stop, max_lock)
+                position['current_stop_price'] = updated_stop
         
         return False, None
     

@@ -91,9 +91,13 @@ INCOME regime (in `detect_regime`) uses **India VIX ≥ VIX_HIGH (18)** only; ev
 
 Higher target → fewer trades, lower total charges, same gross; best net in sweep: **0.25× ATR target** (−₹2,385). Still negative; moving target further (e.g. 0.3×) or reducing trade count could reach profitability.
 
-**Default config: trailing only (2026-01-29)**
+**Production trend config (aligned with profitable backtest, 2026-01-29)**
 
-- **Config**: `PROFIT_TARGET_ATR_MULTIPLIER = None` in `strategies/trend/config.py` — no fixed profit target; exit only on trailing stop, stop loss, regime change, or EMA break. PnL lock at ₹300 and phases 1–6 (including 3× and 4× ATR tightening).
+- **Config** (`strategies/trend/config.py`): **PROFIT_TARGET_ATR_MULTIPLIER = 0.35** — exit when unrealized profit ≥ 0.35× ATR (backtest with 10 lots + ADX ≥ 35 was profitable). **MIN_ADX_TREND_ENTRY = 35** — trend entry requires ADX ≥ 35 (non–high-vol); when ATR% ≥ 90, **HIGH_VOL_MIN_ADX = 40** still applies. PnL lock at ₹300 and phases 1–6 unchanged.
+
+**Trend trailing: PnL terms (2026-02-09)**
+
+- **Production** (`main.py`) and **backtest** (`backtest_trend_following.py`): Hybrid trailing phase and breakeven lock use **current P&L in ₹** (INR). Config: `HYBRID_BREAKEVEN_THRESHOLD_INR = 300`, then 1000, 2000, 3000, 5000, 7500 for phases 2–6+. When PnL >= ₹300, stop is moved to **lock at least ₹300 profit** (`LOCK_PROFIT_MIN_INR = 300`): LONG stop >= entry + 300/qty, SHORT stop <= entry - 300/qty (not just breakeven). **Never relax once in profit**: once the stop has moved beyond entry (profit locked), the stop is never set back to a level that would lock less than ₹300 — i.e. you never give back the first lock. Legacy ATR constants remain in config for optional backtest override.
 
 **0.5× ATR target — comparison sweep (2026-01-30)**
 
@@ -110,7 +114,8 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 
 **Config** (`strategies/trend/config.py`):
 - **HYBRID_MIN_PNL_LOCK_INR = 300** — Move stop to breakeven as soon as P&L ≥ ₹300 (in addition to phase-based breakeven).
-- **PROFIT_TARGET_ATR_MULTIPLIER = None** — No fixed profit target; exit only on trailing stop, stop loss, regime change, or EMA break.
+- **PROFIT_TARGET_ATR_MULTIPLIER = 0.35** — Exit when profit ≥ 0.35× ATR (production aligned with profitable backtest).
+- **MIN_ADX_TREND_ENTRY = 35** — Trend entry requires ADX ≥ 35 (non–high-vol); high-vol (ATR% ≥ 90) uses HIGH_VOL_MIN_ADX = 40.
 - **Phases 5–6**: `HYBRID_PHASE5_THRESHOLD_ATR = 3.0`, `HYBRID_PHASE5_MULTIPLIER = 0.5`; `HYBRID_PHASE6_THRESHOLD_ATR = 4.0`, `HYBRID_PHASE6_MULTIPLIER = 0.25` (incremental tightening beyond 2.5× ATR).
 
 **Live** (`main.py`): Breakeven lock when `trail_phase` is in profit phases **or** `current_pnl >= HYBRID_MIN_PNL_LOCK_INR`. PHASE5/PHASE6 applied; ATR profit-target exit runs only when `PROFIT_TARGET_ATR_MULTIPLIER is not None`.

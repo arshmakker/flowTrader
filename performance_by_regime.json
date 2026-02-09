@@ -581,5 +581,60 @@
     "max_loss": 0.0,
     "lots": 1,
     "trade_id": "2026-02-06T12:03:15.373282"
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-06T12:12:43.511244",
+    "exit_time": "2026-02-09T09:17:47.707642",
+    "pnl": -2902.25,
+    "max_loss": 0.0,
+    "lots": 1,
+    "trade_id": "2026-02-06T12:12:43.508868"
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "NEUTRAL",
+    "entry_time": "2026-02-09T09:19:08.909317",
+    "exit_time": "2026-02-09T11:20:26.098517",
+    "pnl": -771.875,
+    "max_loss": 0.0,
+    "lots": 1,
+    "trade_id": "2026-02-09T09:19:08.904845"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-02-09T11:23:32.379150",
+    "exit_time": "2026-02-09T13:53:35.646867",
+    "pnl": -1618.5000000000946,
+    "max_loss": 52582.67857142853,
+    "lots": 1,
+    "trade_id": "2026-02-09T11:23:32.377957"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-02-09T13:57:15.538886",
+    "exit_time": "2026-02-09T14:35:54.179305",
+    "pnl": 0.0,
+    "max_loss": 52587.32142857141,
+    "lots": 1,
+    "trade_id": "2026-02-09T13:57:15.536456"
+  },
+  {
+    "strategy": "TREND_FOLLOW_FUTURE",
+    "book": "TREND",
+    "regime_at_entry": "TREND_CONTINUATION",
+    "entry_time": "2026-02-09T15:08:40.656912",
+    "exit_time": "2026-02-09T15:15:15.137377",
+    "pnl": -539.4999999999527,
+    "max_loss": 52587.32142857141,
+    "lots": 1,
+    "trade_id": "2026-02-09T15:08:40.654381"
   }
 ]

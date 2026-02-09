@@ -31,6 +31,7 @@ from .config import (
     EXIT_ON_REGIME_CHANGE,
     EXIT_ON_EMA_BREAK,
     EXIT_DAYS_BEFORE_EXPIRY,
+    MIN_ADX_TREND_ENTRY,
     HIGH_VOL_ATR_PERCENTILE_THRESHOLD,
     HIGH_VOL_MIN_ADX,
 )
@@ -415,13 +416,13 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             logger.info(f"Trend strategy no trade: reason=REGIME_NOT_TREND (regime={regime})")
             return None
 
-        # ADX filter: on high-vol days (ATR% >= 90) require ADX >= 40; else >= 30
+        # ADX filter: on high-vol days (ATR% >= 90) require ADX >= 40; else >= MIN_ADX_TREND_ENTRY (35)
         adx = market_state.get('adx_14')
         atr_percentile = market_state.get('atr_percentile')
         min_adx = (
             HIGH_VOL_MIN_ADX
             if (atr_percentile is not None and atr_percentile >= HIGH_VOL_ATR_PERCENTILE_THRESHOLD)
-            else 30
+            else MIN_ADX_TREND_ENTRY
         )
         if adx is None or adx < min_adx:
             logger.info(
