@@ -6,9 +6,8 @@ Backtests the Call Backspread strategy:
 - Buy 2 OTM Calls (~ +1% strike)
 - Same weekly expiry
 
-Entry: CONVEX (India VIX < 12) or NEUTRAL (fallback, same as production backup path).
-Exit: Aligned with production (check_convex_exit_conditions): regime change (3 confirmations, skipped when TSL active),
-time >40%, no ATR expansion, re-compression, CONVEX_MAX_LOSS (-30%), Convex TSL (activate +20% MTM or 25% time, trail 35%/25% from peak).
+Two-fork: Entry when regime is TRENDING only. Exit: aligned with production (regime change to SIDEWAYS after confirmation,
+time >40%, no ATR expansion, re-compression, CONVEX_MAX_LOSS (-30%), Convex TSL).
 """
 
 import pandas as pd
@@ -171,9 +170,9 @@ class ConvexBackspreadBacktester:
 
     def _regime_from_candles(self, candles_df: pd.DataFrame, spot_price: float,
                              iv_pct: Optional[float], india_vix: Optional[float]) -> Tuple[str, bool]:
-        """Production regime (TREND-first, then VIX) and range_compressed from last 100 candles. Needs len(candles_df) >= 100."""
+        """Production regime (two-fork: TRENDING or SIDEWAYS) and range_compressed from last 100 candles. Needs len(candles_df) >= 100."""
         if len(candles_df) < 100:
-            return 'NEUTRAL', False
+            return 'SIDEWAYS', False
         adx = calculate_adx(
             candles_df['high'].tolist(), candles_df['low'].tolist(), candles_df['close'].tolist(), period=14
         )
@@ -328,9 +327,9 @@ class ConvexBackspreadBacktester:
         return indicators
     
     def check_entry_conditions(self, indicators: Dict, market_state: Dict) -> bool:
-        """Allow Convex entry when regime is CONVEX (primary) or NEUTRAL (fallback, same as production backup path)."""
-        regime = market_state.get('regime', 'NEUTRAL')
-        return regime in ('CONVEX', 'NEUTRAL')
+        """Allow Convex entry when regime is TRENDING (two-fork: Convex only in TRENDING)."""
+        regime = market_state.get('regime', 'SIDEWAYS')
+        return regime == 'TRENDING'
 
     def _estimate_convex_mtm(self, position: Dict, spot_price: float) -> float:
         """Estimate current MTM (PnL) for Convex backspread using same simplified formula as _close_position."""
@@ -358,8 +357,8 @@ class ConvexBackspreadBacktester:
         current_range_state: str,
         current_mtm: float,
     ) -> Tuple[bool, Optional[str]]:
-        """Mirror production check_convex_exit_conditions: regime, time 40%, no ATR expansion, re-compression, max loss, TSL."""
-        regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
+        """Mirror production check_convex_exit_conditions: regime flip to SIDEWAYS, time 40%, no ATR expansion, re-compression, max loss, TSL."""
+        regime_at_entry = position.get('regime_at_entry') or 'TRENDING'
         entry_spot = position.get('entry_spot')
         entry_range_state = position.get('entry_range_state')
         entry_premium = abs(position.get('entry_credit') or position.get('net_debit') or 0)
@@ -368,9 +367,11 @@ class ConvexBackspreadBacktester:
         else:
             time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
 
-        # 1. Regime change (skip when TSL active)
+        # 1. Regime change: exit when regime flips from TRENDING to SIDEWAYS (skip when TSL active)
+        entry_is_trending = regime_at_entry in ('TRENDING', 'CONVEX')
+        current_is_trending = current_regime in ('TRENDING', 'CONVEX')
         if not position.get('convex_tsl_active', False):
-            if current_regime != regime_at_entry:
+            if entry_is_trending and not current_is_trending:
                 count = position.get('convex_regime_change_count', 0) + 1
                 position['convex_regime_change_count'] = count
                 if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
@@ -417,7 +418,7 @@ class ConvexBackspreadBacktester:
         return False, None
 
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
-        """Run backtest using production regime (TREND-first; CONVEX when not TREND and India VIX < VIX_LOW (12))."""
+        """Run backtest using production regime (two-fork: TRENDING → Convex entry only)."""
         logger.info(f"Starting Convex Backspread backtest from {start_date} to {end_date}")
         
         start = datetime.strptime(start_date, '%Y%m%d').date()
@@ -427,7 +428,7 @@ class ConvexBackspreadBacktester:
         historical_candles = []
         _india_vix_by_date = {}
         # Diagnostics: why we might get few trades
-        self._diag_eligible_bars = 0   # regime CONVEX/NEUTRAL, no position
+        self._diag_eligible_bars = 0   # regime TRENDING, no position
         self._diag_chain_empty = 0
         self._diag_proposal_none = 0
         
@@ -477,7 +478,7 @@ class ConvexBackspreadBacktester:
                         india_vix=_india_vix_by_date.get(date_str)
                     )
                 else:
-                    regime, range_compressed = 'NEUTRAL', False
+                    regime, range_compressed = 'SIDEWAYS', False
                 
                 market_state = {
                     'spot_price': spot_price,
@@ -754,7 +755,7 @@ def main():
     diag = report.get('entry_diagnostics', {})
     if diag:
         print("\nEntry diagnostics (why only N trades):")
-        print(f"  Bars with CONVEX/NEUTRAL + no position: {diag.get('eligible_bars', 0)}")
+        print(f"  Bars with TRENDING + no position: {diag.get('eligible_bars', 0)}")
         print(f"  Of those, option chain empty: {diag.get('chain_empty', 0)}")
         print(f"  Of those, no valid backspread (e.g. OTM<=ATM): {diag.get('proposal_none', 0)}")
     print("=" * 60)

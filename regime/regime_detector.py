@@ -1,11 +1,9 @@
 """
-Regime Detector for Market Regime Classification
+Regime Detector for Market Regime Classification (Two-Fork Model)
 
-Detects four market regimes:
-- CONVEX: Low IV, compressed volatility, suitable for convex strategies
-- INCOME: High IV, low trend, suitable for income strategies (Iron Condor)
-- TREND_CONTINUATION: Strong trend (ADX >= 30), suitable for trend following
-- NEUTRAL: Transitional state, no new trades
+Detects two regimes only:
+- TRENDING: Strong trend (ADX >= 30, ATR% >= 50, EMA alignment). Route to Convex Backspread.
+- SIDEWAYS: Not trending. Route to Iron Condor.
 
 Features:
 - Regime persistence (anti-whipsaw): Requires N=3 consecutive detections
@@ -54,43 +52,29 @@ def classify_regime_from_indicators(
     vix_high_override: Optional[float] = None,
 ) -> str:
     """
-    Stateless regime classification aligned with detect_regime hierarchy (TREND-first, then VIX).
-    Use in backtest when you have bar-level IV, ADX, ATR%, range, and EMA direction.
+    Stateless regime classification (two-fork). Use in backtest when you have
+    bar-level ADX, ATR%, and EMA direction.
 
-    Hierarchy:
-    1. TREND_CONTINUATION: ADX >= 30, ATR% >= 50, ema_direction in (LONG, SHORT).
-    2. CONVEX: India VIX < VIX_LOW (12), only if not TREND.
-    3. INCOME: India VIX >= VIX_HIGH (18), only if not TREND.
-    4. NEUTRAL: mid-band VIX or no edge.
+    Returns TRENDING if trend conditions pass, else SIDEWAYS.
+    VIX/iv_percentile args kept for API compatibility but not used for routing.
 
     Args:
-        iv_percentile: 0-100; if None, treated as 50.
+        iv_percentile: 0-100 (unused in two-fork; kept for compatibility).
         adx_14: ADX(14) value.
         atr_percentile: 0-100 (ATR percentile).
-        range_compressed: True if last_range < 0.6 * rolling_avg_range (kept for compatibility; not used for CONVEX).
+        range_compressed: Unused; kept for compatibility.
         ema_direction: 'LONG' | 'SHORT' | None (from price vs EMA50 vs EMA100).
-        india_vix: India VIX from NSE (optional). CONVEX: india_vix < VIX_LOW. INCOME: india_vix >= VIX_HIGH.
-        vix_low_override: If set, use instead of VIX_LOW (for backtest comparison).
-        vix_high_override: If set, use instead of VIX_HIGH (for backtest comparison).
+        india_vix, vix_low_override, vix_high_override: Unused; kept for compatibility.
 
     Returns:
-        'CONVEX' | 'INCOME' | 'TREND_CONTINUATION' | 'NEUTRAL'
+        'TRENDING' | 'SIDEWAYS'
     """
     adx = adx_14 if adx_14 is not None else 0.0
     atr_pct = atr_percentile if atr_percentile is not None else 50.0
-    vix_low = vix_low_override if vix_low_override is not None else VIX_LOW
-    vix_high = vix_high_override if vix_high_override is not None else VIX_HIGH
 
-    # --- STEP 1: TREND (hard override) ---
     if adx >= TREND_ADX_MIN and atr_pct >= TREND_ATR_PCT_MIN and ema_direction in ("LONG", "SHORT"):
-        return "TREND_CONTINUATION"
-
-    # --- STEP 2: Volatility regimes (only if not TREND) ---
-    if india_vix is not None and india_vix < vix_low:
-        return "CONVEX"
-    if india_vix is not None and india_vix >= vix_high:
-        return "INCOME"
-    return "NEUTRAL"
+        return "TRENDING"
+    return "SIDEWAYS"
 
 
 class RegimeDetector:
@@ -412,46 +396,21 @@ class RegimeDetector:
     def detect_regime(self, market_state: Dict, recent_candles: Optional[List[Dict]] = None,
                      api=None, symbol_manager=None) -> Dict:
         """
-        REGIME HIERARCHY (STRICT):
+        Two-fork regime detection:
 
-        1. TREND_CONTINUATION
-           - Determined only by price structure (ADX, EMA alignment, ATR expansion)
-           - If TREND is detected, VIX logic MUST NOT be evaluated
+        1. TRENDING: ADX >= 30, ATR% >= 50, EMA directional alignment (price vs EMA50 vs EMA100).
+        2. SIDEWAYS: Otherwise.
 
-        2. VOLATILITY REGIMES (only if NOT TREND)
-           - CONVEX  → Low India VIX
-           - INCOME  → High India VIX
-
-        3. NEUTRAL
-           - Mid-band VIX or no structural edge
-
-        NOTE:
-        - Exit logic and trailing stop-loss rules are handled elsewhere
-        - This function must NOT modify or interfere with exits
-
-        Detect current market regime.
+        NOTE: Exit logic and trailing stop-loss rules are handled elsewhere.
 
         Args:
-            market_state: Market state dictionary with:
-                - iv_percentile: float (0-100)
-                - adx_14: float
-                - spot_price: float
-            recent_candles: Optional list of recent candle data
-            api: ShoonyaApiPy instance (for fetching candles if not provided)
-            symbol_manager: SymbolManager instance (for fetching candles if not provided)
+            market_state: Market state with iv_percentile, adx_14, spot_price.
+            recent_candles: Optional; used for range_state.
+            api, symbol_manager: For fetching 15m candles (EMA) if needed.
 
         Returns:
-            Dictionary with regime information:
-            {
-                "regime": "CONVEX" | "INCOME" | "TREND_CONTINUATION" | "NEUTRAL",
-                "detected_regime": ...,
-                "iv_percentile": float,
-                "adx": float,
-                "atr": float,
-                "atr_percentile": float,
-                "range_state": "COMPRESSED" | "NORMAL" | "EXPANDING",
-                ...
-            }
+            Dict with "regime": "TRENDING" | "SIDEWAYS", "detected_regime", iv_percentile,
+            adx, atr, atr_percentile, range_state, etc.
         """
         try:
             # Check cache
@@ -480,11 +439,12 @@ class RegimeDetector:
                 # #region agent log
                 try:
                     with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"regime_detector.py:334","message":"Missing inputs - returning NEUTRAL","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R1"})+"\n")
+                        f.write(json.dumps({"location":"regime_detector.py:334","message":"Missing inputs - returning SIDEWAYS","data":{"iv_percentile":iv_percentile,"adx_14":adx_14,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"R1"})+"\n")
                 except: pass
                 # #endregion
                 regime_result = {
-                    "regime": "NEUTRAL",
+                    "regime": "SIDEWAYS",
+                    "detected_regime": "SIDEWAYS",
                     "iv_percentile": iv_percentile or 0,
                     "adx": adx_14 or 0,
                     "atr": None,
@@ -716,12 +676,12 @@ class RegimeDetector:
                 
                 if directional_bias_stable:
                     is_trend = True
-                    confirmed_trend = self._apply_regime_persistence("TREND_CONTINUATION")
+                    confirmed_trend = self._apply_regime_persistence("TRENDING")
                     if atr and atr > 0:
                         self.save_atr_data(atr)
                     regime_result = {
                         "regime": confirmed_trend,
-                        "detected_regime": "TREND_CONTINUATION",
+                        "detected_regime": "TRENDING",
                         "iv_percentile": iv_percentile,
                         "india_vix": india_vix,
                         "adx": adx_14,
@@ -732,22 +692,12 @@ class RegimeDetector:
                         "last_confirmed_regime": RegimeDetector._last_confirmed_regime
                     }
                     self._cache_regime(regime_result)
-                    logger.info(f"Regime detected: TREND_CONTINUATION (ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%, Direction={direction})")
+                    logger.info(f"Regime detected: TRENDING (ADX={adx_14:.1f}, ATR%={atr_percentile:.1f}%, Direction={direction})")
                     return regime_result
             
-            # --- STEP 2: VOLATILITY REGIMES (only if NOT TREND) ---
-            if india_vix is not None and india_vix < VIX_LOW:
-                detected_regime = "CONVEX"
-                logger.info(f"Regime detected: CONVEX (India VIX={india_vix:.1f} < {VIX_LOW})")
-            elif india_vix is not None and india_vix >= VIX_HIGH:
-                detected_regime = "INCOME"
-                logger.info(f"Regime detected: INCOME (India VIX={india_vix:.1f} >= {VIX_HIGH})")
-            else:
-                detected_regime = "NEUTRAL"
-                logger.debug(f"Regime: NEUTRAL (India VIX={india_vix}, mid-band or no edge)")
-            
-            # Safety invariant: TREND must never coexist with vol regimes
-            assert not (is_trend and detected_regime in ["CONVEX", "INCOME"]), "TREND must not coexist with CONVEX/INCOME"
+            # --- STEP 2: NOT TRENDING → SIDEWAYS ---
+            detected_regime = "SIDEWAYS"
+            logger.info(f"Regime detected: SIDEWAYS (no trend)")
             
             # Apply regime persistence (anti-whipsaw)
             confirmed_regime = self._apply_regime_persistence(detected_regime)
@@ -791,7 +741,8 @@ class RegimeDetector:
         except Exception as e:
             logger.error(f"Error detecting regime: {str(e)}", exc_info=True)
             return {
-                "regime": "NEUTRAL",
+                "regime": "SIDEWAYS",
+                "detected_regime": "SIDEWAYS",
                 "iv_percentile": market_state.get('iv_percentile', 0),
                 "india_vix": market_state.get('india_vix'),
                 "adx": market_state.get('adx_14', 0),

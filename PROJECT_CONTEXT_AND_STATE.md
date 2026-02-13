@@ -1,11 +1,13 @@
 ## Project context
 
 - **Name**: `regimetrader`
-- **Goal**: Multi-strategy trading system with regime detection that automatically routes to appropriate strategies based on market conditions. Supports Iron Condor (INCOME), Call Backspread (CONVEX), Trend Following Futures (TREND_CONTINUATION), and Calendar Spreads (NEUTRAL). Includes market data collection, position tracking, and backtesting utilities.
+- **Goal**: Multi-strategy trading system with regime detection that automatically routes to appropriate strategies based on market conditions. **Two-fork (this branch):** Only two regimes — **TRENDING** and **SIDEWAYS**. TRENDING → Convex Backspread only; SIDEWAYS → Iron Condor only. Trend Following Futures and Neutral Calendar are disabled in the main execution path. Includes market data collection, position tracking, and backtesting utilities.
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` (Iron Condor), `backtest_trend_following.py` (Trend Futures with ATR profit target and hybrid trailing) run against stored tick data.
 
 ## Current state (2026-02-08)
+
+**Two-fork branch:** Regime detector, strategy runner, main loop, position tracker (Convex exit), backtests, and docs updated for TRENDING/SIDEWAYS only; Trend Futures and Calendar disabled.
 
 ### Market hours: 3:30 PM IST (2026-02-06)
 
@@ -15,41 +17,34 @@ All market open/close checks use **India Standard Time (IST, Asia/Kolkata)** so 
 - **main.py**: Main loop stops when `is_market_closed_ist()`. Trend futures "exit before close" uses `get_now_ist()` for 15:30 and exit window (IST).
 - **web_dashboard.py**: `can_start_system()` and `is_market_hours()` use `get_now_ist` and strategy_runner's `is_market_hours` (IST).
 
-### Regime hierarchy: TREND-first (2026-01-29)
+### Regime: two-fork only — TRENDING and SIDEWAYS (2026-01-29)
 
-**`regime_detector.detect_regime()`** enforces a strict hierarchy; only this function was refactored; exit logic and trailing stop-loss are unchanged.
+**`regime_detector.detect_regime()`** returns only two regimes:
 
-1. **TREND_CONTINUATION** (hard override): Determined only by price structure (ADX ≥ 30, ATR% ≥ 50, EMA alignment). If TREND is detected, VIX/IV/range are not evaluated; function returns immediately.
-2. **Volatility regimes** (only if NOT TREND): **CONVEX** when India VIX < VIX_LOW (12); **INCOME** when India VIX ≥ VIX_HIGH (18). Mid-band (12 ≤ VIX < 18) or missing VIX → NEUTRAL.
-3. **NEUTRAL**: Mid-band VIX or no structural edge.
+1. **TRENDING**: Price structure (ADX ≥ TREND_ADX_MIN, ATR% ≥ TREND_ATR_PCT_MIN, EMA directional bias). When trend conditions pass, regime is TRENDING (with persistence).
+2. **SIDEWAYS**: Everything else (no VIX-based CONVEX/INCOME/NEUTRAL). When not trending, regime is SIDEWAYS (with persistence).
 
-India VIX benchmarks: `VIX_LOW = 12.0`, `VIX_HIGH = 18.0` (used only when NOT TREND). Backtest stateless `classify_regime_from_indicators` still uses CONVEX_VIX_MAX/INCOME_VIX_MIN for compatibility.
+**Routing:** TRENDING → Convex Backspread only; SIDEWAYS → Iron Condor only. Trend Following Futures and Neutral Calendar are **disabled** in the two-fork branch (no entry from runner, no position monitoring in main).
 
-### CONVEX Regime: India VIX only when NOT TREND (2026-01-29)
+### Convex: TRENDING regime only (two-fork, 2026-01-29)
 
-CONVEX regime (in `detect_regime`) uses **India VIX < VIX_LOW (12)** only; evaluated only when TREND was not detected. No range_compressed requirement in production detect_regime.
+In the two-fork model, **Convex Backspread** is entered only when regime is **TRENDING** (trend conditions: ADX, ATR%, EMA). No VIX-based CONVEX/INCOME routing.
 
-- **strategy_runner**: `get_india_vix(api)` fetches India VIX from NSE (token 26017); `build_market_state_from_chain` adds `india_vix` to market_state; `save_daily_metrics` persists `india_vix` for backtest.
-- **regime_detector**: `VIX_LOW = 12.0`; CONVEX = (india_vix is not None and india_vix < VIX_LOW) when NOT TREND. `classify_regime_from_indicators` (backtest) uses same TREND-first hierarchy and VIX_LOW/VIX_HIGH.
-- **get_recent_candles lookback (2026-01-29)**: All production calls to `regime_detector.get_recent_candles()` must pass `lookback_days=20` so that `rolling_avg_range` can be computed. Without it, CONVEX range_check fails. Fixed in `strategy_runner.py` and `main.py`. **Rolling avg threshold (2026-01-29)**: Regime detector uses `MIN_CANDLES_FOR_ROLLING = 15`; rolling_avg_range is computed when `len(recent_candles) >= 15` (using last min(20, len) candles). This allows CONVEX range check to run when API returns ~17 trading days (e.g. 20 calendar days).
-- **Backtests**: Trend and regime backtests load `india_vix` from daily_metrics when present and pass it to `classify_regime_from_indicators`.
+- **strategy_runner**: TRENDING → `_run_convex_backspread_strategy`; SIDEWAYS → `_run_iron_condor_strategy_internal`. India VIX still fetched for logging/daily_metrics.
+- **regime_detector**: `classify_regime_from_indicators` returns only `TRENDING` or `SIDEWAYS` (trend check only; VIX/IV no longer used for routing).
+- **get_recent_candles lookback**: Production calls pass `lookback_days=20` for rolling_avg_range where needed. Regime detector uses `MIN_CANDLES_FOR_ROLLING = 15`.
 
-### INCOME Regime: India VIX only when NOT TREND (2026-01-29)
+### Iron Condor: SIDEWAYS regime only (two-fork, 2026-01-29)
 
-INCOME regime (in `detect_regime`) uses **India VIX ≥ VIX_HIGH (18)** only; evaluated only when TREND was not detected.
-
-- **regime_detector**: `VIX_HIGH = 18.0`; INCOME = (india_vix is not None and india_vix >= VIX_HIGH) when NOT TREND. `classify_regime_from_indicators` (backtest) uses same TREND-first and VIX_HIGH.
-- **Backtest**: Regime backtest passes `india_vix` from daily_metrics (or synthetic 14 when missing); INCOME triggers when not TREND and India VIX ≥ 18.
+In the two-fork model, **Iron Condor** is entered only when regime is **SIDEWAYS** (non-trending). No separate INCOME/CONVEX/NEUTRAL; SIDEWAYS covers all non-trending conditions.
 
 ### Regime Detection Backtest (2026-01-30)
 
-**`backtest_regime_detection.py`** uses **production** regime logic (`classify_regime_from_indicators`) with TREND-first hierarchy and VIX_LOW (12) / VIX_HIGH (18). IV source: optional CSV → `daily_metrics.json` → volatility proxy. Accumulates 100 bars across days for EMA/ATR/range; reports regime distribution, transitions, and indicator stats by regime.
+**`backtest_regime_detection.py`** uses **production** regime logic (`classify_regime_from_indicators`). Two-fork: only **TRENDING** and **SIDEWAYS**. Report includes `trending_triggered`, `sideways_triggered`, regime distribution, transitions, indicator stats.
 
 **Run**: `python3 backtest_regime_detection.py [start_YYYYMMDD] [end_YYYYMMDD] [iv_csv_path]` (default 20251222–20260116). Report: `backtest_regime_report_YYYYMMDD_HHMMSS.json`.
 
-**CONVEX in regime backtest**: Report includes `convex_triggered`, `range_compressed_bars` (informational), and `convex_note`. CONVEX triggers when TREND is not detected and India VIX &lt; VIX_LOW (12).
-
-**Convex backspread backtest (production regime)** (2026-02-08): **`backtest_convex_backspread.py`** uses **production** regime (TREND-first; CONVEX when not TREND and India VIX &lt; VIX_LOW (12)): loads NIFTY futures per date, builds 15m candles, rolling 100 bars, classifies via `classify_regime_from_indicators`. Convex **entries** when regime is **CONVEX or NEUTRAL** (primary + fallback, same as production backup path). Exit logic unchanged (regime_at_entry stored; regime change, TSL, time 40%, ATR, re-compression, max loss). **Backtest-only relaxation**: when the option chain has only one CE strike, a synthetic OTM strike (strike+50, price 0.85×ATM) is added so a valid backspread can be formed; production uses real chains only. Report includes `avg_pnl` and **entry_diagnostics** (eligible_bars, chain_empty, proposal_none). Strict data (no synthetic): ~2 trades; with relaxation: more trades (e.g. 50), PnL depends on synthetic OTM pricing.
+**Convex backspread backtest (two-fork)** (2026-02-08): **`backtest_convex_backspread.py`** uses production regime (TRENDING/SIDEWAYS). Convex **entries** when regime is **TRENDING** only. Exit: regime flip to SIDEWAYS (after confirmation), time 40%, ATR, re-compression, max loss, TSL. **Backtest-only relaxation**: when the option chain has only one CE strike, a synthetic OTM strike is added. Report includes `avg_pnl` and **entry_diagnostics** (eligible_bars, chain_empty, proposal_none).
 
 ### IV for Backtest and Daily Metrics Persistence (2026-01-30)
 

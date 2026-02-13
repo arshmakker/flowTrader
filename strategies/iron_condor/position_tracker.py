@@ -242,7 +242,7 @@ class IronCondorPositionTracker:
         Check mandatory exit conditions for Convex Backspread strategy
         
         MANDATORY exits:
-        - Exit immediately if regime != CONVEX
+        - Exit when regime flips from TRENDING (or CONVEX) to SIDEWAYS, after confirmation (REGIME_CHANGED)
         - Exit if no ATR expansion within 40% of expiry time
         - Exit if time elapsed > 40% of expiry duration
         - Exit if price re-enters compression range after entry
@@ -272,9 +272,12 @@ class IronCondorPositionTracker:
             
             # Exit condition 1: Regime changed from regime at entry (with confirmation to reduce whipsaw)
             # Skip regime-change exit once TSL is active: let TSL or max loss handle exit (reduces regime-change losses)
+            # Two-fork: TRENDING = convex-friendly, SIDEWAYS = not; treat TRENDING and CONVEX as equivalent for entry regime
             if not position.get('convex_tsl_active', False):
                 regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
-                if current_regime != regime_at_entry:
+                entry_is_trending = regime_at_entry in ('TRENDING', 'CONVEX')
+                current_is_trending = current_regime in ('TRENDING', 'CONVEX')
+                if entry_is_trending and not current_is_trending:
                     count = position.get('convex_regime_change_count', 0) + 1
                     position['convex_regime_change_count'] = count
                     self._save_active_positions()
@@ -282,6 +285,7 @@ class IronCondorPositionTracker:
                         return True, "REGIME_CHANGED"
                     return False, None
                 else:
+                    # Still in trending (or entry was sideways); reset regime-change count
                     if position.get('convex_regime_change_count', 0) > 0:
                         position['convex_regime_change_count'] = 0
                         self._save_active_positions()

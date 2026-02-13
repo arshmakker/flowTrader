@@ -192,7 +192,7 @@ class TrailingStopBacktester:
     def check_entry_conditions(self, indicators: Dict, market_state: Dict) -> Tuple[bool, Optional[str]]:
         """Check if entry conditions are met"""
         regime = market_state.get('regime')
-        if regime != 'TREND_CONTINUATION':
+        if regime != 'TRENDING':
             return False, None
         
         adx = indicators.get('adx_14')
@@ -359,7 +359,7 @@ class TrailingStopBacktester:
         
         # Exit condition 2: Regime change
         regime = market_state.get('regime')
-        if regime != 'TREND_CONTINUATION':
+        if regime != 'TRENDING':
             return True, 'REGIME_CHANGE'
         
         # Exit condition 3: EMA structure breaks
@@ -450,7 +450,7 @@ class TrailingStopBacktester:
                     'adx_14': indicators.get('adx_14', 0),
                     'atr': indicators.get('atr_14', 0),
                     'atr_percentile': 75.0,
-                    'regime': 'NEUTRAL'
+                    'regime': 'SIDEWAYS'
                 }
                 
                 adx = indicators.get('adx_14', 0)
@@ -462,7 +462,7 @@ class TrailingStopBacktester:
                 )
                 
                 if adx >= 30 and atr_percentile >= 50 and direction:
-                    market_state['regime'] = 'TREND_CONTINUATION'
+                    market_state['regime'] = 'TRENDING'
                 
                 # Check exit conditions
                 for position in self.open_positions[:]:

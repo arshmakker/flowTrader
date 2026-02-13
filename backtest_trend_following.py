@@ -153,7 +153,7 @@ def iv_percentile_from_vol_history(historical_vols: List[float], current_vol: fl
                                   min_samples: int = 20) -> float:
     """
     Compute IV-percentile-like value from volatility proxy history (same formula as production).
-    If fewer than min_samples historical values, return 50 (neutral) so CONVEX/INCOME don't trigger on thin data.
+    If fewer than min_samples historical values, return 50 (neutral) for percentile rank.
     """
     if not historical_vols or len(historical_vols) < min_samples:
         return 50.0
@@ -382,7 +382,7 @@ class TrendFollowingBacktester:
     def _compute_daily_vol_proxy(self, candles: pd.DataFrame, atr_period: int = 14) -> Optional[float]:
         """
         Compute a daily volatility proxy from 15m candles (ATR(14) / close) for IV proxy in backtest.
-        Used when no IV data or daily_metrics: allows CONVEX/INCOME regime testing via percentile rank.
+        Used when no IV data or daily_metrics: allows regime testing via percentile rank (two-fork: TRENDING/SIDEWAYS).
         Returns volatility as fraction (e.g. 0.02 for 2%) or None if insufficient data.
         """
         if candles is None or len(candles) < atr_period + 1:
@@ -421,9 +421,9 @@ class TrendFollowingBacktester:
         Returns:
             (can_enter, direction) or (False, None)
         """
-        # Check regime
+        # Check regime (two-fork: TRENDING only for trend strategy)
         regime = market_state.get('regime')
-        if regime != 'TREND_CONTINUATION':
+        if regime != 'TRENDING':
             return False, None
         
         # Check ADX (stricter on high-vol days: require ADX >= 40 when ATR% >= 90; or use min_adx_entry override)
@@ -578,7 +578,7 @@ class TrendFollowingBacktester:
         if EXIT_ON_REGIME_CHANGE and not (IGNORE_REGIME_CHANGE_WHEN_IN_PROFIT and current_pnl > 0):
             if 'regime_change_count' not in position:
                 position['regime_change_count'] = 0
-            if regime != 'TREND_CONTINUATION':
+            if regime != 'TRENDING':
                 position['regime_change_count'] = position.get('regime_change_count', 0) + 1
                 if position['regime_change_count'] >= REGIME_CHANGE_CONFIRMATION_CHECKS:
                     return True, 'REGIME_CHANGE'
@@ -690,19 +690,17 @@ class TrendFollowingBacktester:
             end_date: End date in YYYYMMDD format
             check_interval_minutes: How often to check for entry/exit (default: 15 minutes)
             iv_csv_path: Optional path to CSV with columns date (YYYYMMDD), iv_percentile (0-100).
-                         If provided, all four regimes (CONVEX, INCOME, TREND, NEUTRAL) are tested
-                         using production thresholds. If not provided, IV is None so only TREND
-                         and NEUTRAL can trigger (CONVEX/INCOME need IV).
+                         Two-fork regime: TRENDING (trend conditions) or SIDEWAYS (else).
         """
         logger.info(f"Starting backtest from {start_date} to {end_date}")
         self._iv_by_date = load_backtest_iv_csv(iv_csv_path) if iv_csv_path else {}
         self._india_vix_by_date = {}  # date_str -> India VIX (from daily_metrics when present)
         self._daily_vol_by_date = {}  # date_str -> daily vol proxy (for IV proxy when no IV data)
         if self._iv_by_date:
-            logger.info(f"Loaded IV for {len(self._iv_by_date)} dates from {iv_csv_path} (testing all four regimes)")
+            logger.info(f"Loaded IV for {len(self._iv_by_date)} dates from {iv_csv_path}")
         else:
             logger.info(
-                "No IV CSV: will use daily_metrics.json when present, else compute IV proxy from volatility (testing all four regimes)"
+                "No IV CSV: will use daily_metrics.json when present, else compute IV proxy from volatility"
             )
         
         start = datetime.strptime(start_date, '%Y%m%d').date()
@@ -714,12 +712,10 @@ class TrendFollowingBacktester:
         current_date = start
         check_interval = timedelta(minutes=check_interval_minutes)
         last_processed_price = None  # Track last candle close price for end-of-backtest closing
-        # Per-day regime tracking: all four regimes (CONVEX, INCOME, TREND_CONTINUATION, NEUTRAL)
+        # Per-day regime tracking: two regimes (TRENDING, SIDEWAYS)
         self._days_with_data = set()
-        self._days_with_convex = set()
-        self._days_with_income = set()
-        self._days_with_trend = set()
-        self._days_with_neutral = set()
+        self._days_with_trending = set()
+        self._days_with_sideways = set()
         # ATR and ADX range over the backtest data (all bars where indicators were computed)
         self._atr_values = []
         self._adx_values = []
@@ -772,10 +768,8 @@ class TrendFollowingBacktester:
             
             self._days_with_data.add(date_str)
             self._trades_entered_today = 0  # Reset per day for MAX_TREND_TRADES_PER_DAY
-            had_convex_today = False
-            had_income_today = False
-            had_trend_today = False
-            had_neutral_today = False
+            had_trending_today = False
+            had_sideways_today = False
             # IV for regime: use CSV if provided; else daily_metrics if present; else volatility proxy
             if date_str not in self._iv_by_date:
                 daily_metrics = load_daily_metrics(date_str)
@@ -834,7 +828,7 @@ class TrendFollowingBacktester:
                 # Use production regime classifier (optional IV / India VIX from CSV or daily_metrics)
                 iv_pct = self._iv_by_date.get(date_str) if getattr(self, '_iv_by_date', None) else None
                 india_vix = getattr(self, '_india_vix_by_date', {}).get(date_str)
-                # Backtest: when India VIX not available, use synthetic 14 for CONVEX/INCOME eligibility
+                # Backtest: when India VIX not available, use synthetic 14 (two-fork ignores VIX for regime)
                 if india_vix is None:
                     india_vix = 14.0
                 regime = classify_regime_from_indicators(
@@ -845,14 +839,10 @@ class TrendFollowingBacktester:
                     ema_direction=direction,
                     india_vix=india_vix,
                 )
-                if regime == 'CONVEX':
-                    had_convex_today = True
-                elif regime == 'INCOME':
-                    had_income_today = True
-                elif regime == 'TREND_CONTINUATION':
-                    had_trend_today = True
+                if regime == 'TRENDING':
+                    had_trending_today = True
                 else:
-                    had_neutral_today = True
+                    had_sideways_today = True
 
                 market_state = {
                     'spot_price': current_price,
@@ -979,14 +969,10 @@ class TrendFollowingBacktester:
                                 f"Lots={position_info['lots']}, SL={position_info['stop_loss_price']:.2f}"
                             )
             
-            if had_convex_today:
-                self._days_with_convex.add(date_str)
-            if had_income_today:
-                self._days_with_income.add(date_str)
-            if had_trend_today:
-                self._days_with_trend.add(date_str)
-            if had_neutral_today:
-                self._days_with_neutral.add(date_str)
+            if had_trending_today:
+                self._days_with_trending.add(date_str)
+            if had_sideways_today:
+                self._days_with_sideways.add(date_str)
 
             current_date += timedelta(days=1)
         
@@ -1117,19 +1103,15 @@ class TrendFollowingBacktester:
             report['hybrid_breakeven_threshold_atr'] = self._hybrid_breakeven_atr
             report['max_position_size'] = self._max_position_size
             report['max_risk_pct_of_capital'] = self._max_risk_pct
-        # Regime-per-day stats (all four regimes; same for all scenarios)
+        # Regime-per-day stats (two regimes: TRENDING, SIDEWAYS)
         if hasattr(self, '_days_with_data'):
             n = len(self._days_with_data)
             report['days_with_data'] = n
             if n:
-                report['days_with_convex'] = len(getattr(self, '_days_with_convex', set()))
-                report['days_with_income'] = len(getattr(self, '_days_with_income', set()))
-                report['days_with_trend'] = len(getattr(self, '_days_with_trend', set()))
-                report['days_with_neutral'] = len(getattr(self, '_days_with_neutral', set()))
-                report['prob_convex_per_day_pct'] = report['days_with_convex'] / n * 100.0
-                report['prob_income_per_day_pct'] = report['days_with_income'] / n * 100.0
-                report['prob_trend_per_day_pct'] = report['days_with_trend'] / n * 100.0
-                report['prob_neutral_per_day_pct'] = report['days_with_neutral'] / n * 100.0
+                report['days_with_trending'] = len(getattr(self, '_days_with_trending', set()))
+                report['days_with_sideways'] = len(getattr(self, '_days_with_sideways', set()))
+                report['prob_trending_per_day_pct'] = report['days_with_trending'] / n * 100.0
+                report['prob_sideways_per_day_pct'] = report['days_with_sideways'] / n * 100.0
                 report['prob_at_least_one_regime_per_day'] = 100.0  # every day has at least one bar with some regime
         # ATR and ADX range in the data (all bars where indicators were computed)
         if hasattr(self, '_atr_values') and self._atr_values:
@@ -1299,16 +1281,14 @@ def run_comparison(start_date: str = '20251222', end_date: str = '20260116',
     print(f"Best net P&L: {best.get('scenario_name', 'default')} — ₹{best['total_pnl']:,.2f}")
     print("=" * 95)
 
-    # Probability of at least one of each regime per day (all four regimes; from backtest)
+    # Probability of at least one of each regime per day (two regimes: TRENDING, SIDEWAYS)
     r0 = results[0] if results else {}
     if r0.get('days_with_data') is not None:
         n_days = r0['days_with_data']
-        print("\nRegime per day (backtest, all four regimes):")
+        print("\nRegime per day (backtest, two regimes):")
         print(f"  Trading days with data: {n_days}")
-        print(f"  Days with ≥1 CONVEX:           {r0.get('days_with_convex', 0):3d}  → P(CONVEX per day)           = {r0.get('prob_convex_per_day_pct', 0):.1f}%")
-        print(f"  Days with ≥1 INCOME:           {r0.get('days_with_income', 0):3d}  → P(INCOME per day)           = {r0.get('prob_income_per_day_pct', 0):.1f}%")
-        print(f"  Days with ≥1 TREND_CONTINUATION: {r0.get('days_with_trend', 0):3d}  → P(TREND_CONTINUATION per day) = {r0.get('prob_trend_per_day_pct', 0):.1f}%")
-        print(f"  Days with ≥1 NEUTRAL:          {r0.get('days_with_neutral', 0):3d}  → P(NEUTRAL per day)          = {r0.get('prob_neutral_per_day_pct', 0):.1f}%")
+        print(f"  Days with ≥1 TRENDING:  {r0.get('days_with_trending', 0):3d}  → P(TRENDING per day)  = {r0.get('prob_trending_per_day_pct', 0):.1f}%")
+        print(f"  Days with ≥1 SIDEWAYS: {r0.get('days_with_sideways', 0):3d}  → P(SIDEWAYS per day) = {r0.get('prob_sideways_per_day_pct', 0):.1f}%")
         print(f"  P(at least one of any regime per day): 100.0% (every bar has a regime)")
     # ATR and ADX range in the backtest data
     if r0.get('atr_min') is not None:
@@ -1340,10 +1320,8 @@ def run_comparison(start_date: str = '20251222', end_date: str = '20260116',
         'check_interval_minutes': check_interval_minutes,
         'regime_per_day': {
             'days_with_data': results[0].get('days_with_data'),
-            'days_with_convex': results[0].get('days_with_convex'),
-            'days_with_income': results[0].get('days_with_income'),
-            'days_with_trend': results[0].get('days_with_trend'),
-            'days_with_neutral': results[0].get('days_with_neutral'),
+            'days_with_trending': results[0].get('days_with_trending'),
+            'days_with_sideways': results[0].get('days_with_sideways'),
             'prob_convex_per_day_pct': results[0].get('prob_convex_per_day_pct'),
             'prob_income_per_day_pct': results[0].get('prob_income_per_day_pct'),
             'prob_trend_per_day_pct': results[0].get('prob_trend_per_day_pct'),

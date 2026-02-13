@@ -884,24 +884,18 @@ def _log_strategy_decision(regime: str, neutral_sub_state: str, strategy_allowed
 
 def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=1000000.0):
     """
-    Run strategy check with regime detection and routing.
-    
-    This function:
-    1. Gets NIFTY spot price
-    2. Builds market state
-    3. Detects regime
-    4. Routes to appropriate strategy based on regime:
-       - INCOME regime → Iron Condor
-       - CONVEX regime → Convex Backspread
-       - NEUTRAL regime → No new trades
-    5. Enforces mutual exclusion
-    
+    Run strategy check with regime detection and routing (two-fork model).
+
+    TRENDING → Convex Backspread only.
+    SIDEWAYS → Iron Condor only.
+    Enforces mutual exclusion between Convex and Iron Condor.
+
     Args:
         api: ShoonyaApiPy instance
         symbol_manager: SymbolManager instance
         position_tracker: Optional IronCondorPositionTracker instance
         capital: Total capital allocated (default: ₹10L)
-    
+
     Returns:
         dict: Trade proposal or None if no valid trade found
     """
@@ -948,24 +942,16 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             pass
         # #endregion
         regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
-        regime = regime_info.get('regime', 'NEUTRAL')
+        regime = regime_info.get('regime', 'SIDEWAYS')
+        # Normalize legacy name for two-fork
+        if regime == 'TREND_CONTINUATION':
+            regime = 'TRENDING'
+        if regime not in ('TRENDING', 'SIDEWAYS'):
+            regime = 'SIDEWAYS'
         detected_regime = regime_info.get('detected_regime', regime)
-        
-        # Step 5a: Determine NEUTRAL sub-state
-        neutral_sub_state = None
-        if regime == "NEUTRAL":
-            neutral_sub_state = _determine_neutral_sub_state(market_state, regime_info)
-            # #region agent log
-            import json
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"strategy_runner.py:884","message":"NEUTRAL sub-state determined","data":{"neutral_sub_state":neutral_sub_state,"adx_14":market_state.get('adx_14'),"iv_percentile":market_state.get('iv_percentile'),"atr_percentile":regime_info.get('atr_percentile'),"range_state":regime_info.get('range_state')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S2"})+"\n")
-            except: pass
-            # #endregion
-        
+        neutral_sub_state = None  # Unused in two-fork
+
         logger.info(f"Regime: {regime} (detected: {detected_regime})")
-        if neutral_sub_state:
-            logger.info(f"  NEUTRAL sub-state: {neutral_sub_state}")
         logger.info(f"  IV Percentile: {regime_info.get('iv_percentile', 'N/A'):.1f}%")
         logger.info(f"  ADX: {regime_info.get('adx', 'N/A'):.1f}")
         logger.info(f"  ATR Percentile: {regime_info.get('atr_percentile', 'N/A')}")
@@ -998,224 +984,39 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         except: pass
         # #endregion
         
-        # Step 6: Route based on regime
+        # Step 6: Route based on regime (two-fork: TRENDING → Convex, SIDEWAYS → Iron Condor)
         no_trade_reason = None
         strategy_allowed = []
         strategy_executed = None
-        
-        # #region agent log
-        import json
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"strategy_runner.py:910","message":"Strategy routing decision","data":{"regime":regime,"neutral_sub_state":neutral_sub_state,"has_position_tracker":position_tracker is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S3"})+"\n")
-        except: pass
-        # #endregion
-        
-        if regime == "INCOME":
-            strategy_allowed.append("IRON_CONDOR")
-            # Check mutual exclusion
-            if not can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker):
-                no_trade_reason = "MUTUAL_EXCLUSION"
-                logger.info("Iron Condor blocked by mutual exclusion")
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                return None
-            
-            # Run Iron Condor strategy
-            trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
-            strategy_executed = "IRON_CONDOR" if trade_proposal else None
-            if not trade_proposal:
-                no_trade_reason = "NO_VALID_TRADE"
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"strategy_runner.py:925","message":"Iron Condor strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S4"})+"\n")
-            except: pass
-            # #endregion
-            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
-            return trade_proposal
-        
-        elif regime == "CONVEX":
+
+        if regime == "TRENDING":
             strategy_allowed.append("CALL_BACKSPREAD")
-            # Check mutual exclusion
             if not can_enter_strategy(STRATEGY_CONVEX, position_tracker):
                 no_trade_reason = "MUTUAL_EXCLUSION"
                 logger.info("Convex strategy blocked by mutual exclusion")
                 _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
                 return None
-            
-            # Run Convex Backspread strategy (regime at entry = CONVEX)
-            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='CONVEX')
+            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='TRENDING')
             strategy_executed = "CALL_BACKSPREAD" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"strategy_runner.py:942","message":"Convex Backspread strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S5"})+"\n")
-            except: pass
-            # #endregion
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
-        
-        elif regime == "TREND_CONTINUATION":
-            strategy_allowed.append("TREND_FOLLOW_FUTURE")
-            # Check mutual exclusion
-            if not can_enter_strategy(STRATEGY_TREND, position_tracker):
+        else:
+            # SIDEWAYS → Iron Condor
+            strategy_allowed.append("IRON_CONDOR")
+            if not can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker):
                 no_trade_reason = "MUTUAL_EXCLUSION"
-                logger.info("Trend strategy blocked by mutual exclusion")
+                logger.info("Iron Condor blocked by mutual exclusion")
                 _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
                 return None
-            
-            # Run Trend Following Futures strategy
-            trade_proposal = _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_state, capital)
-            strategy_executed = "TREND_FOLLOW_FUTURE" if trade_proposal else None
+            trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
+            strategy_executed = "IRON_CONDOR" if trade_proposal else None
             if not trade_proposal:
                 no_trade_reason = "NO_VALID_TRADE"
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"strategy_runner.py:959","message":"Trend Follow strategy result","data":{"has_trade_proposal":trade_proposal is not None,"strategy_executed":strategy_executed,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S6"})+"\n")
-            except: pass
-            # #endregion
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
             return trade_proposal
-        
-        else:  # NEUTRAL
-            # Check if calendar is allowed in NEUTRAL_ACTIVE
-            if neutral_sub_state == "NEUTRAL_ACTIVE" and ENABLE_NEUTRAL_CALENDAR:
-                strategy_allowed.append("ATM_CALL_CALENDAR")
-                # Check mutual exclusion
-                if not can_enter_strategy(STRATEGY_CALENDAR, position_tracker):
-                    no_trade_reason = "MUTUAL_EXCLUSION"
-                    logger.info("Calendar strategy blocked by mutual exclusion")
-                    _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                    return None
-                
-                # Run Calendar strategy
-                trade_proposal = _run_neutral_calendar_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime_info)
-                strategy_executed = "ATM_CALL_CALENDAR" if trade_proposal else None
-                if trade_proposal:
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":True,"strategy_executed":strategy_executed},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
-                    except: pass
-                    # #endregion
-                    _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
-                    return trade_proposal
 
-                # No valid calendar trade: try other regimes (Trend -> Convex -> Iron Condor)
-                no_trade_reason = "NO_VALID_TRADE"
-                logger.info("Calendar had no valid trade; checking other regimes (Trend, Convex, Iron Condor)")
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:978","message":"Calendar strategy result","data":{"has_trade_proposal":False,"strategy_executed":None,"no_trade_reason":no_trade_reason},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"S7"})+"\n")
-                except: pass
-                # #endregion
-
-                # Fallback 1: Try Trend
-                # #region agent log
-                try:
-                    _ce_trend = can_enter_strategy(STRATEGY_TREND, position_tracker)
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_trend","message":"NEUTRAL fallback Trend","data":{"can_enter":_ce_trend},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
-                except Exception as _e:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_trend","message":"NEUTRAL fallback Trend","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
-                    _ce_trend = False
-                # #endregion
-                if _ce_trend:
-                    strategy_allowed.append("TREND_FOLLOW_FUTURE")
-                    trade_proposal = _run_trend_follow_strategy(api, symbol_manager, position_tracker, market_state, capital)
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"strategy_runner.py:fallback_trend_run","message":"Trend run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
-                    except: pass
-                    # #endregion
-                    if trade_proposal:
-                        strategy_executed = "TREND_FOLLOW_FUTURE"
-                        logger.info("NEUTRAL fallback: Trend strategy produced valid trade")
-                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
-                        return trade_proposal
-                    logger.info("NEUTRAL fallback: Trend had no valid trade")
-
-                # Fallback 2: Try Convex
-                # #region agent log
-                try:
-                    _ce_convex = can_enter_strategy(STRATEGY_CONVEX, position_tracker)
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_convex","message":"NEUTRAL fallback Convex","data":{"can_enter":_ce_convex},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
-                except Exception as _e:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_convex","message":"NEUTRAL fallback Convex","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
-                    _ce_convex = False
-                # #endregion
-                if _ce_convex:
-                    strategy_allowed.append("CALL_BACKSPREAD")
-                    trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='NEUTRAL')
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"strategy_runner.py:fallback_convex_run","message":"Convex run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
-                    except: pass
-                    # #endregion
-                    if trade_proposal:
-                        strategy_executed = "CALL_BACKSPREAD"
-                        logger.info("NEUTRAL fallback: Convex Backspread produced valid trade")
-                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
-                        return trade_proposal
-                    logger.info("NEUTRAL fallback: Convex had no valid trade")
-
-                # Fallback 3: Try Iron Condor
-                # #region agent log
-                try:
-                    _ce_iron = can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker)
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_iron","message":"NEUTRAL fallback Iron Condor","data":{"can_enter":_ce_iron},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H1"})+"\n")
-                except Exception as _e:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_iron","message":"NEUTRAL fallback Iron Condor","data":{"error":str(_e)},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H3"})+"\n")
-                    _ce_iron = False
-                # #endregion
-                if _ce_iron:
-                    strategy_allowed.append("IRON_CONDOR")
-                    trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"strategy_runner.py:fallback_iron_run","message":"Iron Condor run result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H2"})+"\n")
-                    except: pass
-                    # #endregion
-                    if trade_proposal:
-                        strategy_executed = "IRON_CONDOR"
-                        logger.info("NEUTRAL fallback: Iron Condor produced valid trade")
-                        _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, None, regime_info)
-                        return trade_proposal
-                    logger.info("NEUTRAL fallback: Iron Condor had no valid trade")
-
-                # All fallbacks failed
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:fallback_all_failed","message":"NEUTRAL fallback all failed","data":{"strategy_allowed":strategy_allowed},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H4"})+"\n")
-                except: pass
-                # #endregion
-                no_trade_reason = "NO_VALID_TRADE"
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                return None
-            else:
-                # NEUTRAL_PASSIVE or calendar disabled - stand aside
-                no_trade_reason = _determine_no_trade_reason(market_state, regime_info, neutral_sub_state)
-                if neutral_sub_state == "NEUTRAL_PASSIVE":
-                    no_trade_reason = "NEUTRAL_PASSIVE"
-                elif not ENABLE_NEUTRAL_CALENDAR:
-                    no_trade_reason = "CALENDAR_DISABLED"
-                logger.info(f"NEUTRAL regime: No new trades allowed (reason: {no_trade_reason})")
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                return None
-        
     except Exception as e:
         logger.error(f"Error in regime-based strategy execution: {str(e)}", exc_info=True)
         return None

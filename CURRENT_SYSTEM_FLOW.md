@@ -2,14 +2,14 @@
 
 ## 📋 System Overview
 
-A regime-aware automated options trading system that:
+A regime-aware automated options trading system (two-fork branch) that:
 - Collects real-time market data
-- Detects market regimes (CONVEX, INCOME, NEUTRAL)
-- Routes to appropriate strategies based on regime:
-  - **INCOME regime** → Iron Condor (credit spread)
-  - **CONVEX regime** → Convex Backspread (debit spread)
-  - **NEUTRAL regime** → No new trades
-- Enforces mutual exclusion between strategies
+- Detects **two regimes only**: **TRENDING** and **SIDEWAYS**
+- Routes by regime:
+  - **TRENDING** → Convex Backspread only
+  - **SIDEWAYS** → Iron Condor only
+- Trend Following Futures and Neutral Calendar are **disabled** (no entry, no position monitoring)
+- Enforces mutual exclusion between Convex and Iron Condor
 - Tracks positions and manages exits automatically
 - Logs performance by regime
 
@@ -25,18 +25,18 @@ main.py (Entry Point)
 ├── Symbol Manager (SymbolManager)
 ├── Data Collector (DataCollector)
 ├── Position Tracker (IronCondorPositionTracker)
-└── Strategy Runner (run_strategy_with_regime)
-    ├── Regime Detector (RegimeDetector)
-    ├── Iron Condor Strategy (INCOME regime)
-    │   ├── Eligibility Check
-    │   ├── Strike Selection
-    │   ├── Payoff Validation
-    │   ├── Position Sizing
-    │   └── Margin Calculation
-    └── Convex Backspread Strategy (CONVEX regime)
-        ├── Strike Selection
-        ├── Payoff Validation
-        └── Position Sizing
+    └── Strategy Runner (run_strategy_with_regime)
+        ├── Regime Detector (RegimeDetector) → TRENDING or SIDEWAYS only
+        ├── Iron Condor Strategy (SIDEWAYS regime)
+        │   ├── Eligibility Check
+        │   ├── Strike Selection
+        │   ├── Payoff Validation
+        │   ├── Position Sizing
+        │   └── Margin Calculation
+        └── Convex Backspread Strategy (TRENDING regime)
+            ├── Strike Selection
+            ├── Payoff Validation
+            └── Position Sizing
 ```
 
 ---
@@ -81,11 +81,10 @@ WHILE True (every 1 second):
 │       ├── Get available expiries (up to 7)
 │       ├── Fetch option chain (30 strikes)
 │       ├── Build market state (IV%, ADX, DTE, etc.)
-│       ├── Detect Regime (CONVEX/INCOME/NEUTRAL)
+│       ├── Detect Regime (TRENDING or SIDEWAYS only)
 │       └── Route by regime:
-│           ├── INCOME → Iron Condor (if no Convex active)
-│           ├── CONVEX → Convex Backspread (if no Iron Condor active)
-│           └── NEUTRAL → No trades
+│           ├── TRENDING → Convex Backspread (if can enter)
+│           └── SIDEWAYS → Iron Condor (if can enter)
 │
 └── [Every 1 minute] Position Monitoring
     ├── Get active positions
@@ -133,24 +132,14 @@ detect_regime(market_state, recent_candles, api, symbol_manager)
 │   ├── Rolling average range (last 20 candles)
 │   └── Range state: COMPRESSED if last_range < (rolling_avg × 0.6)
 │
-└── Determine regime:
-    ├── CONVEX: 
-    │   ├── IV Percentile < 40%
-    │   ├── ATR Percentile < 25%
-    │   └── Range COMPRESSED (< 60% of rolling average)
-    │
-    ├── INCOME:
-    │   ├── IV Percentile > 60%
-    │   ├── ADX < 20 (low trend strength)
-    │   └── ATR Percentile < 50% (ATR not expanding)
-    │
-    └── NEUTRAL: Everything else
+└── Determine regime (two-fork only):
+    ├── TRENDING: ADX ≥ threshold, ATR% ≥ threshold, EMA directional bias
+    └── SIDEWAYS: Everything else (no VIX-based CONVEX/INCOME/NEUTRAL)
 ```
 
-**Regime Detection Logic:**
-- **CONVEX**: Low IV (< 40%), low ATR (< 25%), compressed range → Expect volatility expansion
-- **INCOME**: High IV (> 60%), low ADX (< 20), stable ATR → Range-bound, high premium
-- **NEUTRAL**: All other conditions → Wait for clearer signal
+**Regime Detection Logic (two-fork):**
+- **TRENDING**: Trend conditions (ADX, ATR%, EMA) → Convex Backspread only
+- **SIDEWAYS**: Everything else → Iron Condor only
 
 ---
 

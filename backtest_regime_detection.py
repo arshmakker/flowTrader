@@ -1,12 +1,10 @@
 """
 Regime Detection Validation Backtest
 
-Validates regime detection using production logic (classify_regime_from_indicators):
-- TREND-first hierarchy: TREND_CONTINUATION (ADX/ATR/EMA) overrides VIX
-- CONVEX when not TREND and India VIX < VIX_LOW (12); INCOME when not TREND and India VIX >= VIX_HIGH (18)
-- NEUTRAL: mid-band VIX or no edge
-- IV from CSV, daily_metrics.json, or volatility proxy when no IV data
-- Regime transitions and distribution report
+Validates regime detection using production logic (classify_regime_from_indicators).
+Two-fork: only two regimes — TRENDING (ADX/ATR/EMA trend conditions) and SIDEWAYS (everything else).
+IV from CSV, daily_metrics.json, or volatility proxy when no IV data.
+Regime transitions and distribution report.
 """
 
 import pandas as pd
@@ -311,7 +309,7 @@ class RegimeDetectionBacktester:
                     else:
                         self._iv_by_date[date_str] = 50.0
             iv_pct = self._iv_by_date.get(date_str)
-            # Backtest: when India VIX not available, use synthetic 14 for CONVEX/INCOME eligibility
+            # Backtest: when India VIX not available, use synthetic 14 (two-fork regime ignores VIX for routing)
             if date_str not in self._india_vix_by_date:
                 self._india_vix_by_date[date_str] = 14.0
             
@@ -369,22 +367,10 @@ class RegimeDetectionBacktester:
             if entry.get('regime_details', {}).get('range_state') == 'COMPRESSED':
                 range_compressed_count += 1
 
-        # CONVEX summary: triggered when not TREND and India VIX < VIX_LOW (12)
-        convex_triggered = regime_counts.get('CONVEX', 0)
-        convex_note = (
-            "CONVEX requires TREND not detected and India VIX < VIX_LOW (12). "
-            f"range_compressed was true in {range_compressed_count} bars (informational only)."
-        )
-
-        # INCOME summary: triggered when not TREND and India VIX >= VIX_HIGH (18)
-        income_triggered = regime_counts.get('INCOME', 0)
-        bars_adx_lt_20 = sum(1 for e in self.regime_history if (e.get('indicators') or {}).get('adx_14') is not None and e['indicators']['adx_14'] < 20)
-        iv_vals = [e.get('indicators', {}).get('iv_percentile') for e in self.regime_history]
-        iv_max = max((v for v in iv_vals if v is not None), default=None)
-        income_note = (
-            "INCOME requires TREND not detected and India VIX >= VIX_HIGH (18). "
-            f"In this run: IV% max={iv_max}, bars with ADX<20={bars_adx_lt_20} (informational)."
-        )
+        # Two-fork: TRENDING (trend conditions) vs SIDEWAYS (else)
+        trending_triggered = regime_counts.get('TRENDING', 0)
+        sideways_triggered = regime_counts.get('SIDEWAYS', 0)
+        trending_note = "TRENDING requires ADX/ATR/EMA trend conditions. SIDEWAYS = everything else."
 
         # Indicator statistics by regime
         indicator_stats = {}
@@ -419,11 +405,10 @@ class RegimeDetectionBacktester:
             'regime_distribution': regime_counts,
             'regime_percentages': {k: (v / len(self.regime_history)) * 100 
                                   for k, v in regime_counts.items()},
-            'convex_triggered': convex_triggered,
+            'trending_triggered': trending_triggered,
+            'sideways_triggered': sideways_triggered,
             'range_compressed_bars': range_compressed_count,
-            'convex_note': convex_note,
-            'income_triggered': income_triggered,
-            'income_note': income_note,
+            'trending_note': trending_note,
             'transitions': self.transitions,
             'transition_count': len(self.transitions),
             'indicator_stats': indicator_stats,
@@ -433,7 +418,7 @@ class RegimeDetectionBacktester:
 
 def main(start_date: str = '20251222', end_date: str = '20260116',
          iv_csv_path: Optional[str] = None) -> Dict:
-    """Run regime detection backtest with production logic. Optional IV CSV for CONVEX/INCOME."""
+    """Run regime detection backtest with production logic (two regimes: TRENDING, SIDEWAYS). Optional IV CSV."""
     backtester = RegimeDetectionBacktester()
     backtester.run_backtest(start_date, end_date, check_interval_minutes=15, iv_csv_path=iv_csv_path)
     report = backtester.generate_report()
@@ -446,12 +431,11 @@ def main(start_date: str = '20251222', end_date: str = '20260116',
     for regime, count in report['regime_distribution'].items():
         pct = report['regime_percentages'].get(regime, 0)
         print(f"  {regime}: {count} ({pct:.1f}%)")
-    convex_triggered = report.get('convex_triggered', 0)
-    print(f"\nCONVEX triggered: {convex_triggered} bars")
-    print(f"  {report.get('convex_note', '')}")
-    income_triggered = report.get('income_triggered', 0)
-    print(f"\nINCOME triggered: {income_triggered} bars")
-    print(f"  {report.get('income_note', '')}")
+    trending_triggered = report.get('trending_triggered', 0)
+    sideways_triggered = report.get('sideways_triggered', 0)
+    print(f"\nTRENDING triggered: {trending_triggered} bars")
+    print(f"SIDEWAYS triggered: {sideways_triggered} bars")
+    print(f"  {report.get('trending_note', '')}")
 
     print(f"\nRegime Transitions: {report['transition_count']}")
     if report['transitions']:
