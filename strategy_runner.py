@@ -13,6 +13,9 @@ import json
 import re
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
+import uuid
+import gzip
+import io
 
 try:
     from zoneinfo import ZoneInfo
@@ -736,6 +739,24 @@ def save_trade_proposal(trade_proposal, output_dir='trade_proposals'):
         logger.error(f"Error saving trade proposal: {str(e)}")
 
 
+def _save_option_snapshot(option_chain_df, trade_id):
+    """
+    Save option chain snapshot as gzipped JSON and return file path.
+    """
+    try:
+        date_dir = datetime.now().strftime('%Y%m%d')
+        path_dir = os.path.join('option_snapshots', date_dir)
+        os.makedirs(path_dir, exist_ok=True)
+        filename = os.path.join(path_dir, f"{trade_id}_option_chain.json.gz")
+        with gzip.open(filename, 'wt', encoding='utf-8') as f:
+            # Use records orientation for easy loading
+            f.write(option_chain_df.to_json(orient='records', date_format='iso'))
+        return filename
+    except Exception as e:
+        logger.error(f"Could not save option snapshot for {trade_id}: {e}")
+        return None
+
+
 def _determine_neutral_sub_state(market_state: Dict, regime_info: Dict) -> str:
     """
     Determine NEUTRAL sub-state based on market conditions
@@ -984,38 +1005,175 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         except: pass
         # #endregion
         
-        # Step 6: Route based on regime (two-fork: TRENDING → Convex, SIDEWAYS → Iron Condor)
-        no_trade_reason = None
+        # Step 6: Route to strategies. Allow concurrent proposals from multiple strategies.
+        # Collect proposals from Convex and Iron Condor and commit accepted proposals.
+        proposals = {}
         strategy_allowed = []
-        strategy_executed = None
 
-        if regime == "TRENDING":
+        # Attempt Convex generator (run even if regime is SIDEWAYS to support concurrent execution)
+        try:
             strategy_allowed.append("CALL_BACKSPREAD")
-            if not can_enter_strategy(STRATEGY_CONVEX, position_tracker):
-                no_trade_reason = "MUTUAL_EXCLUSION"
-                logger.info("Convex strategy blocked by mutual exclusion")
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                return None
-            trade_proposal = _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime='TRENDING')
-            strategy_executed = "CALL_BACKSPREAD" if trade_proposal else None
-            if not trade_proposal:
-                no_trade_reason = "NO_VALID_TRADE"
-            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
-            return trade_proposal
-        else:
-            # SIDEWAYS → Iron Condor
+            convex_prop = _run_convex_backspread_strategy(
+                api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital,
+                regime='TRENDING' if regime == 'TRENDING' else None
+            )
+            if convex_prop:
+                proposals['CALL_BACKSPREAD'] = convex_prop
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, 'CALL_BACKSPREAD', None, regime_info)
+            else:
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'NO_VALID_TRADE', regime_info)
+        except Exception as e:
+            logger.error("Convex generator error: %s", e, exc_info=True)
+            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'EXCEPTION', regime_info)
+
+        # Attempt Iron Condor generator
+        try:
             strategy_allowed.append("IRON_CONDOR")
-            if not can_enter_strategy(STRATEGY_IRON_CONDOR, position_tracker):
-                no_trade_reason = "MUTUAL_EXCLUSION"
-                logger.info("Iron Condor blocked by mutual exclusion")
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, no_trade_reason, regime_info)
-                return None
-            trade_proposal = _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price)
-            strategy_executed = "IRON_CONDOR" if trade_proposal else None
-            if not trade_proposal:
-                no_trade_reason = "NO_VALID_TRADE"
-            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, strategy_executed, no_trade_reason, regime_info)
-            return trade_proposal
+            ic_prop = _run_iron_condor_strategy_internal(
+                api, symbol_manager, position_tracker, market_state, available_expiries, spot_price
+            )
+            if ic_prop:
+                proposals['IRON_CONDOR'] = ic_prop
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, 'IRON_CONDOR', None, regime_info)
+            else:
+                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'NO_VALID_TRADE', regime_info)
+        except Exception as e:
+            logger.error("Iron Condor generator error: %s", e, exc_info=True)
+            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'EXCEPTION', regime_info)
+
+        if not proposals:
+            logger.info("❌ No valid trade proposals returned by any strategy")
+            return None
+
+        # Commit accepted proposals: enrich, snapshot option chain, estimate margin, save, and add to tracker.
+        accepted_ids = []
+        decision_entries = {}
+        combined_margin = 0.0
+
+        for name, prop in proposals.items():
+            try:
+                # attach stable trade id and metadata
+                tid = str(uuid.uuid4())
+                prop['trade_id'] = tid
+                prop['accepted_by'] = 'strategy_runner'
+                prop['commit_time'] = datetime.now().isoformat()
+
+                # attempt to capture option chain snapshot for replay/debug
+                prop['option_snapshot'] = None
+                try:
+                    exp = prop.get('expiry')
+                    spot = prop.get('entry_spot', spot_price)
+                    if exp:
+                        exp_date = _get_date_object(exp)
+                        opt_chain = get_option_chain_data(api, symbol_manager, spot, exp_date, count=50)
+                        if not opt_chain.empty:
+                            snap_path = _save_option_snapshot(opt_chain, tid)
+                            prop['option_snapshot'] = snap_path
+                except Exception as _e:
+                    logger.debug(f"Could not snapshot option chain for proposal {tid}: {_e}")
+
+                # margin estimate: try using known margin calculator if available
+                margin_est = None
+                try:
+                    from strategies.iron_condor import margin_calculator as ic_margin_mod
+                    if hasattr(ic_margin_mod, 'calculate_iron_condor_margin'):
+                        try:
+                            margin_est = ic_margin_mod.calculate_iron_condor_margin(prop)
+                        except Exception:
+                            margin_est = None
+                except Exception:
+                    margin_est = None
+
+                # fallback margin estimate: max_loss * lots * lot_size
+                if margin_est is None:
+                    lot_size = None
+                    if prop.get('lot_size'):
+                        lot_size = int(prop.get('lot_size'))
+                    else:
+                        # try to infer from legs
+                        try:
+                            lot_size = int(prop.get('legs', [])[0].get('quantity', 50))
+                        except Exception:
+                            lot_size = 50
+                    max_loss = float(prop.get('max_loss', 0.0) or 0.0)
+                    lots = int(prop.get('lots', 1) or 1)
+                    margin_est = max_loss * lots * lot_size
+
+                prop['margin_estimate'] = float(margin_est)
+                combined_margin += float(margin_est)
+
+                # save proposal using existing helper
+                save_trade_proposal(prop)
+
+                # also persist canonical by-id copy for quick lookup
+                out_dir = os.path.join('trade_proposals_by_id', datetime.now().strftime('%Y%m%d'))
+                os.makedirs(out_dir, exist_ok=True)
+                by_id_path = os.path.join(out_dir, f"{tid}.json")
+                try:
+                    with open(by_id_path, 'w') as f:
+                        json.dump(prop, f, indent=2, default=str)
+                except Exception as _e:
+                    logger.debug(f"Could not write by-id proposal file for {tid}: {_e}")
+
+                # add to tracker
+                if position_tracker is not None:
+                    try:
+                        position_tracker.add_position(prop)
+                    except Exception as _e:
+                        logger.error(f"Error adding proposal {tid} to position tracker: {_e}", exc_info=True)
+
+                accepted_ids.append(tid)
+
+                # record entry for combined decision
+                decision_entries[tid] = {
+                    'strategy': name,
+                    'lots': prop.get('lots'),
+                    'net_credit_total': prop.get('net_credit_total'),
+                    'margin_estimate': prop.get('margin_estimate'),
+                    'trade_file': by_id_path,
+                    'option_snapshot': prop.get('option_snapshot')
+                }
+
+                logger.info(f"Accepted proposal from {name}: trade_id={tid}, lots={prop.get('lots')}, margin_est={margin_est:.2f}")
+
+            except Exception as e:
+                logger.error(f"Error committing proposal {name}: {e}", exc_info=True)
+
+        # Write combined decision entry (append to strategy_decisions.json)
+        decision_log_file = 'strategy_decisions.json'
+        decision_record = {
+            'timestamp': datetime.now().isoformat(),
+            'regime': regime,
+            'proposals': decision_entries,
+            'accepted_trade_ids': accepted_ids,
+            'combined_margin_estimate': combined_margin,
+            'market_state_snapshot': {
+                'iv_percentile': market_state.get('iv_percentile'),
+                'adx_14': market_state.get('adx_14'),
+                'atr_percentile': market_state.get('atr_percentile'),
+                'spot_price': market_state.get('spot_price'),
+                'expiry': market_state.get('expiry')
+            }
+        }
+        try:
+            decisions = []
+            if os.path.exists(decision_log_file):
+                try:
+                    with open(decision_log_file, 'r') as f:
+                        decisions = json.load(f)
+                except Exception:
+                    decisions = []
+            decisions.append(decision_record)
+            if len(decisions) > 2000:
+                decisions = decisions[-2000:]
+            with open(decision_log_file, 'w') as f:
+                json.dump(decisions, f, indent=2, default=str)
+        except Exception as e:
+            logger.error(f"Failed to write combined decision record: {e}", exc_info=True)
+
+        # Return all proposals (dict). For backward compatibility, callers expecting a single proposal
+        # can take the first value from the returned dict.
+        return proposals
 
     except Exception as e:
         logger.error(f"Error in regime-based strategy execution: {str(e)}", exc_info=True)
