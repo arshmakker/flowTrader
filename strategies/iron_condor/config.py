@@ -7,7 +7,7 @@ IV_PERCENTILE_MIN = 50  # Expanded from 55 to allow more opportunities
 IV_PERCENTILE_MAX = 100  # Increased from 90 to 100 to allow all high IV conditions
 DAYS_TO_EXPIRY_MIN = 3
 DAYS_TO_EXPIRY_MAX = 30  # Expanded to include monthly expiries (was 6)
-ADX_THRESHOLD = 22
+ADX_THRESHOLD = 45  # Allow IC when ADX < 45 so both Convex and Iron Condor can run in same session (was 22)
 
 # Strike selection parameters
 SHORT_CALL_DELTA_MIN = 0.15

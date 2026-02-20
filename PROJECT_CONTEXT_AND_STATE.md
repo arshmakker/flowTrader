@@ -1,13 +1,13 @@
 ## Project context
 
 - **Name**: `regimetrader`
-- **Goal**: Multi-strategy trading system with regime detection that automatically routes to appropriate strategies based on market conditions. **Two-fork (this branch):** Only two regimes — **TRENDING** and **SIDEWAYS**. TRENDING → Convex Backspread only; SIDEWAYS → Iron Condor only. Trend Following Futures and Neutral Calendar are disabled in the main execution path. Includes market data collection, position tracking, and backtesting utilities.
+- **Goal**: Multi-strategy trading system with regime detection that automatically routes to appropriate strategies based on market conditions. **Two-fork (this branch):** Only two regimes — **TRENDING** and **SIDEWAYS**. TRENDING → Convex Backspread; SIDEWAYS → Iron Condor. **Convex and Iron Condor can run and hold positions at the same time** (no mutual exclusion between them). Trend Following Futures and Neutral Calendar are disabled in the main execution path. Includes market data collection, position tracking, and backtesting utilities.
 - **Market data layout**: `market_data_YYYYMMDD/raw_data/{futures,options,...}` with per-underlying option CSVs.
 - **Backtest**: `backtest_iron_condor.py` (Iron Condor), `backtest_trend_following.py` (Trend Futures with ATR profit target and hybrid trailing) run against stored tick data.
 
-## Current state (2026-02-08)
+## Current state (2026-02-19)
 
-**Two-fork branch:** Regime detector, strategy runner, main loop, position tracker (Convex exit), backtests, and docs updated for TRENDING/SIDEWAYS only; Trend Futures and Calendar disabled.
+**Two-fork branch:** Regime detector, strategy runner, main loop, position tracker (Convex exit), backtests, and docs updated for TRENDING/SIDEWAYS only; Trend Futures and Calendar disabled. **Convex and Iron Condor can run and hold positions at the same time** (mutual exclusion relaxed for these two; Calendar/Trend remain exclusive).
 
 ### Market hours: 3:30 PM IST (2026-02-06)
 
@@ -37,6 +37,15 @@ In the two-fork model, **Convex Backspread** is entered only when regime is **TR
 ### Iron Condor: SIDEWAYS regime only (two-fork, 2026-01-29)
 
 In the two-fork model, **Iron Condor** is entered only when regime is **SIDEWAYS** (non-trending). No separate INCOME/CONVEX/NEUTRAL; SIDEWAYS covers all non-trending conditions.
+
+### Ctrl+C summary (2026-02-19)
+
+On **KeyboardInterrupt** (Ctrl+C), the main loop now prints the same **end-of-day style summary** (today’s closed trades, total P&L, win rate, by strategy, by exit reason) via `generate_daily_trade_summary(logger)`, then lists **open positions** (strategy, trade_id, entry_time) from `active_positions.json`. Cleanup (stop collector, etc.) runs after the summary.
+
+### Convex + Iron Condor coexistence (2026-02-19)
+
+- **Both can run at the same time**: Convex and Iron Condor can each have open positions simultaneously. `strategies/strategy_exclusion.py`: `can_enter_strategy(IRON_CONDOR)` returns True when active strategy is NONE or CONVEX; `can_enter_strategy(CONVEX)` returns True when active is NONE, IRON_CONDOR, or CONVEX. When both have positions, `get_active_strategy_type()` returns CONVEX so both can still add. Calendar and Trend remain mutually exclusive with others.
+- **Iron Condor eligibility relaxed**: `strategies/iron_condor/config.py` — `ADX_THRESHOLD` raised from 22 to **45** so Iron Condor can pass eligibility when ADX is in the 22–45 range (e.g. moderate-trend sessions where Convex also runs). IC still requires IV 50–100%, days 3–30, NIFTY WEEKLY/MONTHLY, no major event.
 
 ### Regime Detection Backtest (2026-01-30)
 

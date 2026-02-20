@@ -23,7 +23,8 @@ DEBUG_LOG = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
 
 # Configuration
 MAX_NET_DEBIT_PCT = 0.0025  # 0.25% of spot value
-MAX_LOSS_PCT_OF_CAPITAL = 0.01  # 1% of total capital
+MAX_LOSS_PCT_OF_CAPITAL = 0.10  # 10% of total capital (₹1L for ₹10L capital)
+MIN_LOTS = 20  # Minimum 20 lots per trade
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
 MIN_DAYS_TO_EXPIRY = 2  # Don't enter if expiry within 2 days (OTM calls need time)
 
@@ -229,11 +230,14 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         # Calculate lot size
         lot_size = option_chain.iloc[0].get('lot_size', 50)
-        # When net credit/zero: max_loss_per_lot is 0, use 1 lot (conservative). When debit: size by max loss constraint.
+        # When net credit/zero: max_loss_per_lot is 0, use minimum lots. When debit: size by max loss constraint.
         if max_loss_per_lot <= 0:
-            lots = 1
+            lots = MIN_LOTS
         else:
             lots = int(max_allowed_loss / (max_loss_per_lot * lot_size))
+            # Ensure minimum lots
+            if lots < MIN_LOTS:
+                lots = MIN_LOTS
         if lots <= 0:
             logger.info("Position sizing resulted in 0 lots")
             # #region agent log

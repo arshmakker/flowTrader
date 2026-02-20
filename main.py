@@ -690,6 +690,26 @@ def main():
         except KeyboardInterrupt:
             logger.info("\n=== Received shutdown signal, cleaning up... ===")
             
+            # Summary of current trading and PnL (same format as end of day)
+            generate_daily_trade_summary(logger)
+            
+            # Show open positions if any
+            try:
+                if os.path.exists('active_positions.json'):
+                    with open('active_positions.json', 'r') as f:
+                        all_positions = json.load(f)
+                    open_positions = [p for p in all_positions if p.get('status') == 'OPEN']
+                    if open_positions:
+                        logger.info(f"\n{Fore.CYAN}Open positions ({len(open_positions)}):")
+                        for pos in open_positions:
+                            strat = pos.get('strategy', 'UNKNOWN')
+                            trade_id = pos.get('trade_id', '')[:19] if pos.get('trade_id') else ''
+                            entry = pos.get('entry_time', '')[:19] if pos.get('entry_time') else ''
+                            logger.info(f"  {strat}  trade_id: {trade_id}  entry: {entry}")
+                        logger.info("")
+            except Exception as e:
+                logger.debug(f"Could not list open positions: {e}")
+            
             # Stop data collection first
             if collector:
                 logger.info("Stopping data collection...")

@@ -1,0 +1,49 @@
+{
+  "strategy": "CALL_BACKSPREAD",
+  "book": "CONVEX",
+  "regime_at_entry": "TRENDING",
+  "expiry": "2026-02-24",
+  "legs": [
+    {
+      "position": "SHORT",
+      "option_type": "CE",
+      "strike": 25600.0,
+      "price": 146.55,
+      "quantity": 1,
+      "delta": 0.0,
+      "ltp": 146.7,
+      "bid": 146.4,
+      "ask": 146.7,
+      "oi": 13755430,
+      "volume": 233779585
+    },
+    {
+      "position": "LONG",
+      "option_type": "CE",
+      "strike": 25850.0,
+      "price": 48.650000000000006,
+      "quantity": 2,
+      "delta": 0.0,
+      "ltp": 48.75,
+      "bid": 48.6,
+      "ask": 48.7,
+      "oi": 6846840,
+      "volume": 62256350
+    }
+  ],
+  "max_loss": 0.0,
+  "max_loss_per_lot": 0.0,
+  "spot_price": 25604.35,
+  "net_debit": -49.25,
+  "net_debit_total": -64025.0,
+  "lots": 20,
+  "lot_size": "65",
+  "days_to_expiry": 4,
+  "generated_at": "2026-02-20T11:46:10.449119",
+  "entry_range_state": "EXPANDING",
+  "trade_id": "8daa0376-ef17-461c-ad65-f7a4e1afef34",
+  "accepted_by": "strategy_runner",
+  "commit_time": "2026-02-20T11:48:11.236353",
+  "option_snapshot": null,
+  "margin_estimate": 0.0
+}

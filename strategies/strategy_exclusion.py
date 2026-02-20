@@ -1,8 +1,8 @@
 """
 Strategy Mutual Exclusion Module
 
-Enforces hard mutual exclusion between Iron Condor and Convex strategies.
-Ensures only one strategy type can have active positions at a time.
+Convex and Iron Condor can run and hold positions at the same time.
+Calendar and Trend remain mutually exclusive with others (only one of those can be active).
 """
 
 import logging
@@ -72,29 +72,14 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
             elif strategy == 'TREND_FOLLOW_FUTURE' or book == 'TREND':
                 trend_active = True
         
-        # Mutual exclusion check - only one strategy type can be active
-        active_count = sum([iron_condor_active, convex_active, calendar_active, trend_active])
-        if active_count > 1:
-            logger.error(
-                f"CRITICAL: Multiple strategies have active positions! "
-                f"Iron Condor: {iron_condor_active}, Convex: {convex_active}, Calendar: {calendar_active}, Trend: {trend_active} "
-                "This violates mutual exclusion. Manual intervention required."
-            )
-            # Return priority order: Iron Condor > Convex > Trend > Calendar
-            if iron_condor_active:
-                return STRATEGY_IRON_CONDOR
-            elif convex_active:
-                return STRATEGY_CONVEX
-            elif trend_active:
-                return STRATEGY_TREND
-            else:
-                return STRATEGY_CALENDAR
-        
+        # Convex and Iron Condor can coexist. When both active, return CONVEX so can_enter_strategy allows both to add.
+        if iron_condor_active and convex_active:
+            return STRATEGY_CONVEX
         if iron_condor_active:
             return STRATEGY_IRON_CONDOR
-        elif convex_active:
+        if convex_active:
             return STRATEGY_CONVEX
-        elif trend_active:
+        if trend_active:
             return STRATEGY_TREND
         elif calendar_active:
             return STRATEGY_CALENDAR
@@ -108,47 +93,39 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
 
 def can_enter_strategy(strategy_type: str, position_tracker: Optional[IronCondorPositionTracker] = None) -> bool:
     """
-    Check if a strategy can enter new trades based on mutual exclusion rules.
-    
-    Args:
-        strategy_type: "IRON_CONDOR", "CONVEX", or "CALENDAR"
-        position_tracker: Optional IronCondorPositionTracker instance
-    
-    Returns:
-        True if strategy can enter, False if blocked
+    Check if a strategy can enter new trades.
+    Convex and Iron Condor can both enter when the other has positions (coexist).
+    Calendar and Trend can only enter when no other strategies have positions.
     """
     active_strategy = get_active_strategy_type(position_tracker)
     
     if active_strategy == STRATEGY_NONE:
-        # No active positions, allow entry
         return True
     
-    # Calendar can only enter if no other strategies active
+    # Calendar and Trend: only when no other strategies active
     if strategy_type == STRATEGY_CALENDAR:
         if active_strategy != STRATEGY_NONE:
             logger.info(f"Calendar blocked: {active_strategy} strategy has active positions")
             return False
         return True
     
-    if strategy_type == STRATEGY_IRON_CONDOR:
-        # Iron Condor can only enter if no other strategies active
-        if active_strategy != STRATEGY_NONE:
-            logger.info(f"Iron Condor blocked: {active_strategy} strategy has active positions")
-            return False
-        return True
-    
-    elif strategy_type == STRATEGY_CONVEX:
-        # Convex can only enter if no other strategies active
-        if active_strategy != STRATEGY_NONE:
-            logger.info(f"Convex strategy blocked: {active_strategy} strategy has active positions")
-            return False
-        return True
-    
-    elif strategy_type == STRATEGY_TREND:
-        # Trend can only enter if no other strategies active
+    if strategy_type == STRATEGY_TREND:
         if active_strategy != STRATEGY_NONE:
             logger.info(f"Trend strategy blocked: {active_strategy} strategy has active positions")
             return False
         return True
+    
+    # Convex and Iron Condor can run at the same time
+    if strategy_type == STRATEGY_IRON_CONDOR:
+        if active_strategy in (STRATEGY_NONE, STRATEGY_CONVEX):
+            return True
+        logger.info(f"Iron Condor blocked: {active_strategy} strategy has active positions")
+        return False
+    
+    if strategy_type == STRATEGY_CONVEX:
+        if active_strategy in (STRATEGY_NONE, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX):
+            return True
+        logger.info(f"Convex strategy blocked: {active_strategy} strategy has active positions")
+        return False
     
     return False
