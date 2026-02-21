@@ -361,6 +361,9 @@ def main():
         IV_CALCULATION_INTERVAL = 120  # Calculate IV every 2 minutes (120 seconds)
         last_iv_calculation = datetime.now()
         
+        # No new trades window - prevent entries in last 60 minutes before close
+        NO_NEW_TRADES_BEFORE_CLOSE_MINUTES = 60  # No new entries after 2:30 PM IST
+        
         # Flag to prevent re-entry after market close exit
         # Once we exit a position due to MARKET_CLOSE_APPROACHING, don't enter new trades for the rest of the day
         market_close_exit_triggered = False
@@ -368,6 +371,7 @@ def main():
         logger.info(Fore.CYAN + "Iron Condor strategy integration enabled")
         logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
         logger.info(f"IV calculations will run every {IV_CALCULATION_INTERVAL // 60} minutes to build historical data")
+        logger.info(f"No new trades window: Last {NO_NEW_TRADES_BEFORE_CLOSE_MINUTES} minutes before market close (no entries after 2:30 PM IST)")
         
         # Main loop - data collection and strategy checks
         try:
@@ -444,13 +448,31 @@ def main():
                 time_since_last_check = (current_time - last_strategy_check).total_seconds()
                 
                 if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
+                    # Check if we're in the no-new-trades window (last 60 minutes before close)
+                    now_ist = get_now_ist()
+                    market_close_time = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+                    minutes_to_close = (market_close_time - now_ist).total_seconds() / 60
+                    
+                    # Skip strategy checks if we're in no-new-trades window
+                    if minutes_to_close <= NO_NEW_TRADES_BEFORE_CLOSE_MINUTES and minutes_to_close > 0:
+                        logger.info(Fore.YELLOW + f"⏸️ No new trades window - {minutes_to_close:.0f} minutes until market close")
+                        last_strategy_check = current_time
                     # Skip strategy checks if we already exited for market close
-                    if market_close_exit_triggered:
+                    elif market_close_exit_triggered:
                         logger.debug("Skipping strategy check - market close exit already triggered, no new entries today")
+                        last_strategy_check = current_time
                     elif is_market_hours():
                         try:
                             logger.info(Fore.CYAN + "Running strategy check with regime detection...")
-                            trade_proposal = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=1000000.0)
+                            proposals = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=1000000.0)
+                            
+                            # Handle both dict (multiple proposals) and single proposal for backward compatibility
+                            if isinstance(proposals, dict):
+                                # Take the first available proposal
+                                trade_proposal = next(iter(proposals.values())) if proposals else None
+                            else:
+                                trade_proposal = proposals
+                            
                             if trade_proposal:
                                 strategy_name = trade_proposal.get('strategy', 'UNKNOWN')
                                 lots = trade_proposal.get('lots', 0)
