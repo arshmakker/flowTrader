@@ -8284,7 +8284,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8329,7 +8329,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T12:37:16.203406",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -20052.500000000022
   },
   {
     "trade_id": "2026-02-20T10:23:07.760422",
@@ -8340,7 +8344,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8385,7 +8389,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T12:37:55.982175",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -18167.50000000003
   },
   {
     "trade_id": "2026-02-20T10:28:31.573608",
@@ -8396,7 +8404,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8441,7 +8449,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T12:38:48.149510",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -28697.50000000006
   },
   {
     "trade_id": "2026-02-20T10:28:31.573608",
@@ -8452,7 +8464,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8497,7 +8509,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T12:39:33.397707",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -28242.50000000003
   },
   {
     "trade_id": "2026-02-20T10:36:03.976835",
@@ -8508,7 +8524,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8553,7 +8569,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T12:40:08.063160",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -25479.999999999993
   },
   {
     "trade_id": "2026-02-20T10:36:03.976835",
@@ -8564,7 +8584,7 @@
     "strategy": "CALL_BACKSPREAD",
     "book": "CONVEX",
     "regime_at_entry": "TRENDING",
-    "status": "OPEN",
+    "status": "CLOSED",
     "expiry": "2026-02-24",
     "legs": [
       {
@@ -8609,7 +8629,11 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T15:07:12.581525",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -19175.0
   },
   {
     "trade_id": "2026-02-20T10:44:50.098887",
@@ -8665,7 +8689,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T10:44:50.098887",
@@ -8721,7 +8746,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T10:55:26.006943",
@@ -8777,7 +8803,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T10:55:26.006943",
@@ -8833,7 +8860,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:10:37.233980",
@@ -8889,7 +8917,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:10:37.233980",
@@ -8945,7 +8974,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:20:53.696942",
@@ -9001,7 +9031,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:20:53.696942",
@@ -9057,7 +9088,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:32:44.095629",
@@ -9113,7 +9145,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:32:44.095629",
@@ -9169,7 +9202,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:46:10.449119",
@@ -9225,7 +9259,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T11:46:10.449119",
@@ -9281,7 +9316,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T12:00:38.803577",
@@ -9337,7 +9373,8 @@
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
-    "convex_peak_mtm": 0.0
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
   },
   {
     "trade_id": "2026-02-20T12:00:38.803577",
@@ -9390,6 +9427,1172 @@
     "entry_prices": {
       "CE25600": 144.275,
       "CE25850": 47.25
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T12:24:06.547159",
+    "entry_time": "2026-02-20T12:24:06.555139",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25648.4,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25650.0,
+        "price": 145.1,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 145.3,
+        "bid": 144.95,
+        "ask": 145.25,
+        "oi": 6195865,
+        "volume": 147948450
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25900.0,
+        "price": 46.900000000000006,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 46.85,
+        "bid": 46.85,
+        "ask": 46.95,
+        "oi": 9569690,
+        "volume": 101146240
+      }
+    ],
+    "entry_credit": -66689.99999999997,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25650": 145.1,
+      "CE25900": 46.900000000000006
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 21059.99999999997,
+    "exit_time": "2026-02-20T14:16:12.961975",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 10400.0
+  },
+  {
+    "trade_id": "2026-02-20T12:24:06.547159",
+    "entry_time": "2026-02-20T12:25:32.820839",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25648.4,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25650.0,
+        "price": 145.1,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 145.3,
+        "bid": 144.95,
+        "ask": 145.25,
+        "oi": 6195865,
+        "volume": 147948450
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25900.0,
+        "price": 46.900000000000006,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 46.85,
+        "bid": 46.85,
+        "ask": 46.95,
+        "oi": 9569690,
+        "volume": 101146240
+      }
+    ],
+    "entry_credit": -66689.99999999997,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25650": 145.1,
+      "CE25900": 46.900000000000006
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 19174.999999999964,
+    "exit_time": "2026-02-20T14:16:55.656520",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 9912.499999999982
+  },
+  {
+    "trade_id": "2026-02-20T12:51:50.149246",
+    "entry_time": "2026-02-20T12:51:50.153357",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25606.5,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 145.375,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 146.05,
+        "bid": 145.25,
+        "ask": 145.5,
+        "oi": 10460320,
+        "volume": 315506165
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 46.2,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 46.2,
+        "bid": 46.15,
+        "ask": 46.25,
+        "oi": 7494890,
+        "volume": 92498770
+      }
+    ],
+    "entry_credit": -68867.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 145.375,
+      "CE25850": 46.2
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 13844.99999999997,
+    "exit_time": "2026-02-20T13:58:15.185379",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 5459.999999999985
+  },
+  {
+    "trade_id": "2026-02-20T12:51:50.149246",
+    "entry_time": "2026-02-20T12:53:25.006773",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25606.5,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 145.375,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 146.05,
+        "bid": 145.25,
+        "ask": 145.5,
+        "oi": 10460320,
+        "volume": 315506165
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 46.2,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 46.2,
+        "bid": 46.15,
+        "ask": 46.25,
+        "oi": 7494890,
+        "volume": 92498770
+      }
+    ],
+    "entry_credit": -68867.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 145.375,
+      "CE25850": 46.2
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 14007.49999999997,
+    "exit_time": "2026-02-20T13:40:11.672816",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 7637.5
+  },
+  {
+    "trade_id": "2026-02-20T13:06:40.872784",
+    "entry_time": "2026-02-20T13:06:40.874942",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25582.7,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 128.825,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 129.05,
+        "bid": 128.7,
+        "ask": 128.95,
+        "oi": 11398270,
+        "volume": 330912075
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 39.650000000000006,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 39.8,
+        "bid": 39.6,
+        "ask": 39.7,
+        "oi": 7654530,
+        "volume": 97678555
+      }
+    ],
+    "entry_credit": -64382.49999999997,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 128.825,
+      "CE25850": 39.650000000000006
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T13:06:40.872784",
+    "entry_time": "2026-02-20T13:08:18.461716",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25582.7,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 128.825,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 129.05,
+        "bid": 128.7,
+        "ask": 128.95,
+        "oi": 11398270,
+        "volume": 330912075
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 39.650000000000006,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 39.8,
+        "bid": 39.6,
+        "ask": 39.7,
+        "oi": 7654530,
+        "volume": 97678555
+      }
+    ],
+    "entry_credit": -64382.49999999997,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 128.825,
+      "CE25850": 39.650000000000006
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T13:24:54.603046",
+    "entry_time": "2026-02-20T13:24:54.607663",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25539.85,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 142.675,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 142.45,
+        "bid": 142.55,
+        "ask": 142.8,
+        "oi": 4489615,
+        "volume": 180681670
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 45.349999999999994,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 45.35,
+        "bid": 45.3,
+        "ask": 45.4,
+        "oi": 14414660,
+        "volume": 207598560
+      }
+    ],
+    "entry_credit": -67567.50000000003,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 142.675,
+      "CE25800": 45.349999999999994
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T13:24:54.603046",
+    "entry_time": "2026-02-20T13:26:59.151579",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25539.85,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 142.675,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 142.45,
+        "bid": 142.55,
+        "ask": 142.8,
+        "oi": 4489615,
+        "volume": 180681670
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 45.349999999999994,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 45.35,
+        "bid": 45.3,
+        "ask": 45.4,
+        "oi": 14414660,
+        "volume": 207598560
+      }
+    ],
+    "entry_credit": -67567.50000000003,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 142.675,
+      "CE25800": 45.349999999999994
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T14:57:30.678688",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -17842.499999999956
+  },
+  {
+    "trade_id": "2026-02-20T13:44:00.663775",
+    "entry_time": "2026-02-20T13:44:00.667318",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25567.8,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 156.275,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 156.1,
+        "bid": 156.15,
+        "ask": 156.4,
+        "oi": 4506125,
+        "volume": 194558065
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 50.8,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 50.75,
+        "bid": 50.75,
+        "ask": 50.85,
+        "oi": 14705795,
+        "volume": 225010760
+      }
+    ],
+    "entry_credit": -71077.50000000001,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 156.275,
+      "CE25800": 50.8
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T14:58:08.891088",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -13194.99999999997
+  },
+  {
+    "trade_id": "2026-02-20T13:44:00.663775",
+    "entry_time": "2026-02-20T13:45:45.577330",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25567.8,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 156.275,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 156.1,
+        "bid": 156.15,
+        "ask": 156.4,
+        "oi": 4506125,
+        "volume": 194558065
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 50.8,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 50.75,
+        "bid": 50.75,
+        "ask": 50.85,
+        "oi": 14705795,
+        "volume": 225010760
+      }
+    ],
+    "entry_credit": -71077.50000000001,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 156.275,
+      "CE25800": 50.8
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T14:58:49.294957",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -14462.499999999964
+  },
+  {
+    "trade_id": "2026-02-20T14:03:18.832246",
+    "entry_time": "2026-02-20T14:03:18.834302",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25601.0,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 138.825,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 138.7,
+        "bid": 138.7,
+        "ask": 138.95,
+        "oi": 12717120,
+        "volume": 404762215
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 43.425,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 43.45,
+        "bid": 43.35,
+        "ask": 43.5,
+        "oi": 6887855,
+        "volume": 118564875
+      }
+    ],
+    "entry_credit": -67567.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 138.825,
+      "CE25850": 43.425
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T14:59:27.858550",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -10920.000000000007
+  },
+  {
+    "trade_id": "2026-02-20T14:03:18.832246",
+    "entry_time": "2026-02-20T14:05:00.676275",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25601.0,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 138.825,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 138.7,
+        "bid": 138.7,
+        "ask": 138.95,
+        "oi": 12717120,
+        "volume": 404762215
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 43.425,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 43.45,
+        "bid": 43.35,
+        "ask": 43.5,
+        "oi": 6887855,
+        "volume": 118564875
+      }
+    ],
+    "entry_credit": -67567.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 138.825,
+      "CE25850": 43.425
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 3,
+    "exit_time": "2026-02-20T15:00:13.826478",
+    "exit_reason": "convex_exit_REGIME_CHANGED",
+    "final_pnl": -11375.000000000036
+  },
+  {
+    "trade_id": "2026-02-20T14:23:08.447651",
+    "entry_time": "2026-02-20T14:23:08.451708",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25626.25,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25650.0,
+        "price": 122.175,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 122.55,
+        "bid": 122.05,
+        "ask": 122.3,
+        "oi": 7830355,
+        "volume": 246820925
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25900.0,
+        "price": 37.05,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 37.05,
+        "bid": 37.0,
+        "ask": 37.1,
+        "oi": 10843495,
+        "volume": 168659335
+      }
+    ],
+    "entry_credit": -62497.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25650": 122.175,
+      "CE25900": 37.05
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 12577.500000000015,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T14:23:08.447651",
+    "entry_time": "2026-02-20T14:24:50.200928",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25626.25,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25650.0,
+        "price": 122.175,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 122.55,
+        "bid": 122.05,
+        "ask": 122.3,
+        "oi": 7830355,
+        "volume": 246820925
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25900.0,
+        "price": 37.05,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 37.05,
+        "bid": 37.0,
+        "ask": 37.1,
+        "oi": 10843495,
+        "volume": 168659335
+      }
+    ],
+    "entry_credit": -62497.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25650": 122.175,
+      "CE25900": 37.05
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 16315.000000000007,
+    "convex_regime_change_count": 0,
+    "exit_time": "2026-02-20T15:40:24.390872",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 10367.5
+  },
+  {
+    "trade_id": "2026-02-20T14:42:59.014089",
+    "entry_time": "2026-02-20T14:42:59.018191",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25615.45,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "CLOSED",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 143.775,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 143.7,
+        "bid": 143.65,
+        "ask": 143.9,
+        "oi": 11961040,
+        "volume": 455892255
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 44.75,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 44.65,
+        "bid": 44.7,
+        "ask": 44.8,
+        "oi": 6728410,
+        "volume": 133324815
+      }
+    ],
+    "entry_credit": -70557.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 143.775,
+      "CE25850": 44.75
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": true,
+    "convex_peak_mtm": 14397.500000000022,
+    "convex_regime_change_count": 0,
+    "exit_time": "2026-02-20T15:41:03.683434",
+    "exit_reason": "convex_exit_CONVEX_TSL_HIT",
+    "final_pnl": 4257.500000000007
+  },
+  {
+    "trade_id": "2026-02-20T14:42:59.014089",
+    "entry_time": "2026-02-20T14:44:42.012998",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25615.45,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 143.775,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 143.7,
+        "bid": 143.65,
+        "ask": 143.9,
+        "oi": 11961040,
+        "volume": 455892255
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 44.75,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 44.65,
+        "bid": 44.7,
+        "ask": 44.8,
+        "oi": 6728410,
+        "volume": 133324815
+      }
+    ],
+    "entry_credit": -70557.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 143.775,
+      "CE25850": 44.75
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "convex_regime_change_count": 0
+  },
+  {
+    "trade_id": "2026-02-20T15:04:32.622387",
+    "entry_time": "2026-02-20T15:04:32.624843",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25612.55,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 133.575,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 133.25,
+        "bid": 133.45,
+        "ask": 133.7,
+        "oi": 9509045,
+        "volume": 489359650
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 38.425,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 38.4,
+        "bid": 38.4,
+        "ask": 38.45,
+        "oi": 5865275,
+        "volume": 147394065
+      }
+    ],
+    "entry_credit": -73742.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 133.575,
+      "CE25850": 38.425
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0
+  },
+  {
+    "trade_id": "2026-02-20T15:04:32.622387",
+    "entry_time": "2026-02-20T15:06:28.086790",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25612.55,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25600.0,
+        "price": 133.575,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 133.25,
+        "bid": 133.45,
+        "ask": 133.7,
+        "oi": 9509045,
+        "volume": 489359650
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25850.0,
+        "price": 38.425,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 38.4,
+        "bid": 38.4,
+        "ask": 38.45,
+        "oi": 5865275,
+        "volume": 147394065
+      }
+    ],
+    "entry_credit": -73742.5,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25600": 133.575,
+      "CE25850": 38.425
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0
+  },
+  {
+    "trade_id": "2026-02-20T15:25:07.726350",
+    "entry_time": "2026-02-20T15:25:07.728583",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25556.55,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 139.15,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 139.3,
+        "bid": 139.0,
+        "ask": 139.3,
+        "oi": 2978495,
+        "volume": 237116815
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 39.525,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 39.5,
+        "bid": 39.5,
+        "ask": 39.55,
+        "oi": 11013860,
+        "volume": 316404075
+      }
+    ],
+    "entry_credit": -78130.00000000001,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 139.15,
+      "CE25800": 39.525
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0
+  },
+  {
+    "trade_id": "2026-02-20T15:25:07.726350",
+    "entry_time": "2026-02-20T15:27:15.386715",
+    "lots": 20,
+    "lot_size": 65,
+    "entry_spot": 25556.55,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "TRENDING",
+    "status": "OPEN",
+    "expiry": "2026-02-24",
+    "legs": [
+      {
+        "position": "SHORT",
+        "option_type": "CE",
+        "strike": 25550.0,
+        "price": 139.15,
+        "quantity": 1,
+        "delta": 0.0,
+        "ltp": 139.3,
+        "bid": 139.0,
+        "ask": 139.3,
+        "oi": 2978495,
+        "volume": 237116815
+      },
+      {
+        "position": "LONG",
+        "option_type": "CE",
+        "strike": 25800.0,
+        "price": 39.525,
+        "quantity": 2,
+        "delta": 0.0,
+        "ltp": 39.5,
+        "bid": 39.5,
+        "ask": 39.55,
+        "oi": 11013860,
+        "volume": 316404075
+      }
+    ],
+    "entry_credit": -78130.00000000001,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0.0,
+    "days_to_expiry": 4,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE25550": 139.15,
+      "CE25800": 39.525
     },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,

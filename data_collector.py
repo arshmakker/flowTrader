@@ -168,14 +168,13 @@ class DataCollector:
                             self.data_queue.put(data_point)
                             
                             # Log at appropriate level
-                            log_level = logging.DEBUG if inst in ['EQ', 'FUTIDX', 'FUTSTK'] else logging.INFO
-                            self.logger.log(
-                                log_level,
-                                f"Collected {inst} data for {symbol['symbol']}: "
+                            log_level = logging.DEBUG if inst in ['EQ', 'FUTIDX', 'FUTSTK'] else log_level
+                            if log_level == logging.DEBUG:
+                                self.logger.debug(f"Collected {inst} data for {symbol['symbol']}: "
                                 f"LTP={data_point['ltp']:.2f}, "
                                 f"Vol={data_point['volume']}, "
-                                f"OI={data_point['oi']}"
-                            )
+                                f"OI={data_point['oi']}")
+                            
                             
                     except Exception as e:
                         self.logger.error(f"Error collecting data for {symbol['symbol']}: {str(e)}")
