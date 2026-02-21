@@ -62,7 +62,13 @@ backtest_convex_vix_comparison_*.json
 
 # Trade Proposals
 trade_proposals/
+trade_proposals_by_id/
 *.trade_proposal.json
+
+# Runtime Data (generated during execution)
+active_positions.json
+performance_by_regime.json
+strategy_decisions.json
 
 # Trend entry state (cooldown, max trades per day)
 trend_state.json
@@ -94,3 +100,4 @@ git-diagnostics-*.zip
 *.tmp
 *.bak
 *.backup
+calculate_pnl.py
