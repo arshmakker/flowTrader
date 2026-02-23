@@ -392,6 +392,49 @@ def main():
                 if is_market_closed_ist():
                     logger.info(Fore.YELLOW + "Market has closed (3:30 PM IST). Stopping system...")
                     
+                    # CRITICAL: Close all open positions before stopping (even if starting after market hours)
+                    try:
+                        active_positions = position_tracker.get_active_positions()
+                        if active_positions:
+                            logger.info(Fore.YELLOW + f"⚠️ Closing {len(active_positions)} open positions before shutdown...")
+                            
+                            for position in active_positions:
+                                try:
+                                    expiry_str = position.get('expiry')
+                                    if not expiry_str:
+                                        continue
+                                    expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+                                    spot_price = get_nifty_spot_price(api, symbol_manager)
+                                    if not spot_price:
+                                        continue
+                                    
+                                    option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50)
+                                    if option_chain.empty:
+                                        continue
+                                    
+                                    current_prices = {}
+                                    for leg in position.get('legs', []):
+                                        strike = int(leg['strike'])
+                                        option_type = leg['option_type']
+                                        leg_data = option_chain[
+                                            (option_chain['strike'] == strike) &
+                                            (option_chain['option_type'] == option_type)
+                                        ]
+                                        if not leg_data.empty:
+                                            current_prices[f"{option_type}{strike}"] = leg_data.iloc[0]['mid_price']
+                                        else:
+                                            current_prices[f"{option_type}{strike}"] = leg['price']
+                                    
+                                    current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
+                                    position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
+                                    logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
+                                except Exception as e:
+                                    logger.error(f"Error closing position {position.get('trade_id')}: {e}")
+                            
+                            logger.info(Fore.GREEN + "All positions closed!")
+                    except Exception as e:
+                        logger.error(f"Error during position liquidation: {e}")
+                    
                     # Generate end-of-day trade summary
                     generate_daily_trade_summary(logger)
                     
