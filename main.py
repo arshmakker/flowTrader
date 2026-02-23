@@ -400,30 +400,14 @@ def main():
                             
                             for position in active_positions:
                                 try:
-                                    expiry_str = position.get('expiry')
-                                    if not expiry_str:
-                                        continue
-                                    expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
-                                    spot_price = get_nifty_spot_price(api, symbol_manager)
-                                    if not spot_price:
-                                        continue
-                                    
-                                    option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50)
-                                    if option_chain.empty:
-                                        continue
-                                    
+                                    # Use LTP from position data (no API call needed when market is closed)
                                     current_prices = {}
                                     for leg in position.get('legs', []):
-                                        strike = int(leg['strike'])
                                         option_type = leg['option_type']
-                                        leg_data = option_chain[
-                                            (option_chain['strike'] == strike) &
-                                            (option_chain['option_type'] == option_type)
-                                        ]
-                                        if not leg_data.empty:
-                                            current_prices[f"{option_type}{strike}"] = leg_data.iloc[0]['mid_price']
-                                        else:
-                                            current_prices[f"{option_type}{strike}"] = leg['price']
+                                        strike = int(leg['strike'])
+                                        # Use LTP if available, otherwise use entry price
+                                        ltp = leg.get('ltp', leg.get('price', 0))
+                                        current_prices[f"{option_type}{strike}"] = ltp
                                     
                                     current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
                                     position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
