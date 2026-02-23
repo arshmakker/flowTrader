@@ -364,6 +364,9 @@ def main():
         # No new trades window - prevent entries in last 60 minutes before close
         NO_NEW_TRADES_BEFORE_CLOSE_MINUTES = 60  # No new entries after 2:30 PM IST
         
+        # End-of-day liquidation - close all positions 15 minutes before market close
+        CLOSE_POSITIONS_BEFORE_CLOSE_MINUTES = 15  # Close all positions at 3:15 PM IST
+        
         # Flag to prevent re-entry after market close exit
         # Once we exit a position due to MARKET_CLOSE_APPROACHING, don't enter new trades for the rest of the day
         market_close_exit_triggered = False
@@ -372,6 +375,7 @@ def main():
         logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
         logger.info(f"IV calculations will run every {IV_CALCULATION_INTERVAL // 60} minutes to build historical data")
         logger.info(f"No new trades window: Last {NO_NEW_TRADES_BEFORE_CLOSE_MINUTES} minutes before market close (no entries after 2:30 PM IST)")
+        logger.info(f"End-of-day liquidation: Closing all positions {CLOSE_POSITIONS_BEFORE_CLOSE_MINUTES} minutes before market close (at 3:15 PM IST)")
         
         # Main loop - data collection and strategy checks
         try:
@@ -452,6 +456,60 @@ def main():
                     now_ist = get_now_ist()
                     market_close_time = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
                     minutes_to_close = (market_close_time - now_ist).total_seconds() / 60
+                    
+                    # End-of-day liquidation: close all positions 15 minutes before market close
+                    if 0 < minutes_to_close <= CLOSE_POSITIONS_BEFORE_CLOSE_MINUTES:
+                        try:
+                            active_positions = position_tracker.get_active_positions()
+                            if active_positions:
+                                logger.info(Fore.YELLOW + f"⚠️ End-of-day liquidation: Closing {len(active_positions)} positions before market close...")
+                                
+                                # Get current prices and close each position
+                                for position in active_positions:
+                                    try:
+                                        expiry_str = position.get('expiry')
+                                        if not expiry_str:
+                                            continue
+                                        expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date()
+                                        spot_price = get_nifty_spot_price(api, symbol_manager)
+                                        if not spot_price:
+                                            continue
+                                        
+                                        option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50)
+                                        if option_chain.empty:
+                                            continue
+                                        
+                                        # Build current prices
+                                        current_prices = {}
+                                        for leg in position.get('legs', []):
+                                            strike = int(leg['strike'])
+                                            option_type = leg['option_type']
+                                            leg_data = option_chain[
+                                                (option_chain['strike'] == strike) &
+                                                (option_chain['option_type'] == option_type)
+                                            ]
+                                            if not leg_data.empty:
+                                                current_prices[f"{option_type}{strike}"] = leg_data.iloc[0]['mid_price']
+                                            else:
+                                                current_prices[f"{option_type}{strike}"] = leg['price']
+                                        
+                                        # Calculate P&L and close
+                                        current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
+                                        position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
+                                        logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
+                                    except Exception as e:
+                                        logger.error(f"Error closing position {position.get('trade_id')}: {e}")
+                                
+                                logger.info(Fore.GREEN + "End-of-day liquidation complete!")
+                        except Exception as e:
+                            logger.error(f"Error in end-of-day liquidation: {e}")
+                        
+                        # Generate summary and stop
+                        generate_daily_trade_summary(logger)
+                        if collector:
+                            collector.stop_collection()
+                        logger.info("=== End-of-day: All positions closed ===")
+                        break
                     
                     # Skip strategy checks if we're in no-new-trades window
                     if minutes_to_close <= NO_NEW_TRADES_BEFORE_CLOSE_MINUTES and minutes_to_close > 0:
