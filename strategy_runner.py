@@ -35,6 +35,7 @@ from technical_indicators import (
     get_historical_price_data,
     calculate_atm_iv
 )
+from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
 
 # Debug logging setup
 DEBUG_LOG_PATH = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
@@ -1101,6 +1102,25 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
 
                 prop['margin_estimate'] = float(margin_est)
                 combined_margin += float(margin_est)
+
+                # validate and clamp lots before saving/accepting
+                try:
+                    proposed_lots = int(prop.get('lots') or 0)
+                except Exception:
+                    proposed_lots = 0
+
+                if proposed_lots <= 0:
+                    logger.info(f"Rejecting proposal from {name}: lots={proposed_lots}")
+                    # record a trace in debug log
+                    _debug_log('strategy_runner.py:commit', 'Reject proposal - zero lots', {'strategy': name, 'lots': proposed_lots}, 'COMMIT')
+                    continue
+
+                # apply MIN/MAX clamp (safety net)
+                clamped = clamp_lots(proposed_lots)
+                if clamped != proposed_lots:
+                    prop['_original_lots'] = proposed_lots
+                    prop['lots'] = clamped
+                    logger.info(f"Clamped lots for proposal {tid} from {proposed_lots} to {clamped}")
 
                 # save proposal using existing helper
                 save_trade_proposal(prop)

@@ -55,7 +55,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 14.63,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-05T12:48:16.294085",
@@ -113,7 +114,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -6.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-05T12:53:01.358917",
@@ -171,7 +173,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 42.25,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-05T13:34:16.755957",
@@ -231,7 +234,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -73.125,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-05T13:43:43.946144",
@@ -291,7 +295,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -74.75000000000222,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-05T13:55:41.401346",
@@ -352,7 +357,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 313.62499999999955,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T09:49:10.560926",
@@ -413,7 +419,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 474.5000000000007,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T11:04:51.123607",
@@ -475,7 +482,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -598.0000000000011,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T11:33:15.588279",
@@ -537,7 +545,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -211.2500000000001,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T11:37:41.611140",
@@ -599,7 +608,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 42.24999999999943,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T11:43:21.123500",
@@ -661,7 +671,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -61.75000000000111,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T11:54:01.264008",
@@ -723,7 +734,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -341.25,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T12:03:15.373282",
@@ -785,7 +797,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 316.87499999999943,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-06T12:12:43.508868",
@@ -847,7 +860,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -2902.25,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-09T09:19:08.904845",
@@ -909,7 +923,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -771.875,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-09T11:23:32.377957",
@@ -947,7 +962,8 @@
     "exit_reason": "futures_exit_TIME_IN_LOSS",
     "final_pnl": -1618.5000000000946,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-09T13:57:15.536456",
@@ -985,7 +1001,8 @@
     "exit_reason": "futures_exit_STOP_LOSS_HIT",
     "final_pnl": 0.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-09T15:08:40.654381",
@@ -1023,7 +1040,8 @@
     "exit_reason": "futures_exit_MARKET_CLOSE_APPROACHING",
     "final_pnl": -539.4999999999527,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T10:52:39.359836",
@@ -1085,7 +1103,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -243.74999999999994,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:07:04.997894",
@@ -1147,7 +1166,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 164.12500000000125,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:13:09.417840",
@@ -1209,7 +1229,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -240.49999999999932,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:21:08.563151",
@@ -1271,7 +1292,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 69.87500000000111,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:32:11.737027",
@@ -1333,7 +1355,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 69.87499999999926,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:38:26.424738",
@@ -1395,7 +1418,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 82.87500000000034,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:45:12.785832",
@@ -1457,7 +1481,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -297.3749999999993,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T11:54:23.333120",
@@ -1519,7 +1544,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -294.1249999999985,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T12:02:38.819577",
@@ -1581,7 +1607,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -383.50000000000034,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T12:11:07.306659",
@@ -1643,7 +1670,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -388.37499999999966,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "trade_id": "2026-02-18T13:07:35.845491",
@@ -1705,7 +1733,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -260.0000000000223,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T13:16:26.758726",
@@ -1767,7 +1796,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 1625.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T13:27:28.244573",
@@ -1829,7 +1859,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 2924.999999999982,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T13:41:13.392513",
@@ -1891,7 +1922,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 779.9999999999927,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T13:51:42.023603",
@@ -1953,7 +1985,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -3867.500000000011,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:01:15.819239",
@@ -2015,7 +2048,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -6045.000000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:10:12.608769",
@@ -2077,7 +2111,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -5232.500000000029,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:22:09.900251",
@@ -2139,7 +2174,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -2047.4999999999854,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:31:48.040677",
@@ -2201,7 +2237,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -3737.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:42:33.752945",
@@ -2263,7 +2300,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -5752.499999999978,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T14:56:11.013401",
@@ -2325,7 +2363,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -2274.999999999982,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T15:06:51.579197",
@@ -2387,7 +2426,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 3217.500000000029,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T15:18:41.943871",
@@ -2449,7 +2489,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 20215.000000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-18T15:28:50.493281",
@@ -2511,7 +2552,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 10204.999999999993,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:13:39.481994",
@@ -2573,7 +2615,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 8839.999999999996,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:19:48.669493",
@@ -2635,7 +2678,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 6532.499999999989,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:26:24.941251",
@@ -2697,7 +2741,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 7214.999999999978,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:33:44.935678",
@@ -2759,7 +2804,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 8937.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:39:25.342462",
@@ -2821,7 +2867,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -1852.5000000000146,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:46:28.751346",
@@ -2883,7 +2930,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -3250.000000000018,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:53:15.803758",
@@ -2945,7 +2993,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -4777.500000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T10:59:58.978177",
@@ -3007,7 +3056,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 130.00000000002956,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:05:32.977012",
@@ -3069,7 +3119,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 6825.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:11:05.781272",
@@ -3131,7 +3182,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 13000.000000000018,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:16:37.920334",
@@ -3193,7 +3245,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 8092.499999999993,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:22:02.615544",
@@ -3255,7 +3308,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 7052.500000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:27:40.066991",
@@ -3317,7 +3371,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 844.9999999999889,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:32:57.851013",
@@ -3379,7 +3434,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 6467.4999999999745,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:38:39.881877",
@@ -3441,7 +3497,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 3250.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:44:32.648069",
@@ -3503,7 +3560,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 3867.500000000011,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:50:11.308209",
@@ -3565,7 +3623,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 4647.499999999967,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T11:55:46.468761",
@@ -3627,7 +3686,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 3770.0000000000073,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:00:58.279253",
@@ -3689,7 +3749,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 7247.499999999985,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:06:13.477612",
@@ -3751,7 +3812,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 5720.000000000007,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:11:15.947213",
@@ -3812,7 +3874,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 14722.500000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:16:36.541933",
@@ -3873,7 +3936,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": -3054.9999999999854,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:22:53.448271",
@@ -3934,7 +3998,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 11114.99999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:30:07.688963",
@@ -3995,7 +4060,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 13552.500000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:36:45.498873",
@@ -4056,7 +4122,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 7767.499999999971,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:44:08.552362",
@@ -4117,7 +4184,8 @@
     "exit_reason": "convex_exit_CONVEX_MAX_LOSS",
     "final_pnl": -14072.500000000022,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T12:52:45.188658",
@@ -4178,7 +4246,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 3900.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T13:14:43.012665",
@@ -4239,7 +4308,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 24277.500000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T13:25:49.864013",
@@ -4300,7 +4370,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 18005.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T13:37:34.502544",
@@ -4361,7 +4432,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 16445.00000000003,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T13:49:49.462063",
@@ -4422,7 +4494,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 18752.500000000022,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T14:02:30.202451",
@@ -4483,7 +4556,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 877.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T14:15:51.750560",
@@ -4544,7 +4618,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 20637.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T14:30:29.239930",
@@ -4605,7 +4680,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 5395.000000000007,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T14:45:18.565469",
@@ -4666,7 +4742,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": -8189.999999999978,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T15:01:35.450447",
@@ -4727,7 +4804,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": -9294.99999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-19T15:18:58.116211",
@@ -4788,7 +4866,8 @@
     "exit_reason": "convex_exit_CONVEX_MAX_LOSS",
     "final_pnl": -40462.50000000003,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T10:23:07.760422",
@@ -4850,7 +4929,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -18167.50000000003,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T10:28:31.573608",
@@ -4912,7 +4992,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -28242.50000000003,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T10:36:03.976835",
@@ -4974,7 +5055,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -19175.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T10:44:50.098887",
@@ -5036,7 +5118,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -51610.00000000002,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T10:55:26.006943",
@@ -5098,7 +5181,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -55932.499999999985,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T11:10:37.233980",
@@ -5160,7 +5244,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -74814.99999999994,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T11:20:53.696942",
@@ -5222,7 +5307,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -58077.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T11:32:44.095629",
@@ -5284,7 +5370,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -55964.99999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T11:46:10.449119",
@@ -5346,7 +5433,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -51544.99999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T12:00:38.803577",
@@ -5408,7 +5496,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -52032.49999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T12:24:06.547159",
@@ -5469,7 +5558,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 9912.499999999982,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T12:51:50.149246",
@@ -5530,7 +5620,8 @@
     "exit_reason": "convex_exit_CONVEX_TSL_HIT",
     "final_pnl": 5459.999999999985,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T13:06:40.872784",
@@ -5592,7 +5683,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -53007.50000000001,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T13:24:54.603046",
@@ -5654,7 +5746,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -48294.99999999997,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T13:44:00.663775",
@@ -5716,7 +5809,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -14462.499999999964,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T14:03:18.832246",
@@ -5778,7 +5872,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -11375.000000000036,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T14:23:08.447651",
@@ -5840,7 +5935,8 @@
     "exit_reason": "convex_exit_TIME_ELAPSED_40PCT",
     "final_pnl": -41925.000000000015,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T14:42:59.014089",
@@ -5902,7 +5998,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -46182.50000000001,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T15:04:32.622387",
@@ -5964,7 +6061,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -40917.50000000003,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-20T15:25:07.726350",
@@ -6026,7 +6124,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -43517.5,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T09:52:34.989593",
@@ -6088,12 +6187,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -6500.0,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T09:53:02.524448",
     "entry_time": "2026-02-23T09:53:02.679878",
-    "lots": 580,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25744.95,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6171,7 +6271,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 35582.999999999636,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 580
   },
   {
     "trade_id": "2026-02-23T10:12:03.347353",
@@ -6233,12 +6334,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -910.0000000000218,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T10:12:27.822902",
     "entry_time": "2026-02-23T10:12:27.968126",
-    "lots": 591,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25729.15,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6316,7 +6418,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 26225.62499999936,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 591
   },
   {
     "trade_id": "2026-02-23T10:41:27.760227",
@@ -6378,12 +6481,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -1950.0000000000368,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T10:42:08.336889",
     "entry_time": "2026-02-23T10:42:08.487625",
-    "lots": 631,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25687.6,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6461,7 +6565,8 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": 63888.74999999885,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 631
   },
   {
     "trade_id": "2026-02-23T11:01:37.537627",
@@ -6523,12 +6628,13 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": -357.5000000000074,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T11:02:04.813925",
     "entry_time": "2026-02-23T11:02:04.957296",
-    "lots": 637,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25675.3,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6606,7 +6712,8 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": 51342.20000000046,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 637
   },
   {
     "trade_id": "2026-02-23T11:11:11.627773",
@@ -6667,12 +6774,13 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": -455.00000000002956,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-23T11:11:45.318638",
     "entry_time": "2026-02-23T11:11:45.463766",
-    "lots": 653,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25683.45,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6750,7 +6858,8 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": 34249.84999999977,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 653
   },
   {
     "trade_id": "2026-02-24T09:27:15.072582",
@@ -6812,12 +6921,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 6890.000000000051,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T09:27:39.759134",
     "entry_time": "2026-02-24T09:29:02.680203",
-    "lots": 586,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25548.85,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -6895,7 +7005,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 73367.19999999988,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 586
   },
   {
     "trade_id": "2026-02-24T09:33:00.849045",
@@ -6957,12 +7068,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 3704.9999999999927,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T09:33:21.669039",
     "entry_time": "2026-02-24T09:33:21.675576",
-    "lots": 592,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25530.2,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7040,7 +7152,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 20542.39999999966,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 592
   },
   {
     "trade_id": "2026-02-24T09:39:47.293622",
@@ -7102,12 +7215,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -292.4999999999927,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T09:40:09.731763",
     "entry_time": "2026-02-24T09:40:09.736681",
-    "lots": 590,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25510.85,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7185,7 +7299,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 26136.999999999905,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 590
   },
   {
     "trade_id": "2026-02-24T09:52:31.659015",
@@ -7247,7 +7362,8 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -64.99999999994179,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:01:33.147138",
@@ -7309,12 +7425,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 1625.0000000000728,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:01:54.010489",
     "entry_time": "2026-02-24T10:03:08.756978",
-    "lots": 596,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25517.1,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7392,7 +7509,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 14125.199999999812,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 596
   },
   {
     "trade_id": "2026-02-24T10:13:04.051401",
@@ -7454,12 +7572,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 747.4999999999854,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:13:31.573215",
     "entry_time": "2026-02-24T10:14:57.270225",
-    "lots": 595,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25504.25,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7537,7 +7656,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 4402.999999999229,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 595
   },
   {
     "trade_id": "2026-02-24T10:25:01.900763",
@@ -7599,12 +7719,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -1982.5000000000437,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:25:27.434407",
     "entry_time": "2026-02-24T10:26:53.817208",
-    "lots": 641,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25493.95,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7682,7 +7803,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 28909.1,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 641
   },
   {
     "trade_id": "2026-02-24T10:36:41.068377",
@@ -7744,12 +7866,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -5200.000000000036,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:37:08.029552",
     "entry_time": "2026-02-24T10:38:36.924366",
-    "lots": 588,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25505.05,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7827,7 +7950,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 3983.6999999997715,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 588
   },
   {
     "trade_id": "2026-02-24T10:49:25.793469",
@@ -7889,12 +8013,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 617.4999999999927,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T10:49:46.583267",
     "entry_time": "2026-02-24T10:50:52.584720",
-    "lots": 635,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25472.45,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -7972,7 +8097,8 @@
     "exit_reason": "end_of_day_liquidation",
     "final_pnl": -159432.62500000047,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 635
   },
   {
     "trade_id": "2026-02-24T12:15:01.981345",
@@ -8034,12 +8160,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 1982.5000000000437,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T12:15:36.876787",
     "entry_time": "2026-02-24T12:17:28.757191",
-    "lots": 599,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25467.6,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8117,7 +8244,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 19197.949999999466,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 599
   },
   {
     "trade_id": "2026-02-24T12:27:37.949350",
@@ -8179,12 +8307,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -1397.5000000000582,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T12:28:06.568681",
     "entry_time": "2026-02-24T12:29:37.858178",
-    "lots": 588,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25425.5,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8262,7 +8391,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 46966.5000000014,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 588
   },
   {
     "trade_id": "2026-02-24T12:43:44.901935",
@@ -8324,12 +8454,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -4582.500000000044,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T12:44:21.821873",
     "entry_time": "2026-02-24T12:46:14.353688",
-    "lots": 600,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25420.65,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8407,7 +8538,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": -8010.0000000006075,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 600
   },
   {
     "trade_id": "2026-02-24T13:03:35.788014",
@@ -8469,12 +8601,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -1657.5000000000073,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T13:04:15.889126",
     "entry_time": "2026-02-24T13:04:15.895948",
-    "lots": 603,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25405.05,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8552,7 +8685,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 3859.2000000005683,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 603
   },
   {
     "trade_id": "2026-02-24T13:24:34.432396",
@@ -8614,12 +8748,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": -3640.0000000000146,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T13:25:13.062422",
     "entry_time": "2026-02-24T13:27:11.027079",
-    "lots": 600,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25410.55,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8697,7 +8832,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 750.000000000553,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 600
   },
   {
     "trade_id": "2026-02-24T13:41:46.827777",
@@ -8759,12 +8895,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 2600.0000000000364,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T13:42:12.873300",
     "entry_time": "2026-02-24T13:42:12.879345",
-    "lots": 620,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25370.25,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8842,7 +8979,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 94503.49999999933,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 620
   },
   {
     "trade_id": "2026-02-24T13:59:23.304765",
@@ -8904,12 +9042,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 1365.0000000000146,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T14:00:02.419099",
     "entry_time": "2026-02-24T14:02:21.949769",
-    "lots": 592,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25412.85,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -8987,7 +9126,8 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 7104.0000000004475,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 592
   },
   {
     "trade_id": "2026-02-24T14:18:31.724404",
@@ -9049,12 +9189,13 @@
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 552.4999999999777,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "trade_id": "2026-02-24T14:18:59.939523",
     "entry_time": "2026-02-24T14:20:48.410994",
-    "lots": 597,
+    "lots": 20,
     "lot_size": 65,
     "entry_spot": 25424.45,
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -9132,6 +9273,7 @@
     "exit_reason": "trailing_stop_pnl",
     "final_pnl": 16148.850000000224,
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 597
   }
 ]

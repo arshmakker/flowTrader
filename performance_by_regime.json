@@ -10,7 +10,8 @@
     "lots": 1,
     "trade_id": "2026-01-19T12:30:02.953223",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -23,7 +24,8 @@
     "lots": 1,
     "trade_id": "2026-01-21T11:32:51.491750",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -36,7 +38,8 @@
     "lots": 1,
     "trade_id": "2026-01-22T10:37:49.228353",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -49,7 +52,8 @@
     "lots": 1,
     "trade_id": "2026-01-22T10:42:28.165730",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -62,7 +66,8 @@
     "lots": 1,
     "trade_id": "2026-01-23T10:25:03.754086",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -75,7 +80,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T09:48:55.852170",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -88,7 +94,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T09:53:09.220211",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -101,7 +108,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T09:57:07.848956",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -114,7 +122,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:03:09.203916",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -127,7 +136,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:07:07.643375",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -140,7 +150,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:12:08.761887",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -153,7 +164,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:17:09.757708",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -166,7 +178,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:23:08.970257",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -179,7 +192,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:27:17.330596",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -192,7 +206,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:33:20.902987",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -205,7 +220,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:37:14.862329",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -218,7 +234,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:43:13.264560",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -231,7 +248,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:47:12.973322",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -244,7 +262,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:53:14.044550",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -257,7 +276,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T10:58:14.822514",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -270,7 +290,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T11:02:13.252044",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -283,7 +304,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T11:07:18.755977",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -296,7 +318,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T11:12:18.019330",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -309,7 +332,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T11:18:23.856519",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -322,7 +346,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T12:15:00.688753",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -335,7 +360,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T15:18:33.097451",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -348,7 +374,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T15:23:34.422462",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -361,7 +388,8 @@
     "lots": 1,
     "trade_id": "2026-01-27T15:29:06.586961",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -374,7 +402,8 @@
     "lots": 1,
     "trade_id": "2026-01-28T13:07:09.364713",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -387,7 +416,8 @@
     "lots": 1,
     "trade_id": "2026-01-29T09:19:02.445086",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -400,7 +430,8 @@
     "lots": 1,
     "trade_id": "2026-01-30T12:00:07.955797",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -413,7 +444,8 @@
     "lots": 1,
     "trade_id": "2026-01-30T15:06:20.772071",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -426,7 +458,8 @@
     "lots": 1,
     "trade_id": "2026-02-02T09:17:36.363306",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -439,7 +472,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T11:55:48.022423",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -452,7 +486,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:00:55.924069",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -465,7 +500,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:10:44.118910",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -478,7 +514,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:15:13.016123",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -491,7 +528,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:20:24.680160",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -504,7 +542,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:25:46.637331",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -517,7 +556,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:30:43.647572",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -530,7 +570,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:42:43.493536",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -543,7 +584,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:48:16.294085",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -556,7 +598,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T12:53:01.358917",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -569,7 +612,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T13:34:16.755957",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -582,7 +626,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T13:43:43.946144",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -595,7 +640,8 @@
     "lots": 1,
     "trade_id": "2026-02-05T13:55:41.401346",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -608,7 +654,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T09:49:10.560926",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -621,7 +668,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T11:04:51.123607",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -634,7 +682,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T11:33:15.588279",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -647,7 +696,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T11:37:41.611140",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -660,7 +710,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T11:43:21.123500",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -673,7 +724,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T11:54:01.264008",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -686,7 +738,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T12:03:15.373282",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -699,7 +752,8 @@
     "lots": 1,
     "trade_id": "2026-02-06T12:12:43.508868",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -712,7 +766,8 @@
     "lots": 1,
     "trade_id": "2026-02-09T09:19:08.904845",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -725,7 +780,8 @@
     "lots": 1,
     "trade_id": "2026-02-09T11:23:32.377957",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -738,7 +794,8 @@
     "lots": 1,
     "trade_id": "2026-02-09T13:57:15.536456",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "TREND_FOLLOW_FUTURE",
@@ -751,7 +808,8 @@
     "lots": 1,
     "trade_id": "2026-02-09T15:08:40.654381",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -764,7 +822,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T10:52:39.359836",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -777,7 +836,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:07:04.997894",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -790,7 +850,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:13:09.417840",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -803,7 +864,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:21:08.563151",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -816,7 +878,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:32:11.737027",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -829,7 +892,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:38:26.424738",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -842,7 +906,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:45:12.785832",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -855,7 +920,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T11:54:23.333120",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -868,7 +934,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T12:02:38.819577",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -881,7 +948,8 @@
     "lots": 1,
     "trade_id": "2026-02-18T12:11:07.306659",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 1
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -894,7 +962,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T13:07:35.845491",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -907,7 +976,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T13:16:26.758726",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -920,7 +990,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T13:27:28.244573",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -933,7 +1004,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T13:41:13.392513",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -946,7 +1018,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T13:51:42.023603",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -959,7 +1032,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:01:15.819239",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -972,7 +1046,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:10:12.608769",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -985,7 +1060,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:22:09.900251",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -998,7 +1074,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:31:48.040677",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1011,7 +1088,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:42:33.752945",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1024,7 +1102,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T14:56:11.013401",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1037,7 +1116,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T15:06:51.579197",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1050,7 +1130,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T15:18:41.943871",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1063,7 +1144,8 @@
     "lots": 20,
     "trade_id": "2026-02-18T15:28:50.493281",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1076,7 +1158,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:13:39.481994",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1089,7 +1172,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:19:48.669493",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1102,7 +1186,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:26:24.941251",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1115,7 +1200,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:33:44.935678",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1128,7 +1214,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:39:25.342462",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1141,7 +1228,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:46:28.751346",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1154,7 +1242,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:53:15.803758",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1167,7 +1256,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T10:59:58.978177",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1180,7 +1270,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:05:32.977012",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1193,7 +1284,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:11:05.781272",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1206,7 +1298,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:16:37.920334",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1219,7 +1312,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:22:02.615544",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1232,7 +1326,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:27:40.066991",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1245,7 +1340,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:32:57.851013",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1258,7 +1354,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:38:39.881877",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1271,7 +1368,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:44:32.648069",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1284,7 +1382,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:50:11.308209",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1297,7 +1396,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T11:55:46.468761",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1310,7 +1410,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:06:13.477612",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1323,7 +1424,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:00:58.279253",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1336,7 +1438,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:44:08.552362",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1349,7 +1452,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:22:53.448271",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1362,7 +1466,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:11:15.947213",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1375,7 +1480,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:16:36.541933",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1388,7 +1494,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:30:07.688963",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1401,7 +1508,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:36:45.498873",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1414,7 +1522,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T12:52:45.188658",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1427,7 +1536,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T13:14:43.012665",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1440,7 +1550,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T13:25:49.864013",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1453,7 +1564,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T13:37:34.502544",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1466,7 +1578,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T13:49:49.462063",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1479,7 +1592,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T14:02:30.202451",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1492,7 +1606,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T14:15:51.750560",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1505,7 +1620,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T14:30:29.239930",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1518,7 +1634,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T14:45:18.565469",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1531,7 +1648,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T15:01:35.450447",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1544,7 +1662,8 @@
     "lots": 20,
     "trade_id": "2026-02-19T15:18:58.116211",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1557,7 +1676,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T10:23:07.760422",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1570,7 +1690,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T10:28:31.573608",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1583,7 +1704,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T10:36:03.976835",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1596,7 +1718,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T12:51:50.149246",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1609,7 +1732,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T12:24:06.547159",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1622,7 +1746,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T13:24:54.603046",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1635,7 +1760,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T13:44:00.663775",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1648,7 +1774,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T14:03:18.832246",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1661,7 +1788,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T14:23:08.447651",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1674,7 +1802,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T14:42:59.014089",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1687,7 +1816,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T10:44:50.098887",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1700,7 +1830,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T10:55:26.006943",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1713,7 +1844,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T11:10:37.233980",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1726,7 +1858,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T11:20:53.696942",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1739,7 +1872,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T11:32:44.095629",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1752,7 +1886,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T11:46:10.449119",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1765,7 +1900,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T12:00:38.803577",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1778,7 +1914,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T13:06:40.872784",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1791,7 +1928,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T15:04:32.622387",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1804,7 +1942,8 @@
     "lots": 20,
     "trade_id": "2026-02-20T15:25:07.726350",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1817,7 +1956,8 @@
     "lots": 20,
     "trade_id": "2026-02-23T09:52:34.989593",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1827,10 +1967,11 @@
     "exit_time": "2026-02-23T10:37:47.758523",
     "pnl": 35582.999999999636,
     "max_loss": 29957.00000000002,
-    "lots": 580,
+    "lots": 20,
     "trade_id": "2026-02-23T09:53:02.524448",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 580
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1843,7 +1984,8 @@
     "lots": 20,
     "trade_id": "2026-02-23T10:12:03.347353",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1853,10 +1995,11 @@
     "exit_time": "2026-02-23T11:02:54.503441",
     "pnl": 26225.62499999936,
     "max_loss": 29993.25,
-    "lots": 591,
+    "lots": 20,
     "trade_id": "2026-02-23T10:12:27.822902",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 591
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1869,7 +2012,8 @@
     "lots": 20,
     "trade_id": "2026-02-23T10:41:27.760227",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1879,10 +2023,11 @@
     "exit_time": "2026-02-23T21:25:23.664651",
     "pnl": 63888.74999999885,
     "max_loss": 29972.49999999998,
-    "lots": 631,
+    "lots": 20,
     "trade_id": "2026-02-23T10:42:08.336889",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 631
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1895,7 +2040,8 @@
     "lots": 20,
     "trade_id": "2026-02-23T11:01:37.537627",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1905,10 +2051,11 @@
     "exit_time": "2026-02-23T21:25:23.798302",
     "pnl": 51342.20000000046,
     "max_loss": 29954.925000000003,
-    "lots": 637,
+    "lots": 20,
     "trade_id": "2026-02-23T11:02:04.813925",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 637
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1921,7 +2068,8 @@
     "lots": 20,
     "trade_id": "2026-02-23T11:11:11.627773",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1931,10 +2079,11 @@
     "exit_time": "2026-02-23T21:25:23.928874",
     "pnl": 34249.84999999977,
     "max_loss": 29989.02499999999,
-    "lots": 653,
+    "lots": 20,
     "trade_id": "2026-02-23T11:11:45.318638",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 653
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1947,7 +2096,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T09:27:15.072582",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1957,10 +2107,11 @@
     "exit_time": "2026-02-24T10:03:43.344665",
     "pnl": 73367.19999999988,
     "max_loss": 29988.550000000007,
-    "lots": 586,
+    "lots": 20,
     "trade_id": "2026-02-24T09:27:39.759134",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 586
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1973,7 +2124,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T09:33:00.849045",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -1983,10 +2135,11 @@
     "exit_time": "2026-02-24T10:39:19.972362",
     "pnl": 20542.39999999966,
     "max_loss": 29999.59999999999,
-    "lots": 592,
+    "lots": 20,
     "trade_id": "2026-02-24T09:33:21.669039",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 592
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1999,7 +2152,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T09:39:47.293622",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2009,10 +2163,11 @@
     "exit_time": "2026-02-24T10:40:02.189650",
     "pnl": 26136.999999999905,
     "max_loss": 29986.749999999993,
-    "lots": 590,
+    "lots": 20,
     "trade_id": "2026-02-24T09:40:09.731763",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 590
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2025,7 +2180,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T09:52:31.659015",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2038,7 +2194,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T10:01:33.147138",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2048,10 +2205,11 @@
     "exit_time": "2026-02-24T10:40:47.107800",
     "pnl": 14125.199999999812,
     "max_loss": 29978.8,
-    "lots": 596,
+    "lots": 20,
     "trade_id": "2026-02-24T10:01:54.010489",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 596
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2064,7 +2222,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T10:13:04.051401",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2074,10 +2233,11 @@
     "exit_time": "2026-02-24T10:43:41.625746",
     "pnl": 4402.999999999229,
     "max_loss": 29958.250000000015,
-    "lots": 595,
+    "lots": 20,
     "trade_id": "2026-02-24T10:13:31.573215",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 595
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2090,7 +2250,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T10:25:01.900763",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2100,10 +2261,11 @@
     "exit_time": "2026-02-24T10:53:08.334881",
     "pnl": 28909.1,
     "max_loss": 29982.775000000005,
-    "lots": 641,
+    "lots": 20,
     "trade_id": "2026-02-24T10:25:27.434407",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 641
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2116,7 +2278,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T10:36:41.068377",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2126,10 +2289,11 @@
     "exit_time": "2026-02-24T12:30:26.426327",
     "pnl": 3983.6999999997715,
     "max_loss": 29973.299999999996,
-    "lots": 588,
+    "lots": 20,
     "trade_id": "2026-02-24T10:37:08.029552",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 588
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2142,7 +2306,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T10:49:25.793469",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2155,7 +2320,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T12:15:01.981345",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2165,10 +2331,11 @@
     "exit_time": "2026-02-24T13:10:42.454898",
     "pnl": 19197.949999999466,
     "max_loss": 29994.92500000001,
-    "lots": 599,
+    "lots": 20,
     "trade_id": "2026-02-24T12:15:36.876787",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 599
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2181,7 +2348,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T12:27:37.949350",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2191,10 +2359,11 @@
     "exit_time": "2026-02-24T13:15:15.593186",
     "pnl": 46966.5000000014,
     "max_loss": 29988.00000000002,
-    "lots": 588,
+    "lots": 20,
     "trade_id": "2026-02-24T12:28:06.568681",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 588
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2207,7 +2376,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T12:43:44.901935",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2217,10 +2387,11 @@
     "exit_time": "2026-02-24T14:23:39.769507",
     "pnl": -8010.0000000006075,
     "max_loss": 29984.999999999996,
-    "lots": 600,
+    "lots": 20,
     "trade_id": "2026-02-24T12:44:21.821873",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 600
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2233,7 +2404,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T13:03:35.788014",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2243,10 +2415,11 @@
     "exit_time": "2026-02-24T14:06:32.284730",
     "pnl": 3859.2000000005683,
     "max_loss": 29984.175000000014,
-    "lots": 603,
+    "lots": 20,
     "trade_id": "2026-02-24T13:04:15.889126",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 603
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2259,7 +2432,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T13:24:34.432396",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2269,10 +2443,11 @@
     "exit_time": "2026-02-24T14:24:28.789589",
     "pnl": 750.000000000553,
     "max_loss": 30000.0,
-    "lots": 600,
+    "lots": 20,
     "trade_id": "2026-02-24T13:25:13.062422",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 600
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2285,7 +2460,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T13:41:46.827777",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2295,10 +2471,11 @@
     "exit_time": "2026-02-24T14:51:17.241862",
     "pnl": 94503.49999999933,
     "max_loss": 29961.499999999975,
-    "lots": 620,
+    "lots": 20,
     "trade_id": "2026-02-24T13:42:12.873300",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 620
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2311,7 +2488,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T13:59:23.304765",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2321,10 +2499,11 @@
     "exit_time": "2026-02-24T14:52:05.380291",
     "pnl": 7104.0000000004475,
     "max_loss": 29970.00000000002,
-    "lots": 592,
+    "lots": 20,
     "trade_id": "2026-02-24T14:00:02.419099",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 592
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2337,7 +2516,8 @@
     "lots": 20,
     "trade_id": "2026-02-24T14:18:31.724404",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2347,10 +2527,11 @@
     "exit_time": "2026-02-24T14:56:25.335333",
     "pnl": 16148.850000000224,
     "max_loss": 29969.40000000001,
-    "lots": 597,
+    "lots": 20,
     "trade_id": "2026-02-24T14:18:59.939523",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 597
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2360,9 +2541,10 @@
     "exit_time": "2026-02-24T15:22:03.277289",
     "pnl": -159432.62500000047,
     "max_loss": 29971.999999999993,
-    "lots": 635,
+    "lots": 20,
     "trade_id": "2026-02-24T10:49:46.583267",
     "is_final": true,
-    "record_version": 1
+    "record_version": 1,
+    "_original_lots": 635
   }
 ]

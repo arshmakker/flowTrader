@@ -52,7 +52,13 @@ def main():
             # skip non-final records
             continue
         trade_id = rec.get("trade_id")
-        lots = rec.get("lots", 1) or 1
+        # enforce hard cap on lots (safety): MAX_LOTS must match finalize_trades cap
+        MAX_LOTS = 20
+        try:
+            raw_lots = int(rec.get("lots", 1) or 1)
+        except Exception:
+            raw_lots = 1
+        lots = min(raw_lots, MAX_LOTS)
         lot_size = rec.get("lot_size", 1) or 1
         entry_time = rec.get("entry_time")
         exit_time = rec.get("exit_time")

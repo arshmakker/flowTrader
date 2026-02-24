@@ -24,7 +24,7 @@ DEBUG_LOG = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
 # Configuration
 MAX_NET_DEBIT_PCT = 0.0025  # 0.25% of spot value
 MAX_LOSS_PCT_OF_CAPITAL = 0.10  # 10% of total capital (₹1L for ₹10L capital)
-MIN_LOTS = 20  # Minimum 20 lots per trade
+from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
 MIN_DAYS_TO_EXPIRY = 2  # Don't enter if expiry within 2 days (OTM calls need time)
 
@@ -238,15 +238,19 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             # Ensure minimum lots
             if lots < MIN_LOTS:
                 lots = MIN_LOTS
-        if lots <= 0:
-            logger.info("Position sizing resulted in 0 lots")
-            # #region agent log
+
+        # Enforce global caps via clamp_lots
+        clamped = clamp_lots(lots)
+        if clamped == 0:
+            logger.info("Position sizing resulted in 0 lots (invalid)")
             try:
                 with open(DEBUG_LOG, 'a') as _f:
                     _f.write(json.dumps({"location":"call_backspread.py:reject","message":"Convex reject","data":{"reason":"LOTS_ZERO","lots":lots,"max_allowed_loss":max_allowed_loss,"max_loss_per_lot":max_loss_per_lot,"lot_size":lot_size},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
             except Exception: pass
-            # #endregion
             return None
+        if clamped != lots:
+            # preserve original calculated lots
+            lots = clamped
         
         # Build trade proposal
         trade_proposal = {

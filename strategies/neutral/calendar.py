@@ -28,6 +28,7 @@ from .config import (
 )
 
 logger = logging.getLogger(__name__)
+from strategies.size_config import clamp_lots, MIN_LOTS, MAX_LOTS
 
 
 def generate_neutral_call_calendar(market_state: Dict, option_chain_weekly: pd.DataFrame,
@@ -224,7 +225,14 @@ def generate_neutral_call_calendar(market_state: Dict, option_chain_weekly: pd.D
         
         # Calculate number of lots (1 lot only, as per requirements)
         lots = 1
-        
+        # Enforce central sizing policy
+        clamped = clamp_lots(lots)
+        if clamped == 0:
+            logger.info("Calendar sizing resulted in 0 lots (invalid)")
+            return None
+        if clamped != lots:
+            lots = clamped
+
         # Calculate total net debit
         net_debit_total = net_debit_per_lot * lots * lot_size
         

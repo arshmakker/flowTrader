@@ -5051,9 +5051,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 96.025,
-    "cash_flow": 3620142.5,
+    "cash_flow": 124832.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5064,9 +5064,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 96.3,
-    "cash_flow": -3630510.0,
+    "cash_flow": -125190.0,
     "source": "SIMULATOR"
   },
   {
@@ -5077,9 +5077,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25500.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 102.425,
-    "cash_flow": 3861422.5,
+    "cash_flow": 133152.5,
     "source": "SIMULATOR"
   },
   {
@@ -5090,9 +5090,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25500.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 102.55,
-    "cash_flow": -3866135.0,
+    "cash_flow": -133315.0,
     "source": "SIMULATOR"
   },
   {
@@ -5103,9 +5103,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26100.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 66.80000000000001,
-    "cash_flow": -2518360.0000000005,
+    "cash_flow": -86840.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5116,9 +5116,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26100.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 66.3,
-    "cash_flow": 2499510.0,
+    "cash_flow": 86190.0,
     "source": "SIMULATOR"
   },
   {
@@ -5129,9 +5129,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 83.3,
-    "cash_flow": -3140410.0,
+    "cash_flow": -108290.0,
     "source": "SIMULATOR"
   },
   {
@@ -5142,9 +5142,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 37700,
+    "quantity": 1300,
     "price": 83.15,
-    "cash_flow": 3134755.0,
+    "cash_flow": 108095.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5207,9 +5207,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 87.775,
-    "cash_flow": 3371876.625,
+    "cash_flow": 114107.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5220,9 +5220,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 87.75,
-    "cash_flow": -3370916.25,
+    "cash_flow": -114075.0,
     "source": "SIMULATOR"
   },
   {
@@ -5233,9 +5233,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25500.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 108.15,
-    "cash_flow": 4154582.25,
+    "cash_flow": 140595.0,
     "source": "SIMULATOR"
   },
   {
@@ -5246,9 +5246,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25500.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 108.5,
-    "cash_flow": -4168027.5,
+    "cash_flow": -141050.0,
     "source": "SIMULATOR"
   },
   {
@@ -5259,9 +5259,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26100.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 59.95,
-    "cash_flow": -2302979.25,
+    "cash_flow": -77935.0,
     "source": "SIMULATOR"
   },
   {
@@ -5272,9 +5272,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26100.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 60.2,
-    "cash_flow": 2312583.0,
+    "cash_flow": 78260.0,
     "source": "SIMULATOR"
   },
   {
@@ -5285,9 +5285,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 86.725,
-    "cash_flow": -3331540.875,
+    "cash_flow": -112742.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5298,9 +5298,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 38415,
+    "quantity": 1300,
     "price": 86.95,
-    "cash_flow": 3340184.25,
+    "cash_flow": 113035.0,
     "source": "SIMULATOR"
   },
   {
@@ -5363,9 +5363,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 110.15,
-    "cash_flow": 4517802.25,
+    "cash_flow": 143195.0,
     "source": "SIMULATOR"
   },
   {
@@ -5376,9 +5376,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 110.5,
-    "cash_flow": -4532157.5,
+    "cash_flow": -143650.0,
     "source": "SIMULATOR"
   },
   {
@@ -5389,9 +5389,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 96.775,
-    "cash_flow": 3969226.6250000005,
+    "cash_flow": 125807.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5402,9 +5402,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 96.7,
-    "cash_flow": -3966150.5,
+    "cash_flow": -125710.0,
     "source": "SIMULATOR"
   },
   {
@@ -5415,9 +5415,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 76.725,
-    "cash_flow": -3146875.8749999995,
+    "cash_flow": -99742.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5428,9 +5428,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 76.45,
-    "cash_flow": 3135596.75,
+    "cash_flow": 99385.0,
     "source": "SIMULATOR"
   },
   {
@@ -5441,9 +5441,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 77.69999999999999,
-    "cash_flow": -3186865.4999999995,
+    "cash_flow": -101009.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5454,9 +5454,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 41015,
+    "quantity": 1300,
     "price": 77.5,
-    "cash_flow": 3178662.5,
+    "cash_flow": 100750.0,
     "source": "SIMULATOR"
   },
   {
@@ -5519,9 +5519,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 112.925,
-    "cash_flow": 4675659.625,
+    "cash_flow": 146802.5,
     "source": "SIMULATOR"
   },
   {
@@ -5532,9 +5532,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 113.0,
-    "cash_flow": -4678765.0,
+    "cash_flow": -146900.0,
     "source": "SIMULATOR"
   },
   {
@@ -5545,9 +5545,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 97.425,
-    "cash_flow": 4033882.125,
+    "cash_flow": 126652.5,
     "source": "SIMULATOR"
   },
   {
@@ -5558,9 +5558,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 97.8,
-    "cash_flow": -4049409.0,
+    "cash_flow": -127140.0,
     "source": "SIMULATOR"
   },
   {
@@ -5571,9 +5571,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 79.1,
-    "cash_flow": -3275135.4999999995,
+    "cash_flow": -102829.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5584,9 +5584,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 79.05,
-    "cash_flow": 3273065.25,
+    "cash_flow": 102765.0,
     "source": "SIMULATOR"
   },
   {
@@ -5597,9 +5597,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 78.275,
-    "cash_flow": -3240976.3750000005,
+    "cash_flow": -101757.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5610,9 +5610,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 41405,
+    "quantity": 1300,
     "price": 78.35,
-    "cash_flow": 3244081.7499999995,
+    "cash_flow": 101854.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5675,9 +5675,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 114.25,
-    "cash_flow": 4849341.25,
+    "cash_flow": 148525.0,
     "source": "SIMULATOR"
   },
   {
@@ -5688,9 +5688,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 114.0,
-    "cash_flow": -4838730.0,
+    "cash_flow": -148200.0,
     "source": "SIMULATOR"
   },
   {
@@ -5701,9 +5701,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 95.475,
-    "cash_flow": 4052436.3749999995,
+    "cash_flow": 124117.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5714,9 +5714,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25400.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 95.55,
-    "cash_flow": -4055619.75,
+    "cash_flow": -124215.0,
     "source": "SIMULATOR"
   },
   {
@@ -5727,9 +5727,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 79.44999999999999,
-    "cash_flow": -3372255.2499999995,
+    "cash_flow": -103284.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5740,9 +5740,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 26000.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 79.35,
-    "cash_flow": 3368010.7499999995,
+    "cash_flow": 103154.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5753,9 +5753,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 76.2,
-    "cash_flow": -3234309.0,
+    "cash_flow": -99060.0,
     "source": "SIMULATOR"
   },
   {
@@ -5766,9 +5766,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 42445,
+    "quantity": 1300,
     "price": 76.15,
-    "cash_flow": 3232186.7500000005,
+    "cash_flow": 98995.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5831,9 +5831,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 89.35,
-    "cash_flow": 3403341.5,
+    "cash_flow": 116154.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5844,9 +5844,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 89.3,
-    "cash_flow": -3401437.0,
+    "cash_flow": -116090.0,
     "source": "SIMULATOR"
   },
   {
@@ -5857,9 +5857,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 87.35,
-    "cash_flow": 3327161.5,
+    "cash_flow": 113554.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5870,9 +5870,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 87.4,
-    "cash_flow": -3329066.0,
+    "cash_flow": -113620.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -5883,9 +5883,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 60.375,
-    "cash_flow": -2299683.75,
+    "cash_flow": -78487.5,
     "source": "SIMULATOR"
   },
   {
@@ -5896,9 +5896,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 60.3,
-    "cash_flow": 2296827.0,
+    "cash_flow": 78390.0,
     "source": "SIMULATOR"
   },
   {
@@ -5909,9 +5909,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 67.5,
-    "cash_flow": -2571075.0,
+    "cash_flow": -87750.0,
     "source": "SIMULATOR"
   },
   {
@@ -5922,9 +5922,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38090,
+    "quantity": 1300,
     "price": 66.35,
-    "cash_flow": 2527271.5,
+    "cash_flow": 86254.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -5987,9 +5987,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 80.5,
-    "cash_flow": 3097640.0,
+    "cash_flow": 104650.0,
     "source": "SIMULATOR"
   },
   {
@@ -6000,9 +6000,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 80.3,
-    "cash_flow": -3089944.0,
+    "cash_flow": -104390.0,
     "source": "SIMULATOR"
   },
   {
@@ -6013,9 +6013,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 100.65,
-    "cash_flow": 3873012.0,
+    "cash_flow": 130845.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6026,9 +6026,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 100.55,
-    "cash_flow": -3869164.0,
+    "cash_flow": -130715.0,
     "source": "SIMULATOR"
   },
   {
@@ -6039,9 +6039,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 54.25,
-    "cash_flow": -2087540.0,
+    "cash_flow": -70525.0,
     "source": "SIMULATOR"
   },
   {
@@ -6052,9 +6052,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 54.6,
-    "cash_flow": 2101008.0,
+    "cash_flow": 70980.0,
     "source": "SIMULATOR"
   },
   {
@@ -6065,9 +6065,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 77.575,
-    "cash_flow": -2985086.0,
+    "cash_flow": -100847.5,
     "source": "SIMULATOR"
   },
   {
@@ -6078,9 +6078,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 76.8,
-    "cash_flow": 2955264.0,
+    "cash_flow": 99840.0,
     "source": "SIMULATOR"
   },
   {
@@ -6143,9 +6143,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 80.55000000000001,
-    "cash_flow": 3089092.5000000005,
+    "cash_flow": 104715.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6156,9 +6156,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 80.65,
-    "cash_flow": -3092927.5,
+    "cash_flow": -104845.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6169,9 +6169,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 100.875,
-    "cash_flow": 3868556.25,
+    "cash_flow": 131137.5,
     "source": "SIMULATOR"
   },
   {
@@ -6182,9 +6182,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 101.0,
-    "cash_flow": -3873350.0,
+    "cash_flow": -131300.0,
     "source": "SIMULATOR"
   },
   {
@@ -6195,9 +6195,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 54.8,
-    "cash_flow": -2101580.0,
+    "cash_flow": -71240.0,
     "source": "SIMULATOR"
   },
   {
@@ -6208,9 +6208,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 54.7,
-    "cash_flow": 2097745.0,
+    "cash_flow": 71110.0,
     "source": "SIMULATOR"
   },
   {
@@ -6221,9 +6221,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 77.45,
-    "cash_flow": -2970207.5,
+    "cash_flow": -100685.0,
     "source": "SIMULATOR"
   },
   {
@@ -6234,9 +6234,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38350,
+    "quantity": 1300,
     "price": 77.4,
-    "cash_flow": 2968290.0,
+    "cash_flow": 100620.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6351,9 +6351,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 82.30000000000001,
-    "cash_flow": 3188302.0000000005,
+    "cash_flow": 106990.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6364,9 +6364,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 82.3,
-    "cash_flow": -3188302.0,
+    "cash_flow": -106990.0,
     "source": "SIMULATOR"
   },
   {
@@ -6377,9 +6377,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 94.725,
-    "cash_flow": 3669646.5,
+    "cash_flow": 123142.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -6390,9 +6390,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 94.9,
-    "cash_flow": -3676426.0,
+    "cash_flow": -123370.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6403,9 +6403,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 55.175,
-    "cash_flow": -2137479.5,
+    "cash_flow": -71727.5,
     "source": "SIMULATOR"
   },
   {
@@ -6416,9 +6416,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 55.15,
-    "cash_flow": 2136511.0,
+    "cash_flow": 71695.0,
     "source": "SIMULATOR"
   },
   {
@@ -6429,9 +6429,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 72.15,
-    "cash_flow": -2795091.0,
+    "cash_flow": -93795.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6442,9 +6442,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38740,
+    "quantity": 1300,
     "price": 72.25,
-    "cash_flow": 2798965.0,
+    "cash_flow": 93925.0,
     "source": "SIMULATOR"
   },
   {
@@ -6507,9 +6507,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 75.80000000000001,
-    "cash_flow": 2931565.0000000005,
+    "cash_flow": 98540.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6520,9 +6520,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 75.8,
-    "cash_flow": -2931565.0,
+    "cash_flow": -98540.0,
     "source": "SIMULATOR"
   },
   {
@@ -6533,9 +6533,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 105.575,
-    "cash_flow": 4083113.125,
+    "cash_flow": 137247.5,
     "source": "SIMULATOR"
   },
   {
@@ -6546,9 +6546,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 105.45,
-    "cash_flow": -4078278.75,
+    "cash_flow": -137085.0,
     "source": "SIMULATOR"
   },
   {
@@ -6559,9 +6559,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 51.2,
-    "cash_flow": -1980160.0,
+    "cash_flow": -66560.0,
     "source": "SIMULATOR"
   },
   {
@@ -6572,9 +6572,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 51.2,
-    "cash_flow": 1980160.0,
+    "cash_flow": 66560.0,
     "source": "SIMULATOR"
   },
   {
@@ -6585,9 +6585,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 80.525,
-    "cash_flow": -3114304.375,
+    "cash_flow": -104682.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6598,9 +6598,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38675,
+    "quantity": 1300,
     "price": 81.05,
-    "cash_flow": 3134608.75,
+    "cash_flow": 105365.0,
     "source": "SIMULATOR"
   },
   {
@@ -6663,9 +6663,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 111.85,
-    "cash_flow": 4660230.25,
+    "cash_flow": 145405.0,
     "source": "SIMULATOR"
   },
   {
@@ -6676,9 +6676,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 112.0,
-    "cash_flow": -4666480.0,
+    "cash_flow": -145600.0,
     "source": "SIMULATOR"
   },
   {
@@ -6689,9 +6689,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 81.975,
-    "cash_flow": 3415488.3749999995,
+    "cash_flow": 106567.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -6702,9 +6702,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 81.7,
-    "cash_flow": -3404030.5,
+    "cash_flow": -106210.0,
     "source": "SIMULATOR"
   },
   {
@@ -6715,9 +6715,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 78.225,
-    "cash_flow": -3259244.6249999995,
+    "cash_flow": -101692.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -6728,9 +6728,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 78.15,
-    "cash_flow": 3256119.7500000005,
+    "cash_flow": 101595.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6741,9 +6741,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 62.375,
-    "cash_flow": -2598854.375,
+    "cash_flow": -81087.5,
     "source": "SIMULATOR"
   },
   {
@@ -6754,9 +6754,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 41665,
+    "quantity": 1300,
     "price": 62.15,
-    "cash_flow": 2589479.75,
+    "cash_flow": 80795.0,
     "source": "SIMULATOR"
   },
   {
@@ -6819,9 +6819,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 78.525,
-    "cash_flow": 3001225.5,
+    "cash_flow": 102082.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6832,9 +6832,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 78.5,
-    "cash_flow": -3000270.0,
+    "cash_flow": -102050.0,
     "source": "SIMULATOR"
   },
   {
@@ -6845,9 +6845,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 97.775,
-    "cash_flow": 3736960.5,
+    "cash_flow": 127107.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6858,9 +6858,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25300.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 97.95,
-    "cash_flow": -3743649.0,
+    "cash_flow": -127335.0,
     "source": "SIMULATOR"
   },
   {
@@ -6871,9 +6871,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 53.0,
-    "cash_flow": -2025660.0,
+    "cash_flow": -68900.0,
     "source": "SIMULATOR"
   },
   {
@@ -6884,9 +6884,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25900.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 53.05,
-    "cash_flow": 2027571.0,
+    "cash_flow": 68965.0,
     "source": "SIMULATOR"
   },
   {
@@ -6897,9 +6897,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 74.275,
-    "cash_flow": -2838790.5,
+    "cash_flow": -96557.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -6910,9 +6910,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 74.25,
-    "cash_flow": 2837835.0,
+    "cash_flow": 96525.0,
     "source": "SIMULATOR"
   },
   {
@@ -6975,9 +6975,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 104.275,
-    "cash_flow": 4303950.625,
+    "cash_flow": 135557.5,
     "source": "SIMULATOR"
   },
   {
@@ -6988,9 +6988,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 104.1,
-    "cash_flow": -4296727.5,
+    "cash_flow": -135330.0,
     "source": "SIMULATOR"
   },
   {
@@ -7001,9 +7001,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 84.975,
-    "cash_flow": 3507343.1249999995,
+    "cash_flow": 110467.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7014,9 +7014,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 84.9,
-    "cash_flow": -3504247.5000000005,
+    "cash_flow": -110370.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7027,9 +7027,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 72.525,
-    "cash_flow": -2993469.3750000005,
+    "cash_flow": -94282.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7040,9 +7040,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 72.3,
-    "cash_flow": 2984182.5,
+    "cash_flow": 93990.0,
     "source": "SIMULATOR"
   },
   {
@@ -7053,9 +7053,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 63.925,
-    "cash_flow": -2638504.375,
+    "cash_flow": -83102.5,
     "source": "SIMULATOR"
   },
   {
@@ -7066,9 +7066,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 41275,
+    "quantity": 1300,
     "price": 63.95,
-    "cash_flow": 2639536.25,
+    "cash_flow": 83135.0,
     "source": "SIMULATOR"
   },
   {
@@ -7131,9 +7131,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 93.525,
-    "cash_flow": 3641395.875,
+    "cash_flow": 121582.50000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7144,9 +7144,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 93.55,
-    "cash_flow": -3642369.25,
+    "cash_flow": -121615.0,
     "source": "SIMULATOR"
   },
   {
@@ -7157,9 +7157,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 82.175,
-    "cash_flow": 3199483.625,
+    "cash_flow": 106827.5,
     "source": "SIMULATOR"
   },
   {
@@ -7170,9 +7170,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 82.35,
-    "cash_flow": -3206297.25,
+    "cash_flow": -107054.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7183,9 +7183,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 64.175,
-    "cash_flow": -2498653.625,
+    "cash_flow": -83427.5,
     "source": "SIMULATOR"
   },
   {
@@ -7196,9 +7196,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 64.1,
-    "cash_flow": 2495733.5,
+    "cash_flow": 83329.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7209,9 +7209,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 61.6,
-    "cash_flow": -2398396.0,
+    "cash_flow": -80080.0,
     "source": "SIMULATOR"
   },
   {
@@ -7222,9 +7222,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38935,
+    "quantity": 1300,
     "price": 61.35,
-    "cash_flow": 2388662.25,
+    "cash_flow": 79755.0,
     "source": "SIMULATOR"
   },
   {
@@ -7287,9 +7287,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 83.69999999999999,
-    "cash_flow": 3199013.9999999995,
+    "cash_flow": 108809.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7300,9 +7300,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 83.8,
-    "cash_flow": -3202836.0,
+    "cash_flow": -108940.0,
     "source": "SIMULATOR"
   },
   {
@@ -7313,9 +7313,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 93.6,
-    "cash_flow": 3577392.0,
+    "cash_flow": 121679.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7326,9 +7326,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 93.5,
-    "cash_flow": -3573570.0,
+    "cash_flow": -121550.0,
     "source": "SIMULATOR"
   },
   {
@@ -7339,9 +7339,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 58.0,
-    "cash_flow": -2216760.0,
+    "cash_flow": -75400.0,
     "source": "SIMULATOR"
   },
   {
@@ -7352,9 +7352,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 58.05,
-    "cash_flow": 2218671.0,
+    "cash_flow": 75465.0,
     "source": "SIMULATOR"
   },
   {
@@ -7365,9 +7365,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 70.30000000000001,
-    "cash_flow": -2686866.0000000005,
+    "cash_flow": -91390.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7378,9 +7378,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38220,
+    "quantity": 1300,
     "price": 70.2,
-    "cash_flow": 2683044.0,
+    "cash_flow": 91260.0,
     "source": "SIMULATOR"
   },
   {
@@ -7443,9 +7443,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 86.65,
-    "cash_flow": 3379350.0,
+    "cash_flow": 112645.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7456,9 +7456,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 86.3,
-    "cash_flow": -3365700.0,
+    "cash_flow": -112190.0,
     "source": "SIMULATOR"
   },
   {
@@ -7469,9 +7469,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 94.5,
-    "cash_flow": 3685500.0,
+    "cash_flow": 122850.0,
     "source": "SIMULATOR"
   },
   {
@@ -7482,9 +7482,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 94.25,
-    "cash_flow": -3675750.0,
+    "cash_flow": -122525.0,
     "source": "SIMULATOR"
   },
   {
@@ -7495,9 +7495,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 60.05,
-    "cash_flow": -2341950.0,
+    "cash_flow": -78065.0,
     "source": "SIMULATOR"
   },
   {
@@ -7508,9 +7508,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 60.1,
-    "cash_flow": 2343900.0,
+    "cash_flow": 78130.0,
     "source": "SIMULATOR"
   },
   {
@@ -7521,9 +7521,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 71.075,
-    "cash_flow": -2771925.0,
+    "cash_flow": -92397.5,
     "source": "SIMULATOR"
   },
   {
@@ -7534,9 +7534,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 71.0,
-    "cash_flow": 2769000.0,
+    "cash_flow": 92300.0,
     "source": "SIMULATOR"
   },
   {
@@ -7599,9 +7599,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 86.575,
-    "cash_flow": 3393307.125,
+    "cash_flow": 112547.5,
     "source": "SIMULATOR"
   },
   {
@@ -7612,9 +7612,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 86.5,
-    "cash_flow": -3390367.5,
+    "cash_flow": -112450.0,
     "source": "SIMULATOR"
   },
   {
@@ -7625,9 +7625,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 92.675,
-    "cash_flow": 3632396.625,
+    "cash_flow": 120477.5,
     "source": "SIMULATOR"
   },
   {
@@ -7638,9 +7638,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 92.75,
-    "cash_flow": -3635336.25,
+    "cash_flow": -120575.0,
     "source": "SIMULATOR"
   },
   {
@@ -7651,9 +7651,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 58.575,
-    "cash_flow": -2295847.125,
+    "cash_flow": -76147.5,
     "source": "SIMULATOR"
   },
   {
@@ -7664,9 +7664,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 58.8,
-    "cash_flow": 2304666.0,
+    "cash_flow": 76440.0,
     "source": "SIMULATOR"
   },
   {
@@ -7677,9 +7677,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 70.4,
-    "cash_flow": -2759328.0,
+    "cash_flow": -91520.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7690,9 +7690,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39195,
+    "quantity": 1300,
     "price": 70.75,
-    "cash_flow": 2773046.25,
+    "cash_flow": 91975.0,
     "source": "SIMULATOR"
   },
   {
@@ -7755,9 +7755,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 81.925,
-    "cash_flow": 3195075.0,
+    "cash_flow": 106502.5,
     "source": "SIMULATOR"
   },
   {
@@ -7768,9 +7768,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 81.95,
-    "cash_flow": -3196050.0,
+    "cash_flow": -106535.0,
     "source": "SIMULATOR"
   },
   {
@@ -7781,9 +7781,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 101.775,
-    "cash_flow": 3969225.0,
+    "cash_flow": 132307.5,
     "source": "SIMULATOR"
   },
   {
@@ -7794,9 +7794,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 101.95,
-    "cash_flow": -3976050.0,
+    "cash_flow": -132535.0,
     "source": "SIMULATOR"
   },
   {
@@ -7807,9 +7807,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 55.825,
-    "cash_flow": -2177175.0,
+    "cash_flow": -72572.5,
     "source": "SIMULATOR"
   },
   {
@@ -7820,9 +7820,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 55.7,
-    "cash_flow": 2172300.0,
+    "cash_flow": 72410.0,
     "source": "SIMULATOR"
   },
   {
@@ -7833,9 +7833,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 77.875,
-    "cash_flow": -3037125.0,
+    "cash_flow": -101237.5,
     "source": "SIMULATOR"
   },
   {
@@ -7846,9 +7846,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 39000,
+    "quantity": 1300,
     "price": 77.75,
-    "cash_flow": 3032250.0,
+    "cash_flow": 101075.0,
     "source": "SIMULATOR"
   },
   {
@@ -7911,9 +7911,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25600.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 106.65,
-    "cash_flow": 4297995.0,
+    "cash_flow": 138645.0,
     "source": "SIMULATOR"
   },
   {
@@ -7924,9 +7924,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25600.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 106.5,
-    "cash_flow": -4291950.0,
+    "cash_flow": -138450.0,
     "source": "SIMULATOR"
   },
   {
@@ -7937,9 +7937,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 86.55000000000001,
-    "cash_flow": 3487965.0000000005,
+    "cash_flow": 112515.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -7950,9 +7950,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 86.45,
-    "cash_flow": -3483935.0,
+    "cash_flow": -112385.0,
     "source": "SIMULATOR"
   },
   {
@@ -7963,9 +7963,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 74.925,
-    "cash_flow": -3019477.5,
+    "cash_flow": -97402.5,
     "source": "SIMULATOR"
   },
   {
@@ -7976,9 +7976,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 74.85,
-    "cash_flow": 3016455.0,
+    "cash_flow": 97304.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -7989,9 +7989,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25000.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 66.6,
-    "cash_flow": -2683980.0,
+    "cash_flow": -86579.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -8002,9 +8002,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25000.0,
-    "quantity": 40300,
+    "quantity": 1300,
     "price": 66.65,
-    "cash_flow": 2685995.0,
+    "cash_flow": 86645.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -8067,9 +8067,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 81.6,
-    "cash_flow": 3139968.0,
+    "cash_flow": 106079.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -8080,9 +8080,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 81.4,
-    "cash_flow": -3132272.0,
+    "cash_flow": -105820.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -8093,9 +8093,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 98.675,
-    "cash_flow": 3797014.0,
+    "cash_flow": 128277.5,
     "source": "SIMULATOR"
   },
   {
@@ -8106,9 +8106,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 98.85,
-    "cash_flow": -3803748.0,
+    "cash_flow": -128504.99999999999,
     "source": "SIMULATOR"
   },
   {
@@ -8119,9 +8119,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 55.6,
-    "cash_flow": -2139488.0,
+    "cash_flow": -72280.0,
     "source": "SIMULATOR"
   },
   {
@@ -8132,9 +8132,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 55.7,
-    "cash_flow": 2143336.0,
+    "cash_flow": 72410.0,
     "source": "SIMULATOR"
   },
   {
@@ -8145,9 +8145,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 75.30000000000001,
-    "cash_flow": -2897544.0000000005,
+    "cash_flow": -97890.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -8158,9 +8158,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38480,
+    "quantity": 1300,
     "price": 75.4,
-    "cash_flow": 2901392.0,
+    "cash_flow": 98020.00000000001,
     "source": "SIMULATOR"
   },
   {
@@ -8223,9 +8223,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 87.125,
-    "cash_flow": 3380885.625,
+    "cash_flow": 113262.5,
     "source": "SIMULATOR"
   },
   {
@@ -8236,9 +8236,9 @@
     "position": "SHORT",
     "option_type": "CE",
     "strike": 25700.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 87.25,
-    "cash_flow": -3385736.25,
+    "cash_flow": -113425.0,
     "source": "SIMULATOR"
   },
   {
@@ -8249,9 +8249,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 92.225,
-    "cash_flow": 3578791.125,
+    "cash_flow": 119892.49999999999,
     "source": "SIMULATOR"
   },
   {
@@ -8262,9 +8262,9 @@
     "position": "SHORT",
     "option_type": "PE",
     "strike": 25200.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 92.2,
-    "cash_flow": -3577821.0,
+    "cash_flow": -119860.0,
     "source": "SIMULATOR"
   },
   {
@@ -8275,9 +8275,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 59.3,
-    "cash_flow": -2301136.5,
+    "cash_flow": -77090.0,
     "source": "SIMULATOR"
   },
   {
@@ -8288,9 +8288,9 @@
     "position": "LONG",
     "option_type": "CE",
     "strike": 25800.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 59.2,
-    "cash_flow": 2297256.0,
+    "cash_flow": 76960.0,
     "source": "SIMULATOR"
   },
   {
@@ -8301,9 +8301,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 70.25,
-    "cash_flow": -2726051.25,
+    "cash_flow": -91325.0,
     "source": "SIMULATOR"
   },
   {
@@ -8314,9 +8314,9 @@
     "position": "LONG",
     "option_type": "PE",
     "strike": 25100.0,
-    "quantity": 38805,
+    "quantity": 1300,
     "price": 70.3,
-    "cash_flow": 2727991.5,
+    "cash_flow": 91390.0,
     "source": "SIMULATOR"
   }
 ]
