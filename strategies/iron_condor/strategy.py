@@ -4,6 +4,7 @@ Iron Condor strategy orchestrator
 
 import pandas as pd
 import logging
+import uuid
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -282,6 +283,7 @@ def generate_iron_condor_trade(
             "probability_of_profit": payoff.get('probability_of_profit'),
             "spot_price": spot_price,
             "generated_at": datetime.now().isoformat(),
+            "proposal_id": f"{datetime.now().isoformat()}_{uuid.uuid4().hex[:8]}",
             "lot_size": lot_size,
             "margin_used": margin_used,
             "profit_target_margin": None,  # Exit by TSL only (no hardcoded profit target)

@@ -1971,7 +1971,7 @@
     "trade_id": "2026-02-23T09:53:02.524448",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 580
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -1999,7 +1999,7 @@
     "trade_id": "2026-02-23T10:12:27.822902",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 591
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2027,7 +2027,7 @@
     "trade_id": "2026-02-23T10:42:08.336889",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 631
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2055,7 +2055,7 @@
     "trade_id": "2026-02-23T11:02:04.813925",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 637
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2083,7 +2083,7 @@
     "trade_id": "2026-02-23T11:11:45.318638",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 653
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2111,7 +2111,7 @@
     "trade_id": "2026-02-24T09:27:39.759134",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 586
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2139,7 +2139,7 @@
     "trade_id": "2026-02-24T09:33:21.669039",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 592
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2167,7 +2167,7 @@
     "trade_id": "2026-02-24T09:40:09.731763",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 590
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2209,7 +2209,7 @@
     "trade_id": "2026-02-24T10:01:54.010489",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 596
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2237,7 +2237,7 @@
     "trade_id": "2026-02-24T10:13:31.573215",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 595
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2265,7 +2265,7 @@
     "trade_id": "2026-02-24T10:25:27.434407",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 641
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2293,7 +2293,7 @@
     "trade_id": "2026-02-24T10:37:08.029552",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 588
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2335,7 +2335,7 @@
     "trade_id": "2026-02-24T12:15:36.876787",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 599
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2363,7 +2363,7 @@
     "trade_id": "2026-02-24T12:28:06.568681",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 588
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2391,7 +2391,7 @@
     "trade_id": "2026-02-24T12:44:21.821873",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 600
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2419,7 +2419,7 @@
     "trade_id": "2026-02-24T13:04:15.889126",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 603
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2447,7 +2447,7 @@
     "trade_id": "2026-02-24T13:25:13.062422",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 600
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2475,7 +2475,7 @@
     "trade_id": "2026-02-24T13:42:12.873300",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 620
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2503,7 +2503,7 @@
     "trade_id": "2026-02-24T14:00:02.419099",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 592
+    "_original_lots": 20
   },
   {
     "strategy": "CALL_BACKSPREAD",
@@ -2531,7 +2531,7 @@
     "trade_id": "2026-02-24T14:18:59.939523",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 597
+    "_original_lots": 20
   },
   {
     "strategy": "IRON_CONDOR_WEEKLY",
@@ -2545,6 +2545,664 @@
     "trade_id": "2026-02-24T10:49:46.583267",
     "is_final": true,
     "record_version": 1,
-    "_original_lots": 635
+    "_original_lots": 20
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T09:25:47.573692",
+    "exit_time": "2026-02-25T09:31:56.512500",
+    "pnl": -7052.500000000015,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:24:26.635957",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T09:36:57.705106",
+    "exit_time": "2026-02-25T09:45:53.791508",
+    "pnl": -487.5,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:36:11.278177",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T09:36:57.746109",
+    "exit_time": "2026-02-25T10:55:28.299898",
+    "pnl": 4090.9999999999454,
+    "max_loss": 833.9999999999998,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:36:57.608104",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T09:44:31.840995",
+    "exit_time": "2026-02-25T10:00:09.906082",
+    "pnl": -6857.500000000007,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:43:54.128169",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T09:49:39.680761",
+    "exit_time": "2026-02-25T10:09:37.244595",
+    "pnl": -8189.999999999978,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:49:02.088477",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T09:57:15.633635",
+    "exit_time": "2026-02-25T10:21:30.246815",
+    "pnl": -4322.500000000058,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:56:32.841204",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T09:44:31.881302",
+    "exit_time": "2026-02-25T10:31:05.520344",
+    "pnl": 4998.000000000022,
+    "max_loss": 837.0000000000005,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:44:31.763910",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T10:06:16.356308",
+    "exit_time": "2026-02-25T10:36:08.882394",
+    "pnl": -7637.500000000036,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:05:40.678392",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T10:06:16.401226",
+    "exit_time": "2026-02-25T10:46:39.317739",
+    "pnl": 1725.4999999999925,
+    "max_loss": 891.9999999999999,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:06:16.269224",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T09:49:39.723544",
+    "exit_time": "2026-02-25T10:45:09.869854",
+    "pnl": 4129.9999999999345,
+    "max_loss": 827.4999999999994,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:49:39.585617",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T09:57:15.678193",
+    "exit_time": "2026-02-25T10:46:08.564007",
+    "pnl": 2936.000000000011,
+    "max_loss": 818.9999999999998,
+    "lots": 20,
+    "trade_id": "2026-02-25T09:57:15.547692",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T10:16:09.243131",
+    "exit_time": "2026-02-25T10:48:08.567062",
+    "pnl": -2957.5000000000446,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:15:30.351326",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T10:16:09.285640",
+    "exit_time": "2026-02-25T10:48:38.264312",
+    "pnl": 152.9999999999461,
+    "max_loss": 871.9999999999993,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:16:09.158392",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T10:29:11.746572",
+    "exit_time": "2026-02-25T10:56:59.339027",
+    "pnl": 357.50000000004366,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:28:23.991065",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T10:29:11.797390",
+    "exit_time": "2026-02-25T11:29:38.432323",
+    "pnl": -2254.9999999999927,
+    "max_loss": 875.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:29:11.656335",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T10:43:44.865067",
+    "exit_time": "2026-02-25T11:41:33.148546",
+    "pnl": 5622.499999999985,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:43:09.273491",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T10:43:44.909930",
+    "exit_time": "2026-02-25T11:34:59.115185",
+    "pnl": -149.49999999999272,
+    "max_loss": 881.9999999999999,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:43:44.762037",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T10:54:42.483902",
+    "exit_time": "2026-02-25T11:44:00.359281",
+    "pnl": 231.00000000000318,
+    "max_loss": 891.5000000000003,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:54:42.339403",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T10:54:42.432892",
+    "exit_time": "2026-02-25T11:49:37.549799",
+    "pnl": 2274.9999999999636,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T10:53:47.386549",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T11:40:47.079784",
+    "exit_time": "2026-02-25T11:57:55.058117",
+    "pnl": 2600.000000000018,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:39:36.156575",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T11:40:47.131218",
+    "exit_time": "2026-02-25T12:05:04.732389",
+    "pnl": 740.999999999978,
+    "max_loss": 998.9999999999998,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:40:46.984353",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T11:48:20.769897",
+    "exit_time": "2026-02-25T12:06:44.890306",
+    "pnl": 1852.5000000000146,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:47:27.493875",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T11:56:15.385668",
+    "exit_time": "2026-02-25T12:19:53.521605",
+    "pnl": -324.9999999999636,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:55:26.625689",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T11:56:15.293779",
+    "exit_time": "2026-02-25T12:28:00.270355",
+    "pnl": 768.5000000000007,
+    "max_loss": 906.4999999999998,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:56:15.271172",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T11:48:20.814823",
+    "exit_time": "2026-02-25T12:27:11.320465",
+    "pnl": 985.9999999999966,
+    "max_loss": 916.4999999999998,
+    "lots": 20,
+    "trade_id": "2026-02-25T11:48:20.668048",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T12:04:32.036392",
+    "exit_time": "2026-02-25T12:30:55.078327",
+    "pnl": 1495.0000000000073,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:03:53.408256",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T12:04:32.082366",
+    "exit_time": "2026-02-25T12:31:51.895605",
+    "pnl": 442.50000000000307,
+    "max_loss": 1005.0000000000006,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:04:31.938371",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T12:16:13.520914",
+    "exit_time": "2026-02-25T12:51:22.261182",
+    "pnl": 24635.000000000015,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:15:20.347360",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T12:16:13.429196",
+    "exit_time": "2026-02-25T13:11:17.083036",
+    "pnl": 1317.4999999999636,
+    "max_loss": 1007.5,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:16:13.423672",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T12:39:51.028732",
+    "exit_time": "2026-02-25T13:03:58.643125",
+    "pnl": 15762.5,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:38:52.971075",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T12:39:51.099882",
+    "exit_time": "2026-02-25T13:04:39.522302",
+    "pnl": 1006.4999999999895,
+    "max_loss": 863.4999999999997,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:39:50.894644",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T12:49:00.847193",
+    "exit_time": "2026-02-25T13:13:06.140634",
+    "pnl": -1430.000000000029,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:47:50.796013",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T12:49:00.947401",
+    "exit_time": "2026-02-25T13:22:52.480731",
+    "pnl": 1698.5000000000255,
+    "max_loss": 821.5000000000003,
+    "lots": 20,
+    "trade_id": "2026-02-25T12:49:00.735477",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T13:01:35.844896",
+    "exit_time": "2026-02-25T13:25:03.198910",
+    "pnl": 1299.9999999999818,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:00:35.889942",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T13:01:35.932160",
+    "exit_time": "2026-02-25T14:06:04.905003",
+    "pnl": 1534.0000000000257,
+    "max_loss": 823.5000000000002,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:01:35.665398",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T13:10:41.520061",
+    "exit_time": "2026-02-25T13:40:38.094360",
+    "pnl": -779.9999999999927,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:09:59.820727",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T13:10:41.569272",
+    "exit_time": "2026-02-25T13:43:10.872625",
+    "pnl": 342.99999999995634,
+    "max_loss": 811.9999999999993,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:10:41.417588",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T13:21:19.895391",
+    "exit_time": "2026-02-25T13:56:28.730667",
+    "pnl": 1104.9999999999927,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:20:27.817909",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T13:21:19.808825",
+    "exit_time": "2026-02-25T14:31:25.031148",
+    "pnl": 537.999999999982,
+    "max_loss": 811.9999999999993,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:21:19.799751",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T13:34:37.148546",
+    "exit_time": "2026-02-25T14:10:57.259458",
+    "pnl": 2177.5000000000146,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:33:36.220389",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T13:34:37.224638",
+    "exit_time": "2026-02-25T14:38:28.004331",
+    "pnl": 858.0000000000007,
+    "max_loss": 816.9999999999993,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:34:37.037770",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T13:53:25.681137",
+    "exit_time": "2026-02-25T14:25:17.961611",
+    "pnl": -454.9999999999927,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:52:30.231138",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T13:53:25.492650",
+    "exit_time": "2026-02-25T14:32:33.045453",
+    "pnl": 1476.4999999999552,
+    "max_loss": 816.0000000000002,
+    "lots": 20,
+    "trade_id": "2026-02-25T13:53:25.486850",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T14:04:59.351941",
+    "exit_time": "2026-02-25T14:34:19.344747",
+    "pnl": -5070.000000000007,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T14:03:46.512129",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T14:04:59.419388",
+    "exit_time": "2026-02-25T14:39:02.795748",
+    "pnl": 1116.000000000021,
+    "max_loss": 819.0000000000009,
+    "lots": 20,
+    "trade_id": "2026-02-25T14:04:59.229718",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "IRON_CONDOR_WEEKLY",
+    "book": "INCOME",
+    "regime_at_entry": "INCOME",
+    "entry_time": "2026-02-25T14:21:38.433620",
+    "exit_time": "2026-02-25T14:40:16.487857",
+    "pnl": 95.49999999998977,
+    "max_loss": 799.4999999999993,
+    "lots": 20,
+    "trade_id": "2026-02-25T14:21:38.426301",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "CONVEX",
+    "entry_time": "2026-02-25T14:21:38.538499",
+    "exit_time": "2026-02-25T14:41:01.470901",
+    "pnl": -617.4999999999927,
+    "max_loss": 0.0,
+    "lots": 20,
+    "trade_id": "2026-02-25T14:20:39.148117",
+    "_original_lots": 20,
+    "is_final": true,
+    "record_version": 1
   }
 ]

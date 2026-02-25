@@ -19,6 +19,7 @@ Exit Rules:
 
 import logging
 import re
+import uuid
 from datetime import datetime, date
 from typing import Dict, Optional
 from .config import (
@@ -639,7 +640,8 @@ def generate_trend_follow_trade(market_state: Dict, capital: float = 1000000.0,
             "expiry": expiry_date.isoformat() if expiry_date else None,  # Add expiry date
             "days_to_expiry": days_to_expiry,  # Days to expiry at entry
             "rolled_to_next_series": rolled_to_next_series,  # True if we skipped current month
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            "proposal_id": f"{datetime.now().isoformat()}_{uuid.uuid4().hex[:8]}"
         }
         
         logger.info(

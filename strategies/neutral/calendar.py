@@ -15,6 +15,7 @@ Purpose:
 import pandas as pd
 import numpy as np
 import logging
+import uuid
 from datetime import datetime, date
 from typing import Dict, Optional, List
 from .config import (
@@ -295,7 +296,8 @@ def generate_neutral_call_calendar(market_state: Dict, option_chain_weekly: pd.D
             "days_to_expiry_short": days_to_expiry_weekly,
             "days_to_expiry_long": market_state.get('days_to_expiry_monthly', days_to_expiry_weekly + 7),
             "entry_iv_percentile": iv_percentile,  # Store for exit checks
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            "proposal_id": f"{datetime.now().isoformat()}_{uuid.uuid4().hex[:8]}"
         }
         
         logger.info(

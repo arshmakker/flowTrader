@@ -1,3 +1,6 @@
+# neutral strategy package initializer
+__all__ = []
+
 """
 Neutral Strategy Module
 """

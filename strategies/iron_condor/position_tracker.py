@@ -75,12 +75,24 @@ class IronCondorPositionTracker:
     
     def add_position(self, trade_proposal: Dict):
         """Add a new position to track"""
+        import uuid
+        
         strategy = trade_proposal.get('strategy', 'UNKNOWN').upper()
         is_futures_strategy = 'FUTURE' in strategy or trade_proposal.get('instrument', '').upper() == 'NIFTY_FUTURE'
         
+        # Use proposal_id if available, otherwise generate a unique ID
+        # proposal_id groups all legs of a single proposal together
+        proposal_id = trade_proposal.get('proposal_id', None)
+        if not proposal_id:
+            proposal_id = f"{datetime.now().isoformat()}_{uuid.uuid4().hex[:8]}"
+        
+        # Generate unique trade_id for this specific position (handles multi-leg strategies)
+        trade_id = f"{proposal_id}_{uuid.uuid4().hex[:8]}"
+        
         # Build position based on strategy type
         position = {
-            'trade_id': trade_proposal.get('generated_at', datetime.now().isoformat()),
+            'trade_id': trade_id,
+            'proposal_id': proposal_id,  # Group all legs of a proposal together
             'entry_time': datetime.now().isoformat(),
             'lots': trade_proposal.get('lots', 0),
             'lot_size': trade_proposal.get('lot_size', 50),

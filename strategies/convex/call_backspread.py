@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import logging
 import json
+import uuid
 from typing import Dict, Optional
 from datetime import datetime
 
@@ -294,7 +295,8 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             "lots": lots,
             "lot_size": lot_size,
             "days_to_expiry": days_to_expiry,
-            "generated_at": datetime.now().isoformat()
+            "generated_at": datetime.now().isoformat(),
+            "proposal_id": f"{datetime.now().isoformat()}_{uuid.uuid4().hex[:8]}"
         }
         
         logger.info(
