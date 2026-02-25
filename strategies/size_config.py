@@ -8,9 +8,9 @@ from typing import Optional
 
 # Hard policy limits (can be tuned)
 # Minimum lots to trade for multi-leg option strategies
-MIN_LOTS = 20
+MIN_LOTS = 10
 # Maximum lots per trade (safety cap)
-MAX_LOTS = 20
+MAX_LOTS = 10
 
 def clamp_lots(lots: Optional[int]) -> int:
     """
