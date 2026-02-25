@@ -96,8 +96,16 @@ htmlcov/
 # Git diagnostics
 git-diagnostics-*.zip
 
+# Daily Reports
+pnl_*.json
+daily_report_*.json
+
 # Temporary files
 *.tmp
 *.bak
 *.backup
 calculate_pnl.py
+
+# Test config (local)
+conftest.py
+tests/conftest.py
