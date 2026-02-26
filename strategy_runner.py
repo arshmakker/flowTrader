@@ -24,10 +24,7 @@ except ImportError:
     IST = None  # Python < 3.9; fallback to local time
 from strategies.iron_condor import generate_iron_condor_trade
 from strategies.convex import generate_nifty_call_backspread
-from strategies.neutral import generate_neutral_call_calendar
-from strategies.trend import generate_trend_follow_trade
-from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX, STRATEGY_CALENDAR, STRATEGY_TREND
-from strategies.neutral.config import ENABLE_NEUTRAL_CALENDAR
+from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX
 from regime import RegimeDetector
 from technical_indicators import (
     calculate_iv_percentile,
