@@ -1,6 +1,8 @@
 """
 Convex Backspread Backtest
 
+For a backtest that mimics the full main flow (Convex + Iron Condor together), see backtest_main_flow.py.
+
 Backtests the Call Backspread strategy:
 - Sell 1 ATM Call
 - Buy 2 OTM Calls (~ +1% strike)

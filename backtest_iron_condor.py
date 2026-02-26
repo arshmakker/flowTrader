@@ -1,5 +1,7 @@
 """
-Backtesting framework for Iron Condor strategy using historical data
+Backtesting framework for Iron Condor strategy using historical data.
+
+For a backtest that mimics the full main flow (Convex + Iron Condor together), see backtest_main_flow.py.
 """
 
 import pandas as pd

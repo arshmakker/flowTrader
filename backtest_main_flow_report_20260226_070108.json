@@ -1,0 +1,53 @@
+{
+  "total_trades": 2,
+  "by_strategy": {
+    "CALL_BACKSPREAD": {
+      "count": 2,
+      "pnl": 37124.99999999999,
+      "trades": [
+        {
+          "strategy": "CALL_BACKSPREAD",
+          "book": "CONVEX",
+          "entry_time": "2026-01-16 13:30:00",
+          "exit_time": "2026-01-19 09:30:00",
+          "exit_reason": "TIME_ELAPSED_40PCT",
+          "final_pnl": 5553.749999999997,
+          "lots": 10
+        },
+        {
+          "strategy": "CALL_BACKSPREAD",
+          "book": "CONVEX",
+          "entry_time": "2026-02-03 10:15:00",
+          "exit_time": "2026-02-06 09:30:00",
+          "exit_reason": "TIME_ELAPSED_40PCT",
+          "final_pnl": 31571.249999999996,
+          "lots": 10
+        }
+      ]
+    }
+  },
+  "total_pnl": 37124.99999999999,
+  "initial_capital": 100000.0,
+  "final_capital": 137125.0,
+  "total_return_pct": 37.125,
+  "trades": [
+    {
+      "strategy": "CALL_BACKSPREAD",
+      "book": "CONVEX",
+      "entry_time": "2026-01-16 13:30:00",
+      "exit_time": "2026-01-19 09:30:00",
+      "exit_reason": "TIME_ELAPSED_40PCT",
+      "final_pnl": 5553.749999999997,
+      "lots": 10
+    },
+    {
+      "strategy": "CALL_BACKSPREAD",
+      "book": "CONVEX",
+      "entry_time": "2026-02-03 10:15:00",
+      "exit_time": "2026-02-06 09:30:00",
+      "exit_reason": "TIME_ELAPSED_40PCT",
+      "final_pnl": 31571.249999999996,
+      "lots": 10
+    }
+  ]
+}
