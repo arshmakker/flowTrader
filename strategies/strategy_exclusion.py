@@ -2,7 +2,7 @@
 Strategy Mutual Exclusion Module
 
 Convex and Iron Condor can run and hold positions at the same time.
-Calendar and Trend remain mutually exclusive with others (only one of those can be active).
+(Calendar and Trend strategies removed - convex-only mode)
 """
 
 import logging
@@ -13,11 +13,9 @@ from strategies.iron_condor.position_tracker import IronCondorPositionTracker
 
 logger = logging.getLogger(__name__)
 
-# Strategy types
+# Strategy types (removed TREND and CALENDAR - convex-only mode)
 STRATEGY_IRON_CONDOR = "IRON_CONDOR"
 STRATEGY_CONVEX = "CONVEX"
-STRATEGY_CALENDAR = "CALENDAR"
-STRATEGY_TREND = "TREND"
 STRATEGY_NONE = "NONE"
 
 
@@ -53,11 +51,9 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
         if not active_positions:
             return STRATEGY_NONE
         
-        # Check strategy types
+        # Check strategy types (Iron Condor and Convex only)
         iron_condor_active = False
         convex_active = False
-        calendar_active = False
-        trend_active = False
         
         for position in active_positions:
             strategy = position.get('strategy', '').upper()
@@ -67,22 +63,14 @@ def get_active_strategy_type(position_tracker: Optional[IronCondorPositionTracke
                 iron_condor_active = True
             elif strategy == 'CALL_BACKSPREAD' or book == 'CONVEX':
                 convex_active = True
-            elif strategy == 'ATM_CALL_CALENDAR' or book == 'NEUTRAL':
-                calendar_active = True
-            elif strategy == 'TREND_FOLLOW_FUTURE' or book == 'TREND':
-                trend_active = True
         
-        # Convex and Iron Condor can coexist. When both active, return CONVEX so can_enter_strategy allows both to add.
+        # Convex and Iron Condor can coexist
         if iron_condor_active and convex_active:
             return STRATEGY_CONVEX
         if iron_condor_active:
             return STRATEGY_IRON_CONDOR
         if convex_active:
             return STRATEGY_CONVEX
-        if trend_active:
-            return STRATEGY_TREND
-        elif calendar_active:
-            return STRATEGY_CALENDAR
         else:
             return STRATEGY_NONE
             
@@ -95,24 +83,10 @@ def can_enter_strategy(strategy_type: str, position_tracker: Optional[IronCondor
     """
     Check if a strategy can enter new trades.
     Convex and Iron Condor can both enter when the other has positions (coexist).
-    Calendar and Trend can only enter when no other strategies have positions.
     """
     active_strategy = get_active_strategy_type(position_tracker)
     
     if active_strategy == STRATEGY_NONE:
-        return True
-    
-    # Calendar and Trend: only when no other strategies active
-    if strategy_type == STRATEGY_CALENDAR:
-        if active_strategy != STRATEGY_NONE:
-            logger.info(f"Calendar blocked: {active_strategy} strategy has active positions")
-            return False
-        return True
-    
-    if strategy_type == STRATEGY_TREND:
-        if active_strategy != STRATEGY_NONE:
-            logger.info(f"Trend strategy blocked: {active_strategy} strategy has active positions")
-            return False
         return True
     
     # Convex and Iron Condor can run at the same time

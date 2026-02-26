@@ -378,14 +378,9 @@ class IronCondorPositionTracker:
                                       current_iv_percentile: float = None,
                                       entry_iv_percentile: float = None) -> tuple:
         """
-        Check mandatory exit conditions for Calendar strategy
+        Check mandatory exit conditions for Calendar strategy.
         
-        Exit immediately if ANY trigger fires:
-        1) regime != "NEUTRAL"
-        2) short option has decayed ≥ 65%
-        3) days_to_short_expiry ≤ 1
-        4) abs(spot_move) > 0.75 × expected_move
-        5) IV spike ≥ +10 points without price follow-through
+        Calendar strategy removed - convex-only mode. Always returns False.
         
         Args:
             position: Position dictionary
@@ -402,75 +397,8 @@ class IronCondorPositionTracker:
         Returns:
             Tuple of (should_exit: bool, exit_reason: str)
         """
-        try:
-            strategy = position.get('strategy', '').upper()
-            if 'CALENDAR' not in strategy and position.get('book') != 'NEUTRAL':
-                # Not a calendar position
-                return False, None
-            
-            from strategies.neutral.config import (
-                SHORT_DECAY_THRESHOLD,
-                MIN_SHORT_DTE,
-                SPOT_MOVE_THRESHOLD,
-                IV_SPIKE_THRESHOLD
-            )
-            
-            # Exit condition 1: Regime changed from NEUTRAL
-            if current_regime != "NEUTRAL":
-                return True, "REGIME_CHANGED"
-            
-            # Exit condition 2: Days to short expiry ≤ 1
-            if days_to_expiry_short <= MIN_SHORT_DTE:
-                return True, "SHORT_DTE_THRESHOLD"
-            
-            # Exit condition 3: Short option decayed ≥ 65%
-            # Find short leg (weekly expiry)
-            short_leg = None
-            long_leg = None
-            for leg in position['legs']:
-                if leg['position'] == 'SHORT':
-                    short_leg = leg
-                elif leg['position'] == 'LONG':
-                    long_leg = leg
-            
-            if short_leg:
-                entry_short_price = short_leg['price']
-                strike = int(short_leg['strike'])
-                option_type = short_leg['option_type']
-                option_key = f"{option_type}{strike}"
-                current_short_price = current_prices.get(option_key, entry_short_price)
-                
-                # Calculate decay percentage
-                if entry_short_price > 0:
-                    decay_pct = (entry_short_price - current_short_price) / entry_short_price
-                    if decay_pct >= SHORT_DECAY_THRESHOLD:
-                        return True, "SHORT_DECAY_65PCT"
-            
-            # Exit condition 4: Spot move > 0.75 × expected_move
-            # Expected move = spot × IV × sqrt(days/365)
-            if entry_iv_percentile is not None and entry_days_to_expiry_short > 0:
-                entry_iv = entry_iv_percentile / 100.0  # Convert to decimal
-                expected_move = entry_spot * entry_iv * (entry_days_to_expiry_short / 365.0) ** 0.5
-                spot_move = abs(current_spot - entry_spot)
-                
-                if spot_move > (SPOT_MOVE_THRESHOLD * expected_move):
-                    return True, "SPOT_MOVE_EXCEEDED"
-            
-            # Exit condition 5: IV spike ≥ +10 points without price follow-through
-            if current_iv_percentile is not None and entry_iv_percentile is not None:
-                iv_change = current_iv_percentile - entry_iv_percentile
-                if iv_change >= IV_SPIKE_THRESHOLD:
-                    # Check if price followed through
-                    spot_move_pct = abs(current_spot - entry_spot) / entry_spot
-                    # If IV spiked but price didn't move much, exit
-                    if spot_move_pct < 0.01:  # Less than 1% price move
-                        return True, "IV_SPIKE_NO_FOLLOWTHROUGH"
-            
-            return False, None
-            
-        except Exception as e:
-            logger.error(f"Error checking calendar exit conditions: {str(e)}")
-            return False, None
+        # Calendar strategy removed - convex-only mode
+        return False, None
     
     def close_position(self, position: Dict, exit_reason: str, final_pnl: float):
         """Close a position and log performance by regime"""

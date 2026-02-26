@@ -697,12 +697,7 @@ def main():
                                                         current_mtm=current_pnl
                                                     )
                                             
-                                            # Check for calendar exit conditions (if calendar position)
-                                            should_exit_calendar = False
-                                            calendar_exit_reason = None
-                                            if position.get('book') == 'NEUTRAL' or 'CALENDAR' in position.get('strategy', '').upper():
-                                                # Two-fork model: Calendar disabled; skip calendar exit (should_exit_calendar stays False)
-                                                pass
+                                            # Calendar strategy removed - convex-only mode
                                             
                                             # Check trailing stop (Iron Condor: PnL dropped below locked level)
                                             if should_exit_trailing:
@@ -718,7 +713,7 @@ def main():
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
                                             # Profit-target exit disabled: Convex and Iron Condor use TSL only
-                                            elif not should_exit_convex and not should_exit_calendar and position_tracker.check_profit_target(position, current_pnl):
+                                            elif not should_exit_convex and position_tracker.check_profit_target(position, current_pnl):
                                                 target_inr = position.get('profit_target_inr') or position.get('profit_target_margin') or 0
                                                 logger.info(
                                                     f"✅ Profit target reached for position {position['trade_id']}: "
@@ -736,22 +731,6 @@ def main():
                                                 # TODO: Execute actual exit orders via API
                                                 # For now, just log and mark as closed
                                                 logger.info(f"Position {position['trade_id']} marked for exit")
-                                            
-                                            # Check calendar exit conditions
-                                            elif should_exit_calendar:
-                                                logger.info(
-                                                    f"⚠️ Calendar exit condition triggered for position {position['trade_id']}: "
-                                                    f"{calendar_exit_reason}, P&L=₹{current_pnl:.2f}"
-                                                )
-                                                
-                                                # Close position
-                                                position_tracker.close_position(
-                                                    position,
-                                                    f"calendar_exit_{calendar_exit_reason}",
-                                                    current_pnl
-                                                )
-                                                
-                                                logger.info(f"Position {position['trade_id']} marked for exit (calendar)")
                                             
                                             # Check convex exit conditions
                                             elif should_exit_convex:
