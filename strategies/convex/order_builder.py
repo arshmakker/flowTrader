@@ -7,11 +7,13 @@ with BUY orders prioritized before SELL orders to avoid margin issues.
 Guardrails:
 - All orders are MIS only (product_type 'M'); no NRML.
 - Long legs before short legs; do not reorder.
-- Entry: LMT (price control). Exit: MKT (execution certainty).
+- Entry: LMT (price control), retention IOC (Immediate-or-Cancel) for fast fill/cancel. Exit: MKT.
 - Sequential placement: place longs, wait for fill, then place shorts; verify every order filled.
 """
 
+import json
 import logging
+import os
 import time
 import uuid
 from typing import Dict, List, Optional, Any
@@ -20,12 +22,20 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# File for reviewing partial-fill cleanup events (one entry per incident).
+PARTIAL_FILL_REVIEW_FILE = "partial_fill_reviews.json"
+MAX_PARTIAL_FILL_REVIEW_ENTRIES = 500
+
 # Guardrail: Convex orders are MIS only (intraday square-off).
 CONVEX_PRODUCT_TYPE = "M"
 
 # Guardrail: entry = limit (price control), exit = market (execution certainty).
 ENTRY_PRICE_TYPE = "LMT"
 EXIT_PRICE_TYPE = "MKT"
+
+# Entry order validity: IOC (Immediate-or-Cancel) so we get fast fill or cancel; no lingering
+# pending orders. NSE and Shoonya API support DAY / EOS / IOC (see place_order ret*).
+ENTRY_RETENTION = "IOC"
 
 # Guardrail 4: sequential placement with fill check.
 ORDER_FILL_TIMEOUT_SECONDS = 60
@@ -110,6 +120,7 @@ def build_convex_entry_orders(proposal: Dict, product_type: Optional[str] = None
             "quantity": quantity,
             "price": float(price),
             "price_type": ENTRY_PRICE_TYPE,
+            "retention": ENTRY_RETENTION,
         }
         order["product_type"] = CONVEX_PRODUCT_TYPE
 
@@ -310,6 +321,111 @@ def wait_for_order_fill(
     return False
 
 
+def _place_offsetting_order(api: Any, order_dict: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Place one MKT order to close a filled leg (opposite side, same symbol/qty, MIS).
+    Used when we have partial fill and need to flatten to avoid orphan.
+    """
+    opposite = "S" if (order_dict.get("buy_or_sell") or "").strip().upper() == "B" else "B"
+    close_order = {
+        "exchange": order_dict["exchange"],
+        "tradingsymbol": order_dict["tradingsymbol"],
+        "quantity": int(order_dict["quantity"]),
+        "price": 0.0,
+        "price_type": EXIT_PRICE_TYPE,
+        "product_type": CONVEX_PRODUCT_TYPE,
+        "buy_or_sell": opposite,
+        "retention": "DAY",
+        "remarks": f"convex_cleanup_{uuid.uuid4().hex[:8]}",
+    }
+    return place_single_order(api, close_order)
+
+
+def _close_filled_legs(
+    api: Any, order_ids: List[str], orders: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    Place offsetting MKT orders for each filled leg (order_ids[i] <-> orders[i]).
+    Returns list of per-leg results for review: entry_order_id, tradingsymbol, quantity, side,
+    cleanup_order_id, cleanup_ok, error (if any).
+    """
+    results: List[Dict[str, Any]] = []
+    for i, oid in enumerate(order_ids):
+        if i >= len(orders):
+            break
+        order = orders[i]
+        side = (order.get("buy_or_sell") or "").strip().upper()
+        rec = {
+            "entry_order_id": oid,
+            "tradingsymbol": order.get("tradingsymbol"),
+            "quantity": int(order.get("quantity", 0)),
+            "side": side,
+            "cleanup_order_id": None,
+            "cleanup_ok": False,
+            "error": None,
+        }
+        try:
+            ret = _place_offsetting_order(api, order)
+            rec["cleanup_order_id"] = ret.get("norenordno") or ret.get("order_id")
+            rec["cleanup_ok"] = True
+            if rec["cleanup_order_id"]:
+                wait_ok = wait_for_order_fill(api, str(rec["cleanup_order_id"]))
+                rec["cleanup_ok"] = wait_ok
+        except Exception as e:
+            rec["error"] = str(e)
+            logger.exception("Cleanup order for leg %s failed: %s", oid, e)
+        results.append(rec)
+    return results
+
+
+def _save_partial_fill_review(
+    reason: str,
+    message: str,
+    order_ids: List[str],
+    orders: List[Dict[str, Any]],
+    cleanup_results: List[Dict[str, Any]],
+    proposal_info: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Append one entry to partial_fill_reviews.json for later review after each cleanup.
+    """
+    timestamp = datetime.now().isoformat()
+    filled_legs = []
+    for i, oid in enumerate(order_ids):
+        if i < len(orders):
+            o = orders[i]
+            filled_legs.append({
+                "order_id": oid,
+                "tradingsymbol": o.get("tradingsymbol"),
+                "quantity": int(o.get("quantity", 0)),
+                "buy_or_sell": o.get("buy_or_sell"),
+            })
+    entry = {
+        "timestamp": timestamp,
+        "reason": reason,
+        "message": message,
+        "filled_legs": filled_legs,
+        "cleanup_results": cleanup_results,
+        "proposal_info": proposal_info or {},
+    }
+    try:
+        existing: List[Dict[str, Any]] = []
+        if os.path.exists(PARTIAL_FILL_REVIEW_FILE):
+            with open(PARTIAL_FILL_REVIEW_FILE, "r") as f:
+                existing = json.load(f)
+        existing.append(entry)
+        if len(existing) > MAX_PARTIAL_FILL_REVIEW_ENTRIES:
+            existing = existing[-MAX_PARTIAL_FILL_REVIEW_ENTRIES:]
+        with open(PARTIAL_FILL_REVIEW_FILE, "w") as f:
+            json.dump(existing, f, indent=2, default=str)
+        logger.warning(
+            "Partial-fill cleanup: %s. Review saved to %s (timestamp=%s)",
+            message, PARTIAL_FILL_REVIEW_FILE, timestamp,
+        )
+    except Exception as e:
+        logger.exception("Failed to save partial-fill review: %s", e)
+
+
 def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = None) -> Dict:
     """
     Place Convex trade with guardrails: longs first, wait for each fill, then shorts.
@@ -334,6 +450,24 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
         logger.info("%d. %s %s %s @ Rs %s", i, order["buy_or_sell"], order["quantity"], order["tradingsymbol"], order["price"])
 
     order_ids: List[str] = []
+
+    def _cleanup_and_return_failure(reason: str, msg: str, **kwargs: Any) -> Dict[str, Any]:
+        if order_ids:
+            cleanup_results = _close_filled_legs(api, order_ids, orders)
+            _save_partial_fill_review(
+                reason=reason,
+                message=msg,
+                order_ids=order_ids,
+                orders=orders,
+                cleanup_results=cleanup_results,
+                proposal_info={
+                    "proposal_id": proposal.get("proposal_id"),
+                    "expiry": proposal.get("expiry"),
+                    "lots": proposal.get("lots"),
+                },
+            )
+        return {"success": False, "orders": orders, "order_ids": order_ids, "message": msg, **kwargs}
+
     # Phase 1: place longs and wait for fill each
     for i, order in enumerate(buy_orders):
         try:
@@ -341,14 +475,14 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
             oid = ret.get("norenordno") or ret.get("order_id") or ""
             if not oid:
                 logger.error("Place long order %d: no order ID in response %s", i + 1, ret)
-                return {"success": False, "orders": orders, "order_ids": order_ids, "result": ret, "message": "no order ID"}
+                return _cleanup_and_return_failure("no_order_id_long", "no order ID", result=ret)
             order_ids.append(str(oid))
             if not wait_for_order_fill(api, str(oid)):
                 logger.error("Long order %s did not fill within timeout; not placing shorts", oid)
-                return {"success": False, "orders": orders, "order_ids": order_ids, "message": "long leg fill timeout"}
+                return _cleanup_and_return_failure("long_leg_fill_timeout", "long leg fill timeout")
         except Exception as e:
             logger.exception("Place long order %d failed: %s", i + 1, e)
-            return {"success": False, "orders": orders, "order_ids": order_ids, "message": str(e)}
+            return _cleanup_and_return_failure("long_place_exception", str(e))
 
     # Phase 2: place shorts only after all longs filled
     for i, order in enumerate(sell_orders):
@@ -357,14 +491,14 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
             oid = ret.get("norenordno") or ret.get("order_id") or ""
             if not oid:
                 logger.error("Place short order %d: no order ID in response %s", i + 1, ret)
-                return {"success": False, "orders": orders, "order_ids": order_ids, "result": ret, "message": "no order ID"}
+                return _cleanup_and_return_failure("no_order_id_short", "no order ID", result=ret)
             order_ids.append(str(oid))
             if not wait_for_order_fill(api, str(oid)):
                 logger.error("Short order %s did not fill within timeout", oid)
-                return {"success": False, "orders": orders, "order_ids": order_ids, "message": "short leg fill timeout"}
+                return _cleanup_and_return_failure("short_leg_fill_timeout", "short leg fill timeout")
         except Exception as e:
             logger.exception("Place short order %d failed: %s", i + 1, e)
-            return {"success": False, "orders": orders, "order_ids": order_ids, "message": str(e)}
+            return _cleanup_and_return_failure("short_place_exception", str(e))
 
     return {
         "success": True,

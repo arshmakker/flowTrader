@@ -724,7 +724,7 @@ def main():
                                                     current_pnl
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
-                                            # Profit-target exit disabled: Convex and Iron Condor use TSL only
+                                            # Profit-target exit: Convex must close via broker first; then update tracker
                                             elif not should_exit_convex and position_tracker.check_profit_target(position, current_pnl):
                                                 target_inr = position.get('profit_target_inr') or position.get('profit_target_margin') or 0
                                                 logger.info(
@@ -732,16 +732,25 @@ def main():
                                                     f"P&L=₹{current_pnl:.2f}, "
                                                     f"Target=₹{target_inr:.2f}"
                                                 )
-                                                
-                                                # Close position
+                                                # Convex: execute broker exit first, then mark closed (live sync)
+                                                if position.get('book') == 'CONVEX' or 'BACKSPREAD' in position.get('strategy', '').upper():
+                                                    try:
+                                                        from strategies.convex.order_builder import close_convex_position
+                                                        close_result = close_convex_position(api, position)
+                                                        if not close_result.get('success'):
+                                                            logger.error(
+                                                                "Convex profit-target exit orders failed: %s (position not marked closed)",
+                                                                close_result.get('message', close_result),
+                                                            )
+                                                            continue
+                                                    except Exception as e:
+                                                        logger.exception("close_convex_position (profit target) failed: %s", e)
+                                                        continue
                                                 position_tracker.close_position(
-                                                    position, 
-                                                    "profit_target_margin", 
+                                                    position,
+                                                    "profit_target_margin",
                                                     current_pnl
                                                 )
-                                                
-                                                # TODO: Execute actual exit orders via API
-                                                # For now, just log and mark as closed
                                                 logger.info(f"Position {position['trade_id']} marked for exit")
                                             
                                             # Check convex exit conditions

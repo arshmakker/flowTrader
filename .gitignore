@@ -69,6 +69,7 @@ trade_proposals_by_id/
 active_positions.json
 performance_by_regime.json
 strategy_decisions.json
+partial_fill_reviews.json
 
 # Trend entry state (cooldown, max trades per day)
 trend_state.json

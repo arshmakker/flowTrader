@@ -246,10 +246,11 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 **Context**: On 2026-01-29 a SHORT trend trade reached ~₹6,467 profit (~0.39× ATR) then reversed; regime-change exit later closed at -₹1,930. A 0.5× ATR profit target would have locked ~₹8,231 had price reached it; a 0.25× target would have locked ~₹4,115 at peak. Regime-change exit already exits at current P&L (#1); no code change for that.
 
 ### Live Trading Status
-- **Active strategies**: Trend Following Futures (TREND_CONTINUATION regime)
-- **Total trades since Jan 19**: 29 (all TREND_FOLLOW_FUTURE)
-- **Net P&L**: ~₹51,000 profit
-- **Current regime**: TREND_CONTINUATION (SHORT direction) after rollover fix
+- **Active strategies**: Convex-only live (Iron Condor disabled). Convex Backspread entries via `place_convex_trade()` in strategy_runner; exits via `close_convex_position()` for convex-exit conditions and EOD; **profit-target exit** now also calls `close_convex_position()` before updating tracker (fixed 2026-02-26).
+- **Live trades analysis**: See `docs/LIVE_TRADES_ANALYSIS.md` for full entry/exit flow, timing, state persistence, and pre-live checklist.
+- **Live trades gaps and fixes**: See `docs/LIVE_TRADES_GAPS_AND_FIXES.md` for tracked gaps (partial fills, position cap, daily loss limit, etc.) and suggested fix order.
+- **Partial-fill cleanup**: On Convex entry partial completion (e.g. long filled, short not), we close filled legs via offsetting MKT and append a review entry to `partial_fill_reviews.json` for every such event so you can review the situation after each cleanup.
+- **Previous**: Trend Following Futures (TREND_CONTINUATION regime); total trades since Jan 19: 29; net P&L ~₹51,000.
 
 ### Regime Detection
 The system detects market regimes and routes to appropriate strategies. **Detection sequence (priority order)** in `regime/regime_detector.py` → `detect_regime()`:
