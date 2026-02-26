@@ -901,7 +901,7 @@ def _log_strategy_decision(regime: str, neutral_sub_state: str, strategy_allowed
         logger.error(f"Error logging strategy decision: {str(e)}")
 
 
-def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=1000000.0):
+def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=800000.0):
     """
     Run strategy check with regime detection and routing (two-fork model).
 
@@ -913,7 +913,7 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         api: ShoonyaApiPy instance
         symbol_manager: SymbolManager instance
         position_tracker: Optional IronCondorPositionTracker instance
-        capital: Total capital allocated (default: ₹10L)
+        capital: Total capital allocated (default: ₹8L)
 
     Returns:
         dict: Trade proposal or None if no valid trade found
@@ -1003,8 +1003,8 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         except: pass
         # #endregion
         
-        # Step 6: Route to strategies. Allow concurrent proposals from multiple strategies.
-        # Collect proposals from Convex and Iron Condor and commit accepted proposals.
+        # Step 6: Route to strategies. Convex-only live: only Convex generator runs.
+        # (Iron Condor disabled for live; position tracker still monitors existing INCOME positions for exit.)
         proposals = {}
         strategy_allowed = []
 
@@ -1024,20 +1024,14 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
             logger.error("Convex generator error: %s", e, exc_info=True)
             _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'EXCEPTION', regime_info)
 
-        # Attempt Iron Condor generator
-        try:
-            strategy_allowed.append("IRON_CONDOR")
-            ic_prop = _run_iron_condor_strategy_internal(
-                api, symbol_manager, position_tracker, market_state, available_expiries, spot_price
-            )
-            if ic_prop:
-                proposals['IRON_CONDOR'] = ic_prop
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, 'IRON_CONDOR', None, regime_info)
-            else:
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'NO_VALID_TRADE', regime_info)
-        except Exception as e:
-            logger.error("Iron Condor generator error: %s", e, exc_info=True)
-            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'EXCEPTION', regime_info)
+        # Iron Condor disabled for Convex-only live trading.
+        # Uncomment block below to re-enable:
+        # try:
+        #     strategy_allowed.append("IRON_CONDOR")
+        #     ic_prop = _run_iron_condor_strategy_internal(...)
+        #     if ic_prop:
+        #         proposals['IRON_CONDOR'] = ic_prop
+        #     ...
 
         if not proposals:
             logger.info("❌ No valid trade proposals returned by any strategy")
@@ -1118,6 +1112,22 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                     prop['_original_lots'] = proposed_lots
                     prop['lots'] = clamped
                     logger.info(f"Clamped lots for proposal {tid} from {proposed_lots} to {clamped}")
+
+                # Convex only: place orders via broker first; add to tracker only if all legs filled.
+                if name == 'CALL_BACKSPREAD':
+                    try:
+                        from strategies.convex.order_builder import place_convex_trade
+                        place_result = place_convex_trade(api, prop)
+                        if not place_result.get('success'):
+                            logger.error(
+                                "Convex order placement failed: %s (not adding to tracker)",
+                                place_result.get('message', place_result),
+                            )
+                            continue
+                        prop['order_ids'] = place_result.get('order_ids', [])
+                    except Exception as e:
+                        logger.exception("Convex place_convex_trade failed: %s", e)
+                        continue
 
                 # save proposal using existing helper
                 save_trade_proposal(prop)

@@ -9,7 +9,7 @@ from symbol_manager import SymbolManager
 from data_collector import DataCollector
 from paper_trader import PaperTrader
 from strategy_tester import StrategyTester
-from strategy_runner import run_strategy_with_regime, run_iron_condor_strategy, is_market_hours, is_market_closed_ist, get_now_ist, get_nifty_spot_price, get_option_chain_data
+from strategy_runner import run_strategy_with_regime, is_market_hours, is_market_closed_ist, get_now_ist, get_nifty_spot_price, get_option_chain_data
 from strategy_runner import get_all_eligible_expiries
 from strategies.iron_condor.position_tracker import IronCondorPositionTracker
 from technical_indicators import calculate_iv_percentile
@@ -23,6 +23,9 @@ except ImportError:
     exit(1)
 
 import json
+
+# Capital for strategy sizing (₹8L)
+CAPITAL_8L = 800000.0
 
 def generate_daily_trade_summary(logger):
     """
@@ -371,7 +374,7 @@ def main():
         # Once we exit a position due to MARKET_CLOSE_APPROACHING, don't enter new trades for the rest of the day
         market_close_exit_triggered = False
         
-        logger.info(Fore.CYAN + "Iron Condor strategy integration enabled")
+        logger.info(Fore.CYAN + "Convex-only live trading (Iron Condor disabled)")
         logger.info(f"Strategy checks will run every {STRATEGY_CHECK_INTERVAL // 60} minutes during market hours")
         logger.info(f"IV calculations will run every {IV_CALCULATION_INTERVAL // 60} minutes to build historical data")
         logger.info(f"No new trades window: Last {NO_NEW_TRADES_BEFORE_CLOSE_MINUTES} minutes before market close (no entries after 2:30 PM IST)")
@@ -405,11 +408,10 @@ def main():
                                     for leg in position.get('legs', []):
                                         option_type = leg['option_type']
                                         strike = int(leg['strike'])
-                                        # Use LTP if available, otherwise use entry price
                                         ltp = leg.get('ltp', leg.get('price', 0))
                                         current_prices[f"{option_type}{strike}"] = ltp
-                                    
                                     current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
+                                    # When market already closed we only update tracker (broker orders not possible)
                                     position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
                                     logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
                                 except Exception as e:
@@ -475,7 +477,7 @@ def main():
                     
                     last_iv_calculation = current_time
                 
-                # Run Iron Condor strategy check periodically during market hours
+                # Run strategy check periodically during market hours (Convex only)
                 time_since_last_check = (current_time - last_strategy_check).total_seconds()
                 
                 if time_since_last_check >= STRATEGY_CHECK_INTERVAL:
@@ -520,8 +522,18 @@ def main():
                                             else:
                                                 current_prices[f"{option_type}{strike}"] = leg['price']
                                         
-                                        # Calculate P&L and close
                                         current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
+                                        # Convex: execute broker exit first, then mark closed
+                                        if position.get('book') == 'CONVEX':
+                                            try:
+                                                from strategies.convex.order_builder import close_convex_position
+                                                close_result = close_convex_position(api, position)
+                                                if not close_result.get('success'):
+                                                    logger.error("Convex EOD exit failed: %s", close_result.get('message'))
+                                                    continue
+                                            except Exception as e:
+                                                logger.exception("close_convex_position (EOD) failed: %s", e)
+                                                continue
                                         position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
                                         logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
                                     except Exception as e:
@@ -549,7 +561,7 @@ def main():
                     elif is_market_hours():
                         try:
                             logger.info(Fore.CYAN + "Running strategy check with regime detection...")
-                            proposals = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=1000000.0)
+                            proposals = run_strategy_with_regime(api, symbol_manager, position_tracker, capital=CAPITAL_8L)
                             
                             # Handle both dict (multiple proposals) and single proposal for backward compatibility
                             if isinstance(proposals, dict):
@@ -738,15 +750,24 @@ def main():
                                                     f"⚠️ Convex exit condition triggered for position {position['trade_id']}: "
                                                     f"{convex_exit_reason}, P&L=₹{current_pnl:.2f}"
                                                 )
-                                                
-                                                # Close position
-                                                position_tracker.close_position(
-                                                    position,
-                                                    f"convex_exit_{convex_exit_reason}",
-                                                    current_pnl
-                                                )
-                                                
-                                                logger.info(f"Position {position['trade_id']} marked for exit (convex)")
+                                                # Execute broker exit first; mark closed only if all legs filled.
+                                                try:
+                                                    from strategies.convex.order_builder import close_convex_position
+                                                    close_result = close_convex_position(api, position)
+                                                    if not close_result.get('success'):
+                                                        logger.error(
+                                                            "Convex exit orders failed: %s (position not marked closed)",
+                                                            close_result.get('message', close_result),
+                                                        )
+                                                    else:
+                                                        position_tracker.close_position(
+                                                            position,
+                                                            f"convex_exit_{convex_exit_reason}",
+                                                            current_pnl
+                                                        )
+                                                        logger.info(f"Position {position['trade_id']} marked for exit (convex)")
+                                                except Exception as e:
+                                                    logger.exception("close_convex_position failed: %s", e)
                                             
                                             else:
                                                 # Log current status with PnL (exit by TSL only, no profit target)
