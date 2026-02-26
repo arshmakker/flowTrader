@@ -8,7 +8,7 @@ Structure:
 
 Rules:
 - Net debit ≤ 0.25% of spot value
-- Max loss per trade ≤ 1% of total capital
+- Max loss per trade ≤ 10% of total capital
 """
 
 import pandas as pd
