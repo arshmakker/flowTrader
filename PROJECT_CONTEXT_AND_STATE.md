@@ -250,6 +250,8 @@ Report: `backtest_trend_comparison_YYYYMMDD_HHMMSS.json` (summaries only). Singl
 - **Live trades analysis**: See `docs/LIVE_TRADES_ANALYSIS.md` for full entry/exit flow, timing, state persistence, and pre-live checklist.
 - **Live trades gaps and fixes**: See `docs/LIVE_TRADES_GAPS_AND_FIXES.md` for tracked gaps (partial fills, position cap, daily loss limit, etc.) and suggested fix order.
 - **Partial-fill cleanup**: On Convex entry partial completion (e.g. long filled, short not), we close filled legs via offsetting MKT and append a review entry to `partial_fill_reviews.json` for every such event so you can review the situation after each cleanup.
+- **Ghost position fix (2026-02-27)**: Convex no longer saves the proposal or adds to the position tracker inside `_run_convex_backspread_strategy()`. Save and add happen only in the main commit loop *after* `place_convex_trade()` succeeds, so failed order placement no longer creates a ghost OPEN position.
+- **place_order None fix (2026-02-27)**: Convex option orders were using exchange **NSE** (cash); NIFTY options trade on **NFO** (F&O). Order builder now uses `exchange: "NFO"` for entry and exit option orders so the API accepts the order.
 - **Previous**: Trend Following Futures (TREND_CONTINUATION regime); total trades since Jan 19: 29; net P&L ~₹51,000.
 
 ### Regime Detection

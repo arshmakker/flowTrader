@@ -5,7 +5,7 @@ Provides functions to convert trade proposals/positions into broker orders,
 with BUY orders prioritized before SELL orders to avoid margin issues.
 
 Guardrails:
-- All orders are MIS only (product_type 'M'); no NRML.
+- All orders are MIS only (product_type 'I'); no NRML.
 - Long legs before short legs; do not reorder.
 - Entry: LMT (price control), retention IOC (Immediate-or-Cancel) for fast fill/cancel. Exit: MKT.
 - Sequential placement: place longs, wait for fill, then place shorts; verify every order filled.
@@ -27,7 +27,8 @@ PARTIAL_FILL_REVIEW_FILE = "partial_fill_reviews.json"
 MAX_PARTIAL_FILL_REVIEW_ENTRIES = 500
 
 # Guardrail: Convex orders are MIS only (intraday square-off).
-CONVEX_PRODUCT_TYPE = "M"
+# Shoonya/Noren: prd "M" = NRML, "I" = MIS (intraday). Use "I" for MIS.
+CONVEX_PRODUCT_TYPE = "I"
 
 # Guardrail: entry = limit (price control), exit = market (execution certainty).
 ENTRY_PRICE_TYPE = "LMT"
@@ -79,7 +80,7 @@ def build_convex_entry_orders(proposal: Dict, product_type: Optional[str] = None
     Build orders for Convex entry with BUY orders first.
 
     Guardrail: long legs before short legs; do not reorder.
-    Guardrail: all Convex orders are MIS only (product_type ignored, forced to 'M').
+    Guardrail: all Convex orders are MIS only (product_type ignored, forced to 'I').
     Guardrail: entry uses LMT for price control.
 
     Args:
@@ -114,8 +115,9 @@ def build_convex_entry_orders(proposal: Dict, product_type: Optional[str] = None
         leg_qty = leg.get("quantity", 1)
         quantity = leg_qty * lots * lot_size
 
+        # NIFTY options trade on NFO (F&O), not NSE (cash). Wrong exchange causes place_order to return None.
         order: Dict[str, Any] = {
-            "exchange": "NSE",
+            "exchange": "NFO",
             "tradingsymbol": symbol,
             "quantity": quantity,
             "price": float(price),
@@ -145,7 +147,7 @@ def build_convex_exit_orders(
     Build orders for Convex exit with BUY orders first (cover SHORT, then SELL LONG).
 
     Guardrail: long legs before short legs; do not reorder.
-    Guardrail: all Convex orders are MIS only (product_type ignored, forced to 'M').
+    Guardrail: all Convex orders are MIS only (product_type ignored, forced to 'I').
     Guardrail: exit uses MKT for execution certainty.
 
     Args:
@@ -185,8 +187,9 @@ def build_convex_exit_orders(
         else:
             price = leg.get("price", leg.get("ltp", 0))
 
+        # NIFTY options trade on NFO (F&O), not NSE (cash).
         order: Dict[str, Any] = {
-            "exchange": "NSE",
+            "exchange": "NFO",
             "tradingsymbol": symbol,
             "quantity": quantity,
             "price": float(price),
@@ -218,7 +221,14 @@ ORDER_REPORT_TERMINAL_FAIL = ("Rejected", "Canceled")
 
 
 def _order_dict_to_place_kwargs(order: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert order dict from builder to kwargs for NorenApi.place_order (discloseqty, retention, remarks)."""
+    """
+    Convert order dict to kwargs for NorenApi.place_order.
+    See: https://github.com/Shoonya-Dev/ShoonyaApi-py#place-order
+    - exch: NSE/NFO/... (from login exarr); prd: C/M/I/B/H (from login prarr, I=MIS); ret: DAY/EOS/IOC.
+    - trgprc only for SL/SL-M; for LMT/MKT pass trigger_price=None per API doc.
+    """
+    pt = (order.get("price_type") or "LMT").upper()
+    trigger = order.get("trigger_price") if pt in ("SL-LMT", "SL-MKT") else None
     return {
         "buy_or_sell": order["buy_or_sell"],
         "product_type": order["product_type"],
@@ -228,7 +238,7 @@ def _order_dict_to_place_kwargs(order: Dict[str, Any]) -> Dict[str, Any]:
         "discloseqty": order.get("discloseqty", 0),
         "price_type": order["price_type"],
         "price": float(order["price"]),
-        "trigger_price": order.get("trigger_price") or 0.0,
+        "trigger_price": trigger,
         "retention": order.get("retention", "DAY"),
         "remarks": order.get("remarks", f"convex_{uuid.uuid4().hex[:8]}"),
     }
@@ -242,11 +252,49 @@ def place_single_order(api: Any, order: Dict[str, Any]) -> Dict[str, Any]:
         API response dict; must contain 'norenordno' (order ID) on success.
     """
     kwargs = _order_dict_to_place_kwargs(order)
-    ret = api.place_order(**kwargs)
+    try:
+        ret = api.place_order(**kwargs)
+    except Exception as e:
+        logger.error(
+            "place_order raised exception. Request: exchange=%s tradingsymbol=%s quantity=%s product_type=%s price_type=%s retention=%s | exception=%s",
+            kwargs.get("exchange"),
+            kwargs.get("tradingsymbol"),
+            kwargs.get("quantity"),
+            kwargs.get("product_type"),
+            kwargs.get("price_type"),
+            kwargs.get("retention"),
+            e,
+            exc_info=True,
+        )
+        raise
+    # Per Shoonya API doc: success = { stat, norenordno }; failure = { stat: "Not_Ok", emsg }.
+    # Python client returns None when no response (network/session/parse), not when server sends Not_Ok.
     if ret is None:
+        logger.error(
+            "place_order returned None. Request: exchange=%s tradingsymbol=%s quantity=%s product_type=%s price_type=%s retention=%s | raw_ret type=%s repr=%r",
+            kwargs.get("exchange"),
+            kwargs.get("tradingsymbol"),
+            kwargs.get("quantity"),
+            kwargs.get("product_type"),
+            kwargs.get("price_type"),
+            kwargs.get("retention"),
+            type(ret).__name__,
+            ret,
+        )
         raise RuntimeError("place_order returned None")
-    if isinstance(ret, dict) and ret.get("stat") == "Not_Ok":
+    if not isinstance(ret, dict):
+        logger.error(
+            "place_order returned non-dict. Request: exchange=%s tradingsymbol=%s | raw_ret type=%s repr=%r",
+            kwargs.get("exchange"),
+            kwargs.get("tradingsymbol"),
+            type(ret).__name__,
+            ret,
+        )
+        raise RuntimeError(f"place_order returned unexpected type {type(ret).__name__}: {ret!r}")
+    if ret.get("stat") == "Not_Ok":
+        logger.warning("place_order returned Not_Ok: %s", ret)
         raise RuntimeError(f"Order rejected: {ret.get('emsg', ret)}")
+    logger.debug("place_order success: type=%s keys=%s", type(ret).__name__, list(ret.keys()) if isinstance(ret, dict) else "n/a")
     return ret
 
 

@@ -1387,16 +1387,8 @@ def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, marke
                     f"(Price: ₹{leg['price']:.2f}, Qty: {leg.get('quantity', 1)})"
                 )
             
-            # Save proposal
-            save_trade_proposal(trade_proposal)
-            
-            # Convex: exit by TSL only (no hardcoded profit target)
-            
-            # Add to position tracker if provided
-            if position_tracker is not None:
-                position_tracker.add_position(trade_proposal)
-                logger.info(f"Position added to tracker: {trade_proposal['lots']} lots")
-            
+            # Do NOT save or add to tracker here. Main commit loop will place orders
+            # via place_convex_trade() and only then save_trade_proposal + add_position.
             return trade_proposal
         else:
             logger.info("❌ No valid Convex Backspread trade found")

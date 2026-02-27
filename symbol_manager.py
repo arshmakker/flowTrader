@@ -103,21 +103,7 @@ class SymbolManager:
                 self.logger.error(f"NSE symbol file not found: {nse_file}")
                 raise FileNotFoundError(f"NSE symbol file not found: {nse_file}")
             
-            # Load BSE symbols
-            bse_file = os.path.join(self.symbols_directory, 'BSE.csv')
-            if os.path.exists(bse_file):
-                self.logger.debug(f"Loading BSE symbols from {bse_file}")
-                self.bse = pd.read_csv(bse_file)
-                self.bse.columns = [col.lower() for col in self.bse.columns]
-                self.logger.info(f"Loaded BSE symbols: {len(self.bse)} symbols")
-                
-                # After loading both files, scan for ETFs and update the list
-                self.logger.info("Scanning for ETFs across exchanges...")
-                etf_analysis = self.scan_common_etfs()
-                if etf_analysis:
-                    self.logger.info(f"Updated ETF list with {len(self.etf_symbols)} symbols")
-            else:
-                self.logger.warning(f"BSE symbol file not found: {bse_file}")
+            # BSE and ETF scan skipped for Convex-only (NFO + NSE for Nifty index token).
             
             # Load NFO symbols
             nfo_file = os.path.join(self.symbols_directory, 'NFO.csv')

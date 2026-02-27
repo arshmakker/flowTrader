@@ -51,4 +51,24 @@ After every such cleanup you can open `partial_fill_reviews.json` to review what
 
 ---
 
+---
+
+## Ghost position: save/add before place (fixed 2026-02-27)
+
+**Issue**: "Saved trade proposal" and "Added position to tracker" were logged *before* `place_convex_trade()` ran. When `place_order` returned None, the tracker still had an OPEN position (ghost) because the Convex strategy was saving and adding inside `_run_convex_backspread_strategy()` before returning the proposal. The main commit loop then called `place_convex_trade()` (which failed) and correctly did *not* add again—but the position had already been added in the strategy.
+
+**Fix**: Removed `save_trade_proposal()` and `position_tracker.add_position()` from `_run_convex_backspread_strategy()`. Only the main commit loop in `run_strategy_with_regime()` now saves and adds, and only *after* `place_convex_trade()` returns success. So no ghost position is added when order placement fails.
+
+**If a ghost was already added** (e.g. trade_id like `2026-02-27T10:26:08.406373_e958f593_078a4be4`): remove that entry from `active_positions.json` (filter out that `trade_id` and keep only positions with `status == 'CLOSED'` or other valid OPEN positions that correspond to real broker positions).
+
+---
+
+## place_order returned None — wrong exchange (fixed 2026-02-27)
+
+**Issue**: Session was valid (prices/quotes were fetched successfully), but `place_order` returned None. Convex entry/exit orders were built with **exchange `NSE`** (cash segment). NIFTY index options (e.g. NIFTY26MAR25550CE) trade on **NFO** (F&O segment). Sending an NFO symbol with exchange NSE causes the API to return None or reject.
+
+**Fix**: In `strategies/convex/order_builder.py`, entry and exit order dicts now use **`"exchange": "NFO"`** for NIFTY option orders instead of `"NSE"`. Applied in `build_convex_entry_orders()` and `build_convex_exit_orders()`.
+
+---
+
 *Created: 2026-02-26*

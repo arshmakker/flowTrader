@@ -1,149 +1,5 @@
 [
   {
-    "timestamp": "2026-01-28T10:42:55.292590",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.348846008323875,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T10:47:53.033384",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.3225562488183,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T10:52:56.102953",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.54195011337868,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T10:58:02.607822",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.32672332389046,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T11:43:46.243617",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.15965276467258,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 1
-    }
-  },
-  {
-    "timestamp": "2026-01-28T11:48:11.167365",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.133534515277255,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T12:09:11.939488",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.16399622997173,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
-    "timestamp": "2026-01-28T12:16:40.173893",
-    "regime": "NEUTRAL",
-    "sub_state": "NEUTRAL_ACTIVE",
-    "strategy_allowed": [
-      "ATM_CALL_CALENDAR"
-    ],
-    "strategy_executed": null,
-    "no_trade_reason": "NO_VALID_TRADE",
-    "regime_details": {
-      "iv_percentile": 46.08138658628485,
-      "adx": 56.80706461087869,
-      "atr_percentile": 87.5,
-      "range_state": "NORMAL",
-      "detected_regime": "NEUTRAL",
-      "confirmation_count": 0
-    }
-  },
-  {
     "timestamp": "2026-01-28T12:21:16.356381",
     "regime": "NEUTRAL",
     "sub_state": "NEUTRAL_ACTIVE",
@@ -19784,6 +19640,134 @@
       "adx_14": 19.3498648432798,
       "atr_percentile": 5.263157894736842,
       "spot_price": 25447.3,
+      "expiry": "2026-03-02"
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:10:03.561926",
+    "regime": "SIDEWAYS",
+    "sub_state": null,
+    "strategy_allowed": [
+      "CALL_BACKSPREAD"
+    ],
+    "strategy_executed": "CALL_BACKSPREAD",
+    "no_trade_reason": null,
+    "regime_details": {
+      "iv_percentile": 56.298136645962735,
+      "adx": 45.38033138761949,
+      "atr_percentile": 10.0,
+      "range_state": "EXPANDING",
+      "detected_regime": "SIDEWAYS",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:10:03.781725",
+    "regime": "SIDEWAYS",
+    "proposals": {},
+    "accepted_trade_ids": [],
+    "combined_margin_estimate": 0.0,
+    "market_state_snapshot": {
+      "iv_percentile": 56.298136645962735,
+      "adx_14": 45.38033138761949,
+      "atr_percentile": 10.0,
+      "spot_price": 25316.5,
+      "expiry": "2026-03-02"
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:26:08.472708",
+    "regime": "SIDEWAYS",
+    "sub_state": null,
+    "strategy_allowed": [
+      "CALL_BACKSPREAD"
+    ],
+    "strategy_executed": "CALL_BACKSPREAD",
+    "no_trade_reason": null,
+    "regime_details": {
+      "iv_percentile": 60.411502231036195,
+      "adx": 45.1785946950397,
+      "atr_percentile": 5.263157894736842,
+      "range_state": "EXPANDING",
+      "detected_regime": "SIDEWAYS",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:26:08.775646",
+    "regime": "SIDEWAYS",
+    "proposals": {},
+    "accepted_trade_ids": [],
+    "combined_margin_estimate": 0.0,
+    "market_state_snapshot": {
+      "iv_percentile": 60.411502231036195,
+      "adx_14": 45.1785946950397,
+      "atr_percentile": 5.263157894736842,
+      "spot_price": 25318.85,
+      "expiry": "2026-03-02"
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:42:17.427079",
+    "regime": "SIDEWAYS",
+    "sub_state": null,
+    "strategy_allowed": [
+      "CALL_BACKSPREAD"
+    ],
+    "strategy_executed": "CALL_BACKSPREAD",
+    "no_trade_reason": null,
+    "regime_details": {
+      "iv_percentile": 55.01113585746103,
+      "adx": 44.39767393615047,
+      "atr_percentile": 5.263157894736842,
+      "range_state": "EXPANDING",
+      "detected_regime": "SIDEWAYS",
+      "confirmation_count": 1
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:42:17.664051",
+    "regime": "SIDEWAYS",
+    "proposals": {},
+    "accepted_trade_ids": [],
+    "combined_margin_estimate": 0.0,
+    "market_state_snapshot": {
+      "iv_percentile": 55.01113585746103,
+      "adx_14": 44.39767393615047,
+      "atr_percentile": 5.263157894736842,
+      "spot_price": 25324.45,
+      "expiry": "2026-03-02"
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:47:23.034163",
+    "regime": "SIDEWAYS",
+    "sub_state": null,
+    "strategy_allowed": [
+      "CALL_BACKSPREAD"
+    ],
+    "strategy_executed": "CALL_BACKSPREAD",
+    "no_trade_reason": null,
+    "regime_details": {
+      "iv_percentile": 57.3053152039555,
+      "adx": 44.39767393615047,
+      "atr_percentile": 5.263157894736842,
+      "range_state": "EXPANDING",
+      "detected_regime": "SIDEWAYS",
+      "confirmation_count": 0
+    }
+  },
+  {
+    "timestamp": "2026-02-27T10:47:23.359423",
+    "regime": "SIDEWAYS",
+    "proposals": {},
+    "accepted_trade_ids": [],
+    "combined_margin_estimate": 0.0,
+    "market_state_snapshot": {
+      "iv_percentile": 57.3053152039555,
+      "adx_14": 44.39767393615047,
+      "atr_percentile": 5.263157894736842,
+      "spot_price": 25313.25,
       "expiry": "2026-03-02"
     }
   }
