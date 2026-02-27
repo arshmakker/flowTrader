@@ -9,6 +9,11 @@ import os
 import json
 from symbol_manager import SymbolManager
 
+# Seconds between full collection cycles (one get_quotes per symbol per cycle).
+# Increase to reduce broker load; see docs/BROKER_API_AUDIT.md.
+COLLECTION_CYCLE_INTERVAL_SECONDS = 5
+
+
 class DataCollector:
     def __init__(self, api, symbol_manager=None):
         self.api = api
@@ -167,8 +172,8 @@ class DataCollector:
                             # Put in queue for processing
                             self.data_queue.put(data_point)
                             
-                            # Log at appropriate level
-                            log_level = logging.DEBUG if inst in ['EQ', 'FUTIDX', 'FUTSTK'] else log_level
+                            # Log at appropriate level (DEBUG for EQ/futures, INFO for options/index)
+                            log_level = logging.DEBUG if inst in ['EQ', 'FUTIDX', 'FUTSTK'] else logging.INFO
                             if log_level == logging.DEBUG:
                                 self.logger.debug(f"Collected {inst} data for {symbol['symbol']}: "
                                 f"LTP={data_point['ltp']:.2f}, "
@@ -183,7 +188,7 @@ class DataCollector:
                 # Log collection summary
                 summary = [f"{inst}: {count}" for inst, count in counts.items() if count > 0]
                 self.logger.info(f"Collection cycle complete - {', '.join(summary)}")
-                time.sleep(1)  # 1-second interval
+                time.sleep(COLLECTION_CYCLE_INTERVAL_SECONDS)
                 
             except Exception as e:
                 self.logger.error(f"Error in data collection loop: {str(e)}")

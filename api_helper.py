@@ -1,9 +1,14 @@
-from NorenRestApiPy.NorenApi import  NorenApi
+from NorenRestApiPy.NorenApi import NorenApi
 from threading import Timer
 import pandas as pd
 import time
 import concurrent.futures
+import json
+import logging
+import urllib.parse
+import requests
 
+logger = logging.getLogger(__name__)
 api = None
 class Order:
      def __init__(self, buy_or_sell:str = None, product_type:str = None,
@@ -63,12 +68,98 @@ class ShoonyaApiPy(NorenApi):
 
         return result
                 
-    def placeOrder(self,order: Order):
-        ret = NorenApi.place_order(self, buy_or_sell=order.buy_or_sell, product_type=order.product_type,
-                            exchange=order.exchange, tradingsymbol=order.tradingsymbol, 
-                            quantity=order.quantity, discloseqty=order.discloseqty, price_type=order.price_type, 
-                            price=order.price, trigger_price=order.trigger_price,
-                            retention=order.retention, remarks=order.remarks)
-        #print(ret)
+    def placeOrder(self, order: Order):
+        return self.place_order(
+            buy_or_sell=order.buy_or_sell,
+            product_type=order.product_type,
+            exchange=order.exchange,
+            tradingsymbol=order.tradingsymbol,
+            quantity=order.quantity,
+            discloseqty=order.discloseqty or 0,
+            price_type=order.price_type,
+            price=order.price,
+            trigger_price=order.trigger_price,
+            retention=order.retention or "DAY",
+            remarks=order.remarks or "tag",
+        )
 
-        return ret
+    def place_order(self, buy_or_sell, product_type=None, exchange=None, tradingsymbol=None, quantity=None,
+                    discloseqty=0, price_type=None, price=0.0, trigger_price=None, retention="DAY", amo="NO", remarks=None):
+        """
+        Place order via direct HTTP. NorenApi.place_order() returns None when broker
+        returns stat != 'Ok', so we do the request here and always return the full
+        response so callers get emsg on rejection (same approach as bsensearb).
+        """
+        # place_basket calls place_order(order); accept Order as first arg and unpack
+        if isinstance(buy_or_sell, Order):
+            o = buy_or_sell
+            buy_or_sell = o.buy_or_sell
+            product_type = o.product_type
+            exchange = o.exchange
+            tradingsymbol = o.tradingsymbol
+            quantity = o.quantity
+            discloseqty = o.discloseqty or 0
+            price_type = o.price_type
+            price = o.price
+            trigger_price = o.trigger_price
+            retention = o.retention or "DAY"
+            remarks = o.remarks or "tag"
+        try:
+            config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+            if not config:
+                logger.error("Place order: no service config")
+                return None
+            host = (config.get("host") or "").rstrip("/")
+            routes = config.get("routes") or {}
+            path = (routes.get("placeorder") or "").lstrip("/")
+            url = f"{host}/{path}" if path else host
+            uid = getattr(self, "_NorenApi__username", None)
+            actid = getattr(self, "_NorenApi__accountid", None)
+            token = getattr(self, "_NorenApi__susertoken", None)
+            if not all([uid, actid, token]):
+                logger.error("Place order: not logged in (missing uid/actid/token)")
+                return None
+            trgprc = trigger_price if trigger_price is not None else 0
+            values = {
+                "ordersource": "API",
+                "uid": uid,
+                "actid": actid,
+                "trantype": buy_or_sell,
+                "prd": product_type,
+                "exch": exchange,
+                "tsym": urllib.parse.quote_plus(tradingsymbol),
+                "qty": str(int(quantity)),
+                "dscqty": str(int(discloseqty or 0)),
+                "prctyp": price_type,
+                "prc": str(price),
+                "trgprc": str(trgprc),
+                "ret": retention or "DAY",
+                "remarks": remarks or "convex",
+            }
+            payload = "jData=" + json.dumps(values) + "&jKey=" + str(token)
+            res = requests.post(url, data=payload, timeout=30)
+            if not res.ok:
+                try:
+                    body = json.loads(res.text)
+                    emsg = body.get("emsg") or body.get("rejreason") or body.get("remarks") or res.text[:500]
+                except Exception:
+                    emsg = res.text[:500] if res.text else (getattr(res, "reason", None) or "unknown")
+                logger.error("Place order HTTP %s: %s | url=%s", res.status_code, emsg, url)
+                logger.debug("Place order HTTP body: %s", res.text)
+                return None
+            res_dict = json.loads(res.text)
+            if res_dict.get("stat") != "Ok":
+                emsg = res_dict.get("emsg") or res_dict.get("rejreason") or res_dict.get("remarks", "")
+                logger.error("Place order rejected: %s", emsg or res_dict.get("stat"))
+                logger.debug("Place order full response: %s", res_dict)
+            return res_dict
+        except requests.RequestException as e:
+            err_body = ""
+            if hasattr(e, "response") and e.response is not None and getattr(e.response, "text", None):
+                err_body = " | body=%s" % (e.response.text[:500],)
+                logger.debug("Place order request exception body: %s", e.response.text)
+            logger.error("Place order request failed: %s%s", e, err_body)
+            return None
+        except (ValueError, KeyError) as e:
+            logger.error("Place order response parse error: %s", e)
+            return None

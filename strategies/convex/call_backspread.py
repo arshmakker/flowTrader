@@ -28,6 +28,13 @@ MAX_LOSS_PCT_OF_CAPITAL = 0.10  # 10% of total capital (₹1L for ₹10L capital
 from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
 MIN_DAYS_TO_EXPIRY = 2  # Don't enter if expiry within 2 days (OTM calls need time)
+# Convex-only cap (order quantity = leg_qty × lots × lot_size; 2 lots → long 260, short 130 with lot_size 65)
+CONVEX_MAX_LOTS = 2
+
+# Broker margin example (from rejection screenshot): 10 lots required total ~₹38.18L (shortfall ₹29.87L + available ₹8.31L).
+# Used to estimate margin for other lot sizes (scale linearly).
+CONVEX_MARGIN_EXAMPLE_LOTS = 10
+CONVEX_MARGIN_EXAMPLE_INR = 38_18_065  # ~38.18 lakh for 10 lots (MIS)
 
 
 def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFrame, 
@@ -240,7 +247,7 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             if lots < MIN_LOTS:
                 lots = MIN_LOTS
 
-        # Enforce global caps via clamp_lots
+        # Enforce global caps via clamp_lots, then Convex cap
         clamped = clamp_lots(lots)
         if clamped == 0:
             logger.info("Position sizing resulted in 0 lots (invalid)")
@@ -250,9 +257,33 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             except Exception: pass
             return None
         if clamped != lots:
-            # preserve original calculated lots
             lots = clamped
-        
+        lots = min(lots, CONVEX_MAX_LOTS)
+
+        # Log lot/quantity calculation: long leg = 2 × lots × lot_size, short leg = 1 × lots × lot_size
+        long_qty = 2 * lots * lot_size
+        short_qty = 1 * lots * lot_size
+        logger.info(
+            "Convex lots: %d (cap %d). Order quantities: long = 2×%d×%d = %d, short = 1×%d×%d = %d",
+            lots, CONVEX_MAX_LOTS, lots, lot_size, long_qty, lots, lot_size, short_qty
+        )
+
+        # Money: capital to enter (net debit total), max loss (worst-case risk), and estimated broker margin
+        net_debit_total = net_debit * lots * lot_size
+        max_loss_total = max_loss_per_lot * lots * lot_size
+        # Margin estimate from broker example: 10 lots → ~₹38.18L required; scale linearly for current lots
+        margin_est_inr = (lots / CONVEX_MARGIN_EXAMPLE_LOTS) * CONVEX_MARGIN_EXAMPLE_INR
+        if net_debit_total >= 0:
+            logger.info(
+                "Convex money: capital to enter (net debit) = ₹%.2f (₹%.2f/lot × %d lots × %d). Max loss (risk) = ₹%.2f. Est. margin (broker) ≈ ₹%.2f",
+                net_debit_total, net_debit, lots, lot_size, max_loss_total, margin_est_inr
+            )
+        else:
+            logger.info(
+                "Convex money: net credit on entry = ₹%.2f. Max loss (risk) = ₹%.2f. Est. margin (broker) ≈ ₹%.2f",
+                -net_debit_total, max_loss_total, margin_est_inr
+            )
+
         # Build trade proposal
         trade_proposal = {
             "strategy": "CALL_BACKSPREAD",
@@ -264,6 +295,7 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
                     "position": "SHORT",
                     "option_type": "CE",
                     "strike": float(atm_call['strike']),
+                    "tradingsymbol": str(atm_call.get('tradingsymbol', '')),  # Exact NFO symbol for place_order
                     "price": float(atm_price),
                     "quantity": 1,  # Sell 1
                     "delta": float(atm_call.get('delta', 0)),
@@ -277,6 +309,7 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
                     "position": "LONG",
                     "option_type": "CE",
                     "strike": float(otm_call['strike']),
+                    "tradingsymbol": str(otm_call.get('tradingsymbol', '')),  # Exact NFO symbol for place_order
                     "price": float(otm_price),
                     "quantity": 2,  # Buy 2
                     "delta": float(otm_call.get('delta', 0)),
@@ -287,11 +320,12 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
                     "volume": int(otm_call.get('volume', 0))
                 }
             ],
-            "max_loss": float(max_loss_per_lot * lots * lot_size),
+            "max_loss": float(max_loss_total),
             "max_loss_per_lot": float(max_loss_per_lot),
             "spot_price": float(spot_price),
             "net_debit": float(net_debit),
-            "net_debit_total": float(net_debit * lots * lot_size),
+            "net_debit_total": float(net_debit_total),
+            "margin_estimate_inr": float(margin_est_inr),  # from broker example: 10 lots ~₹38.18L, scaled by lots/10
             "lots": lots,
             "lot_size": lot_size,
             "days_to_expiry": days_to_expiry,

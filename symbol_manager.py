@@ -753,37 +753,45 @@ class SymbolManager:
             self.logger.error(f"Error getting active symbols: {str(e)}")
             return []
 
+    # NSE master uses "Nifty 50", "Nifty Bank", "Nifty Fin Services" in Symbol; tradingsymbol has "NIFTY INDEX", "NIFTY BANK", "FINNIFTY".
+    NSE_INDEX_SYMBOL_MAP = {"NIFTY": "Nifty 50", "BANKNIFTY": "Nifty Bank", "FINNIFTY": "Nifty Fin Services"}
+
     def get_stock_symbols(self):
         """Get list of specified stock symbols from NSE Cash segment"""
         if self.nse_cash is None:
             self.logger.error("NSE Cash symbols not loaded. Call load_symbol_files() first.")
             return []
-            
+        df = self.nse_cash
+        has_tsym = "tradingsymbol" in df.columns
         symbols = []
         try:
-            # Filter for our specific stock list
             for stock in self.stock_symbols:
-                stock_data = self.nse_cash[
-                    self.nse_cash['symbol'].str.upper() == stock.upper()
-                ]
-                
+                stock_upper = stock.upper()
+                stock_data = df[df["symbol"].str.upper() == stock_upper]
+                if stock_data.empty and has_tsym:
+                    stock_data = df[df["tradingsymbol"].str.upper() == stock_upper]
+                if stock_data.empty and has_tsym:
+                    stock_data = df[df["tradingsymbol"].str.upper().str.startswith(stock_upper + " ")]
+                if stock_data.empty and stock_upper in self.NSE_INDEX_SYMBOL_MAP:
+                    mapped = self.NSE_INDEX_SYMBOL_MAP[stock_upper]
+                    stock_data = df[df["symbol"].str.upper() == mapped.upper()]
+                if stock_data.empty and has_tsym:
+                    stock_data = df[df["tradingsymbol"].str.upper() == (stock_upper + "-EQ")]
                 if not stock_data.empty:
                     symbol_info = stock_data.iloc[0]
                     symbols.append({
-                        'symbol': symbol_info['symbol'],
-                        'token': str(symbol_info['token']),
-                        'exchange': 'NSE',
-                        'instrument': 'EQ',
-                        'lotsize': int(symbol_info.get('lotsize', 1)),
-                        'tick_size': float(symbol_info.get('ticksize', 0.05))
+                        "symbol": symbol_info["symbol"],
+                        "token": str(symbol_info["token"]),
+                        "exchange": "NSE",
+                        "instrument": "EQ",
+                        "lotsize": int(symbol_info.get("lotsize", 1)),
+                        "tick_size": float(symbol_info.get("ticksize", 0.05)),
                     })
                     self.logger.debug(f"Added NSE Cash symbol: {symbol_info['symbol']}")
                 else:
                     self.logger.warning(f"Symbol not found in NSE Cash: {stock}")
-                    
         except Exception as e:
             self.logger.error(f"Error getting stock symbols: {str(e)}")
-            
         self.logger.info(f"Found {len(symbols)} NSE Cash symbols")
         return symbols
 
@@ -1059,17 +1067,31 @@ class SymbolManager:
         )
         return all_symbols
 
+    # Set to True to include NSE cash (constituent stocks) in data collection; False reduces broker load (index derivatives only).
+    INCLUDE_CASH_IN_DATA_COLLECTION = False
+
     def get_data_collection_symbols(self):
-        """Get symbols for data collection only - cash stocks + index derivatives"""
+        """Get symbols for data collection. By default index derivatives + NIFTY spot only; set INCLUDE_CASH_IN_DATA_COLLECTION=True for full cash."""
         all_symbols = []
         
-        # Get stock symbols from NSE Cash (equity data for all constituent stocks)
-        self.logger.info("Fetching NSE Cash symbols for data collection...")
-        cash_symbols = self.get_stock_symbols()
-        if cash_symbols:
-            all_symbols.extend(cash_symbols)
-            self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
-            
+        if self.INCLUDE_CASH_IN_DATA_COLLECTION:
+            self.logger.info("Fetching NSE Cash symbols for data collection...")
+            cash_symbols = self.get_stock_symbols()
+            if cash_symbols:
+                all_symbols.extend(cash_symbols)
+                self.logger.info(f"Added {len(cash_symbols)} NSE Cash symbols")
+        
+        # Always include NIFTY spot (index) for spot price in data collection
+        nifty_info = self.get_token_info('Nifty 50', exchange='NSE')
+        if nifty_info:
+            all_symbols.append({
+                'symbol': nifty_info['symbol'],
+                'token': nifty_info['token'],
+                'exchange': 'NSE',
+                'instrument': 'INDEX',
+            })
+            self.logger.info("Added NIFTY spot (Nifty 50) for data collection")
+        
         # Get index derivatives (futures + ATM options for NIFTY, BANKNIFTY, FINNIFTY)
         self.logger.info("Fetching index derivatives for data collection...")
         index_derivatives = self.get_all_index_derivatives()
@@ -1081,10 +1103,11 @@ class SymbolManager:
         futures_count = len([s for s in all_symbols if s.get('instrument') in ['FUTIDX', 'FUTSTK']])
         options_count = len([s for s in all_symbols if s.get('instrument') in ['OPTIDX', 'OPTSTK']])
         cash_count = len([s for s in all_symbols if s.get('instrument') == 'EQ'])
+        index_count = len([s for s in all_symbols if s.get('instrument') == 'INDEX'])
         
         self.logger.info(
             f"Data collection symbols selected: {len(all_symbols)} total "
-            f"(Cash: {cash_count}, Futures: {futures_count}, Options: {options_count})"
+            f"(Index: {index_count}, Cash: {cash_count}, Futures: {futures_count}, Options: {options_count})"
         )
         return all_symbols
 

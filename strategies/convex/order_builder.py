@@ -7,7 +7,7 @@ with BUY orders prioritized before SELL orders to avoid margin issues.
 Guardrails:
 - All orders are MIS only (product_type 'I'); no NRML.
 - Long legs before short legs; do not reorder.
-- Entry: LMT (price control), retention IOC (Immediate-or-Cancel) for fast fill/cancel. Exit: MKT.
+- Entry: LMT (price control), retention DAY; long must fill within LONG_LEG_FILL_TIMEOUT or we drop proposal. Exit: MKT.
 - Sequential placement: place longs, wait for fill, then place shorts; verify every order filled.
 """
 
@@ -16,6 +16,7 @@ import logging
 import os
 import time
 import uuid
+import math
 from typing import Dict, List, Optional, Any
 
 from datetime import datetime
@@ -34,13 +35,44 @@ CONVEX_PRODUCT_TYPE = "I"
 ENTRY_PRICE_TYPE = "LMT"
 EXIT_PRICE_TYPE = "MKT"
 
-# Entry order validity: IOC (Immediate-or-Cancel) so we get fast fill or cancel; no lingering
-# pending orders. NSE and Shoonya API support DAY / EOS / IOC (see place_order ret*).
-ENTRY_RETENTION = "IOC"
+# Entry order validity: DAY so orders can rest; if long does not fill within LONG_LEG_FILL_TIMEOUT we drop proposal.
+ENTRY_RETENTION = "DAY"
 
-# Guardrail 4: sequential placement with fill check.
-ORDER_FILL_TIMEOUT_SECONDS = 60
+# NIFTY option tick size (price increments) on NSE.
+NIFTY_OPTION_TICK_SIZE = 0.05
+
+
+def _round_price_to_tick(price: float, tick_size: float, side: str) -> float:
+    """
+    Round price to a valid NIFTY option tick (0.05). Broker rejects with
+    "Price X is not a multiple of tick size 0.05" if not exact.
+
+    For fill probability: BUY round up, SELL round down. Result is normalized
+    to an exact multiple of tick_size to avoid float representation issues.
+    """
+    try:
+        p = float(price)
+        ts = float(tick_size)
+        if ts <= 0:
+            return round(p, 2)
+        ticks = p / ts
+        side_u = (side or "").strip().upper()
+        if side_u == "B":
+            num_ticks = math.ceil(ticks - 1e-9)
+        elif side_u == "S":
+            num_ticks = math.floor(ticks + 1e-9)
+        else:
+            num_ticks = round(ticks)
+        # Exact multiple: avoid (num_ticks * ts) float noise; 2 decimals for 0.05
+        rounded = round(num_ticks * ts, 2)
+        return rounded
+    except Exception:
+        return float(price)
+
+# Guardrail 4: sequential placement with fill check. Long must fill within this window or we drop proposal.
+LONG_LEG_FILL_TIMEOUT_SECONDS = 120
 ORDER_FILL_POLL_INTERVAL_SECONDS = 2
+ORDER_FILL_TIMEOUT_SECONDS = 60  # used for short leg and exit orders
 
 
 def generate_nifty_symbol(strike: float, option_type: str, expiry: str) -> str:
@@ -105,15 +137,24 @@ def build_convex_entry_orders(proposal: Dict, product_type: Optional[str] = None
         position = leg.get("position", "").upper()
         option_type = leg.get("option_type", "").upper()
         strike = leg.get("strike")
-        price = leg.get("price", leg.get("ltp", 0))
+        raw_price = leg.get("price", leg.get("ltp", 0))
 
         if strike is None:
             continue
 
-        symbol = generate_nifty_symbol(strike, option_type, expiry)
+        symbol = (leg.get("tradingsymbol") or "").strip()
+        if not symbol:
+            raise ValueError(
+                f"Convex entry leg missing tradingsymbol (strike={strike}, option_type={option_type}). "
+                "Legs must have tradingsymbol from NFO option chain; no fallback."
+            )
 
         leg_qty = leg.get("quantity", 1)
         quantity = leg_qty * lots * lot_size
+
+        # Determine side and apply tick-size rounding to entry price.
+        side = "B" if position == "LONG" else "S"
+        price = _round_price_to_tick(raw_price, NIFTY_OPTION_TICK_SIZE, side)
 
         # NIFTY options trade on NFO (F&O), not NSE (cash). Wrong exchange causes place_order to return None.
         order: Dict[str, Any] = {
@@ -126,11 +167,10 @@ def build_convex_entry_orders(proposal: Dict, product_type: Optional[str] = None
         }
         order["product_type"] = CONVEX_PRODUCT_TYPE
 
-        if position == "LONG":
-            order["buy_or_sell"] = "B"
+        order["buy_or_sell"] = side
+        if side == "B":
             buy_orders.append(order)
         else:
-            order["buy_or_sell"] = "S"
             sell_orders.append(order)
 
     result = buy_orders + sell_orders
@@ -177,22 +217,25 @@ def build_convex_exit_orders(
         if strike is None:
             continue
 
-        symbol = generate_nifty_symbol(strike, option_type, expiry)
+        symbol = (leg.get("tradingsymbol") or "").strip()
+        if not symbol:
+            raise ValueError(
+                f"Convex exit leg missing tradingsymbol (strike={strike}, option_type={option_type}). "
+                "Legs must have tradingsymbol from NFO; no fallback."
+            )
 
         leg_qty = leg.get("quantity", 1)
         quantity = leg_qty * lots * lot_size
 
-        if exit_prices and strike in exit_prices:
-            price = exit_prices[strike]
-        else:
-            price = leg.get("price", leg.get("ltp", 0))
+        # MKT orders must have price 0; broker rejects "nonzero Price for Market order!"
+        price = 0.0
 
         # NIFTY options trade on NFO (F&O), not NSE (cash).
         order: Dict[str, Any] = {
             "exchange": "NFO",
             "tradingsymbol": symbol,
             "quantity": quantity,
-            "price": float(price),
+            "price": price,
             "price_type": EXIT_PRICE_TYPE,
         }
         order["product_type"] = CONVEX_PRODUCT_TYPE
@@ -229,6 +272,11 @@ def _order_dict_to_place_kwargs(order: Dict[str, Any]) -> Dict[str, Any]:
     """
     pt = (order.get("price_type") or "LMT").upper()
     trigger = order.get("trigger_price") if pt in ("SL-LMT", "SL-MKT") else None
+    # MKT orders must have price 0 (broker rejects nonzero price for market order)
+    if pt == "MKT":
+        price = 0.0
+    else:
+        price = round(float(order["price"]), 2)
     return {
         "buy_or_sell": order["buy_or_sell"],
         "product_type": order["product_type"],
@@ -237,7 +285,7 @@ def _order_dict_to_place_kwargs(order: Dict[str, Any]) -> Dict[str, Any]:
         "quantity": int(order["quantity"]),
         "discloseqty": order.get("discloseqty", 0),
         "price_type": order["price_type"],
-        "price": float(order["price"]),
+        "price": price,
         "trigger_price": trigger,
         "retention": order.get("retention", "DAY"),
         "remarks": order.get("remarks", f"convex_{uuid.uuid4().hex[:8]}"),
@@ -271,7 +319,8 @@ def place_single_order(api: Any, order: Dict[str, Any]) -> Dict[str, Any]:
     # Python client returns None when no response (network/session/parse), not when server sends Not_Ok.
     if ret is None:
         logger.error(
-            "place_order returned None. Request: exchange=%s tradingsymbol=%s quantity=%s product_type=%s price_type=%s retention=%s | raw_ret type=%s repr=%r",
+            "place_order returned None. Request: exchange=%s tradingsymbol=%s quantity=%s product_type=%s price_type=%s retention=%s | raw_ret type=%s repr=%r. "
+            "Check: (1) login exarr contains NFO and prarr contains I (MIS); (2) run with logging DEBUG to see HTTP; (3) try 1 lot to rule out quantity limits.",
             kwargs.get("exchange"),
             kwargs.get("tradingsymbol"),
             kwargs.get("quantity"),
@@ -358,10 +407,12 @@ def wait_for_order_fill(
                 return True
             if _is_order_terminal_fail(current):
                 logger.warning(
-                    "Order %s terminal non-fill: status=%s rpt=%s",
+                    "Order %s terminal non-fill: status=%s rpt=%s emsg=%s full_record=%r",
                     order_id,
                     current.get("status"),
                     current.get("rpt"),
+                    current.get("emsg") or current.get("rejreason"),
+                    current,
                 )
                 return False
         time.sleep(poll_interval_seconds)
@@ -525,9 +576,19 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
                 logger.error("Place long order %d: no order ID in response %s", i + 1, ret)
                 return _cleanup_and_return_failure("no_order_id_long", "no order ID", result=ret)
             order_ids.append(str(oid))
-            if not wait_for_order_fill(api, str(oid)):
-                logger.error("Long order %s did not fill within timeout; not placing shorts", oid)
-                return _cleanup_and_return_failure("long_leg_fill_timeout", "long leg fill timeout")
+            if not wait_for_order_fill(api, str(oid), timeout_seconds=LONG_LEG_FILL_TIMEOUT_SECONDS):
+                logger.error(
+                    "Long order %s did not fill within %s s. Cancelling and dropping proposal; short leg(s) not placed.",
+                    oid,
+                    LONG_LEG_FILL_TIMEOUT_SECONDS,
+                )
+                try:
+                    api.cancel_order(orderno=str(oid))
+                    logger.info("Cancelled unfilled long order %s", oid)
+                except Exception as cancel_err:
+                    logger.warning("Failed to cancel unfilled long order %s: %s", oid, cancel_err)
+                # No filled legs to close; do not call _cleanup_and_return_failure (would wrongly offset unfilled order).
+                return {"success": False, "orders": orders, "order_ids": order_ids, "message": "long leg fill timeout"}
         except Exception as e:
             logger.exception("Place long order %d failed: %s", i + 1, e)
             return _cleanup_and_return_failure("long_place_exception", str(e))
@@ -542,7 +603,7 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
                 return _cleanup_and_return_failure("no_order_id_short", "no order ID", result=ret)
             order_ids.append(str(oid))
             if not wait_for_order_fill(api, str(oid)):
-                logger.error("Short order %s did not fill within timeout", oid)
+                logger.warning("Short order %s did not fill within timeout", oid)
                 return _cleanup_and_return_failure("short_leg_fill_timeout", "short leg fill timeout")
         except Exception as e:
             logger.exception("Place short order %d failed: %s", i + 1, e)

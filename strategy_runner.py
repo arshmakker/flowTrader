@@ -33,6 +33,7 @@ from technical_indicators import (
     calculate_atm_iv
 )
 from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
+from strategies.convex.call_backspread import CONVEX_MAX_LOTS
 
 # Debug logging setup
 DEBUG_LOG_PATH = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
@@ -88,22 +89,32 @@ def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
 
 def _get_date_object(date_or_datetime):
     """
-    Helper function to safely convert date or datetime to date object.
+    Helper function to safely convert date or datetime or string to date object.
     
     Args:
-        date_or_datetime: datetime.date, datetime.datetime, or None
+        date_or_datetime: datetime.date, datetime.datetime, str (YYYY-MM-DD or DD-MMM-YYYY), or None
     
     Returns:
         datetime.date object
     """
     if date_or_datetime is None:
         return datetime.now().date()
-    elif isinstance(date_or_datetime, datetime):
+    if isinstance(date_or_datetime, datetime):
         return date_or_datetime.date()
-    elif isinstance(date_or_datetime, type(datetime.now().date())):
+    if isinstance(date_or_datetime, type(datetime.now().date())):
         return date_or_datetime
-    else:
-        return datetime.now().date()
+    if isinstance(date_or_datetime, str):
+        s = date_or_datetime.strip()
+        try:
+            # ISO: 2026-03-02
+            if len(s) == 10 and s[4] == '-' and s[7] == '-':
+                return datetime.strptime(s, '%Y-%m-%d').date()
+            # DD-MMM-YYYY or DD-MON-YY
+            if '-' in s and len(s) >= 9:
+                return datetime.strptime(s[:11], '%d-%b-%Y').date()
+        except (ValueError, TypeError):
+            pass
+    return datetime.now().date()
 
 
 def get_weekly_expiry(date=None):
@@ -432,6 +443,7 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
                 chain_data.append({
                     'strike': strike,
                     'option_type': option_type,
+                    'tradingsymbol': tsym,  # Exact NFO symbol for place_order (avoids "Invalid Trading Symbol")
                     'ltp': ltp,
                     'bid': bid,
                     'ask': ask,
@@ -901,6 +913,138 @@ def _log_strategy_decision(regime: str, neutral_sub_state: str, strategy_allowed
         logger.error(f"Error logging strategy decision: {str(e)}")
 
 
+# Ticks better than mid to try for small profit when flattening imbalance (covers brokerage).
+IMBALANCE_RESOLVE_PROFIT_TICKS = 1
+IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS = 60
+IMBALANCE_MKT_FALLBACK_TIMEOUT_SECONDS = 30
+
+
+def _get_token_for_nfo_symbol(api, tradingsymbol: str):
+    """Resolve NFO option token by tradingsymbol via searchscrip. Returns token string or None."""
+    try:
+        resp = api.searchscrip(exchange="NFO", searchtext=tradingsymbol)
+        if not resp or not isinstance(resp, dict):
+            return None
+        values = resp.get("values") or []
+        for s in values:
+            if isinstance(s, dict) and (s.get("tsym") or "").strip() == tradingsymbol.strip():
+                t = s.get("token")
+                return str(t) if t is not None else None
+        if values and isinstance(values[0], dict) and values[0].get("token") is not None:
+            return str(values[0]["token"])
+    except Exception as e:
+        logger.debug("searchscrip for %s failed: %s", tradingsymbol, e)
+    return None
+
+
+def resolve_imbalance_with_profit(api, imbalance_result: dict, symbol_manager) -> bool:
+    """
+    Attempt to flatten imbalanced NFO positions using limit orders for a small profit (brokerage cover),
+    then fall back to market if limit does not fill in time.
+
+    Uses imbalance_result['flatten_orders']: list of {tradingsymbol, side: 'B'|'S', quantity}.
+    Places LMT at bid-1tick (BUY) or ask+1tick (SELL), waits IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS;
+    if not filled, cancels and places MKT. All orders MIS (product I), retention DAY.
+
+    Returns True if all legs were flattened (limit or market), False if any step failed.
+    """
+    from strategies.convex.order_builder import (
+        place_single_order,
+        wait_for_order_fill,
+        _round_price_to_tick,
+        NIFTY_OPTION_TICK_SIZE,
+    )
+    flatten_orders = (imbalance_result or {}).get("flatten_orders") or []
+    if not flatten_orders:
+        logger.info("resolve_imbalance_with_profit: no flatten_orders, nothing to do")
+        return True
+    logger.info(
+        "resolve_imbalance_with_profit: attempting to flatten %d leg(s) with limit orders (small profit), then MKT fallback",
+        len(flatten_orders),
+    )
+    all_ok = True
+    for i, fo in enumerate(flatten_orders):
+        tsym = (fo.get("tradingsymbol") or "").strip()
+        side = (fo.get("side") or "B").strip().upper()
+        if side not in ("B", "S"):
+            logger.warning("resolve_imbalance_with_profit: invalid side %s for %s, skip", side, tsym)
+            all_ok = False
+            continue
+        qty = int(fo.get("quantity") or 0)
+        if qty <= 0:
+            logger.warning("resolve_imbalance_with_profit: invalid quantity for %s, skip", tsym)
+            all_ok = False
+            continue
+        token = _get_token_for_nfo_symbol(api, tsym)
+        if not token:
+            logger.warning("resolve_imbalance_with_profit: could not get token for %s, skip", tsym)
+            all_ok = False
+            continue
+        try:
+            quote = api.get_quotes("NFO", token)
+        except Exception as e:
+            logger.warning("resolve_imbalance_with_profit: get_quotes failed for %s: %s", tsym, e)
+            all_ok = False
+            continue
+        if not quote:
+            logger.warning("resolve_imbalance_with_profit: no quote for %s", tsym)
+            all_ok = False
+            continue
+        bid = float(quote.get("bp1", 0) or 0)
+        ask = float(quote.get("sp1", 0) or 0)
+        ltp = float(quote.get("lp", 0) or 0)
+        if side == "B":
+            raw_limit = (bid - IMBALANCE_RESOLVE_PROFIT_TICKS * NIFTY_OPTION_TICK_SIZE) if bid > 0 else (ltp - NIFTY_OPTION_TICK_SIZE)
+            limit_price = _round_price_to_tick(max(0.05, raw_limit), NIFTY_OPTION_TICK_SIZE, "B")
+        else:
+            raw_limit = (ask + IMBALANCE_RESOLVE_PROFIT_TICKS * NIFTY_OPTION_TICK_SIZE) if ask > 0 else (ltp + NIFTY_OPTION_TICK_SIZE)
+            limit_price = _round_price_to_tick(max(0.05, raw_limit), NIFTY_OPTION_TICK_SIZE, "S")
+        order = {
+            "buy_or_sell": "B" if side == "B" else "S",
+            "product_type": "I",
+            "exchange": "NFO",
+            "tradingsymbol": tsym,
+            "quantity": qty,
+            "price_type": "LMT",
+            "price": limit_price,
+            "retention": "DAY",
+            "remarks": f"imbalance_flatten_{i}_{tsym[:20]}",
+        }
+        try:
+            ret = place_single_order(api, order)
+            oid = (ret.get("norenordno") or ret.get("order_id") or "").__str__()
+            if not oid:
+                logger.warning("resolve_imbalance_with_profit: no order id for %s", tsym)
+                all_ok = False
+                continue
+            filled = wait_for_order_fill(api, oid, timeout_seconds=IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS)
+            if filled:
+                logger.info("resolve_imbalance_with_profit: limit filled for %s %s %s @ %s", side, qty, tsym, limit_price)
+                continue
+            try:
+                api.cancel_order(orderno=oid)
+                logger.info("resolve_imbalance_with_profit: cancelled limit %s, placing MKT for %s", oid, tsym)
+            except Exception as ce:
+                logger.warning("resolve_imbalance_with_profit: cancel failed for %s: %s", oid, ce)
+            mkt_order = {**order, "price_type": "MKT", "price": 0.0, "remarks": f"imbalance_mkt_{i}_{tsym[:20]}"}
+            ret2 = place_single_order(api, mkt_order)
+            oid2 = (ret2.get("norenordno") or ret2.get("order_id") or "").__str__()
+            if not oid2:
+                logger.warning("resolve_imbalance_with_profit: MKT order failed for %s", tsym)
+                all_ok = False
+                continue
+            filled2 = wait_for_order_fill(api, oid2, timeout_seconds=IMBALANCE_MKT_FALLBACK_TIMEOUT_SECONDS)
+            if filled2:
+                logger.info("resolve_imbalance_with_profit: MKT filled for %s %s %s", side, qty, tsym)
+            else:
+                logger.warning("resolve_imbalance_with_profit: MKT did not fill for %s (order %s)", tsym, oid2)
+                all_ok = False
+        except Exception as e:
+            logger.exception("resolve_imbalance_with_profit: failed for %s: %s", tsym, e)
+            all_ok = False
+    return all_ok
+
+
 def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=800000.0):
     """
     Run strategy check with regime detection and routing (two-fork model).
@@ -920,7 +1064,29 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
     """
     try:
         logger.info("=== Running Strategy Check with Regime Detection ===")
-        
+
+        # Step 0: If there is a position imbalance (e.g. orphan leg, wrong ratio), resolve with small profit then re-check; block new proposals until flat.
+        if position_tracker is not None:
+            imbalance = position_tracker.check_position_imbalance(api)
+            if imbalance.get("imbalanced"):
+                logger.warning(
+                    "Position imbalance detected; attempting auto-resolve with limit orders (small profit for brokerage). "
+                    "Details: %s",
+                    "; ".join(imbalance.get("details", [])),
+                )
+                for action in imbalance.get("recommended_actions", []):
+                    logger.warning("   Action: %s", action)
+                resolved = resolve_imbalance_with_profit(api, imbalance, symbol_manager)
+                if not resolved:
+                    logger.warning("Imbalance auto-resolve failed or partial; skipping strategy check until resolved.")
+                    return None
+                # Re-check: only allow strategy to run when no longer imbalanced.
+                imbalance_after = position_tracker.check_position_imbalance(api)
+                if imbalance_after.get("imbalanced"):
+                    logger.warning("Still imbalanced after resolve (e.g. orders pending); skipping strategy check.")
+                    return None
+                logger.info("Imbalance resolved; continuing with strategy check.")
+
         # Step 1: Get NIFTY spot price
         spot_price = get_nifty_spot_price(api, symbol_manager)
         if spot_price is None or spot_price <= 0:
@@ -1064,19 +1230,22 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                 except Exception as _e:
                     logger.debug(f"Could not snapshot option chain for proposal {tid}: {_e}")
 
-                # margin estimate: try using known margin calculator if available
+                # margin estimate: Convex uses broker example (margin_estimate_inr); Iron Condor uses SPAN or fallback
                 margin_est = None
-                try:
-                    from strategies.iron_condor import margin_calculator as ic_margin_mod
-                    if hasattr(ic_margin_mod, 'calculate_iron_condor_margin'):
-                        try:
-                            margin_est = ic_margin_mod.calculate_iron_condor_margin(prop)
-                        except Exception:
-                            margin_est = None
-                except Exception:
-                    margin_est = None
+                if name == 'CALL_BACKSPREAD' and prop.get('margin_estimate_inr') is not None:
+                    margin_est = float(prop['margin_estimate_inr'])
+                if margin_est is None:
+                    try:
+                        from strategies.iron_condor import margin_calculator as ic_margin_mod
+                        if hasattr(ic_margin_mod, 'calculate_iron_condor_margin'):
+                            try:
+                                margin_est = ic_margin_mod.calculate_iron_condor_margin(prop)
+                            except Exception:
+                                margin_est = None
+                    except Exception:
+                        margin_est = None
 
-                # fallback margin estimate: max_loss * lots * lot_size
+                # fallback margin estimate: max_loss (total) or max_loss_per_lot * lots * lot_size
                 if margin_est is None:
                     lot_size = None
                     if prop.get('lot_size'):
@@ -1106,8 +1275,11 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
                     _debug_log('strategy_runner.py:commit', 'Reject proposal - zero lots', {'strategy': name, 'lots': proposed_lots}, 'COMMIT')
                     continue
 
-                # apply MIN/MAX clamp (safety net)
-                clamped = clamp_lots(proposed_lots)
+                # apply lot clamp: Convex uses CONVEX_MAX_LOTS only; others use global MIN/MAX
+                if name == 'CALL_BACKSPREAD':
+                    clamped = min(proposed_lots, CONVEX_MAX_LOTS)
+                else:
+                    clamped = clamp_lots(proposed_lots)
                 if clamped != proposed_lots:
                     prop['_original_lots'] = proposed_lots
                     prop['lots'] = clamped

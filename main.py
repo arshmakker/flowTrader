@@ -256,6 +256,16 @@ def initialize_api():
         if login_status:
             logging.info(Fore.GREEN + "Successfully logged in to Shoonya API")
             logging.debug(f"Login response: {login_status}")
+            # NFO + MIS required for Convex NIFTY options.
+            if isinstance(login_status, dict):
+                exarr = login_status.get("exarr")
+                prarr = login_status.get("prarr")
+                if exarr is not None and "NFO" not in str(exarr):
+                    logging.warning("NFO not in exarr - NIFTY option orders may fail (place_order returns None)")
+                if prarr is not None:
+                    prd_list = [p.get("prd") if isinstance(p, dict) else p for p in (prarr if isinstance(prarr, list) else [prarr])]
+                    if "I" not in prd_list:
+                        logging.warning("MIS (I) not in prarr - intraday NFO orders may fail")
             return api
         else:
             logging.error(Fore.RED + "Login failed - API returned False")
@@ -298,10 +308,14 @@ def main():
         # Paper trading disabled for data collection focus
         trader = None
         
-        # Initialize position tracker
+        # Initialize position tracker and sync OPEN positions from broker (broker is source of truth)
         position_tracker = IronCondorPositionTracker()
         logger.info("Position tracker initialized")
-        
+        try:
+            position_tracker.sync_from_broker(api)
+        except Exception as e:
+            logger.warning("Sync positions from broker failed (continuing): %s", e)
+
         # Run synthetic regime tests if enabled
         enable_synthetic_tests = os.getenv('ENABLE_SYNTHETIC_TESTS', 'False').lower() == 'true'
         enable_replay_mode = os.getenv('ENABLE_REPLAY_MODE', 'False').lower() == 'true'
@@ -346,7 +360,7 @@ def main():
         STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
         last_strategy_check = datetime.now()
         
-        # Position monitoring timing
+        # Position monitoring timing (also runs imbalance check + get_positions; see docs/BROKER_API_AUDIT.md)
         POSITION_CHECK_INTERVAL = 60  # Check positions every 1 minute (60 seconds)
         last_position_check = datetime.now()
         
@@ -592,6 +606,22 @@ def main():
                 
                 if time_since_position_check >= POSITION_CHECK_INTERVAL:
                     if is_market_hours():
+                        # Check for position imbalance (e.g. orphan leg, wrong long:short ratio)
+                        try:
+                            imbalance = position_tracker.check_position_imbalance(api)
+                            if imbalance.get("imbalanced"):
+                                logger.warning(
+                                    Fore.YELLOW + "⚠️ Position imbalance detected: %s",
+                                    "; ".join(imbalance.get("details", [])),
+                                )
+                                for action in imbalance.get("recommended_actions", []):
+                                    logger.warning(Fore.YELLOW + "   Action: %s", action)
+                                if imbalance.get("broker_legs"):
+                                    logger.info("   Broker NFO legs: %s", imbalance["broker_legs"])
+                            elif imbalance.get("broker_legs") and not imbalance.get("imbalanced"):
+                                logger.debug("Position balance check OK: %d NFO leg(s)", len(imbalance["broker_legs"]))
+                        except Exception as imb_e:
+                            logger.debug("Imbalance check failed: %s", imb_e)
                         try:
                             active_positions = position_tracker.get_active_positions()
                             
