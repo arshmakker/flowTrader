@@ -29,7 +29,7 @@ from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
 MIN_DAYS_TO_EXPIRY = 2  # Don't enter if expiry within 2 days (OTM calls need time)
 # Convex-only cap (order quantity = leg_qty × lots × lot_size; 2 lots → long 260, short 130 with lot_size 65)
-CONVEX_MAX_LOTS = 2
+CONVEX_MAX_LOTS = 1
 
 # Broker margin example (from rejection screenshot): 10 lots required total ~₹38.18L (shortfall ₹29.87L + available ₹8.31L).
 # Used to estimate margin for other lot sizes (scale linearly).

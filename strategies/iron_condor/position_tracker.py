@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS = 3
 
 # Convex trailing stop loss (MTM-based)
-CONVEX_TSL_ACTIVATION_MTM_PCT = 0.20   # Activate TSL when mtm >= +20% of entry premium
+CONVEX_TSL_ACTIVATION_MTM_PCT = 0.05   # Activate TSL when mtm >= +5% of entry premium
 CONVEX_TSL_ACTIVATION_TIME_PCT = 0.25  # Or when time elapsed >= 25% of expiry
-CONVEX_TSL_TRAIL_PCT = 0.35            # Base trailing drawdown 35% from peak
-CONVEX_TSL_TRAIL_TIGHT_PCT = 0.25      # Tighten to 25% when time > 40% or ATR% < 30
+CONVEX_TSL_TRAIL_PCT = 0.15            # Base trailing drawdown 15% from peak
+CONVEX_TSL_TRAIL_TIGHT_PCT = 0.10      # Tighten to 10% when time > 40% or ATR% < 30
 CONVEX_TSL_TIGHT_TIME_PCT = 0.40
 CONVEX_TSL_ATR_TIGHT_THRESHOLD = 30
 CONVEX_MAX_LOSS_MTM_PCT = 0.30         # Absolute exit if mtm <= -30% of entry premium
@@ -188,18 +188,23 @@ class IronCondorPositionTracker:
             positions.append(position)
         return positions
 
-    def sync_from_broker(self, api: Any) -> None:
+    def sync_from_broker(self, api: Any, positions_raw: Any = None) -> None:
         """
-        Sync OPEN positions from broker at startup. Broker is source of truth.
+        Sync OPEN positions from broker. Broker is source of truth.
+        Called at startup (main.py) and periodically every POSITION_CHECK_INTERVAL (60s) during market hours.
         - Keeps all CLOSED positions (history).
         - Replaces OPEN list: if broker has no NFO positions, clear OPEN; else set OPEN from broker.
+        If positions_raw is provided (e.g. from a shared get_positions() in the same interval), no API call is made.
         """
-        logger.info("sync_from_broker: fetching broker positions from broker for sync...")
-        try:
-            raw = api.get_positions()
-        except Exception as e:
-            logger.warning("sync_from_broker: get_positions failed: %s", e)
-            return
+        if positions_raw is None:
+            logger.info("sync_from_broker: fetching broker positions from broker for sync...")
+            try:
+                raw = api.get_positions()
+            except Exception as e:
+                logger.warning("sync_from_broker: get_positions failed: %s", e)
+                return
+        else:
+            raw = positions_raw
         if not raw:
             raw = []
         rows = raw if isinstance(raw, list) else [raw]
@@ -230,21 +235,25 @@ class IronCondorPositionTracker:
             len(nfo_open), len(open_from_broker), open_before,
         )
 
-    def check_position_imbalance(self, api: Any) -> Dict[str, Any]:
+    def check_position_imbalance(self, api: Any, positions_raw: Any = None) -> Dict[str, Any]:
         """
         Check broker NFO positions for Convex imbalance (e.g. orphan leg, wrong long:short ratio).
         Convex expects 2 legs per expiry: 1 short (1×lots×65) + 1 long (2×lots×65), so |long| = 2×|short|.
         Returns dict: imbalanced (bool), details (list), recommended_actions (list).
+        If positions_raw is provided (e.g. from a shared get_positions() in the same interval), no API call is made.
         """
         result = {"imbalanced": False, "details": [], "broker_legs": [], "recommended_actions": []}
-        logger.info("check_position_imbalance: fetching broker positions for imbalance check...")
-        try:
-            raw = api.get_positions()
-        except Exception as e:
-            logger.warning("check_position_imbalance: get_positions failed: %s", e)
-            result["details"].append(f"Could not fetch broker positions: {e}")
-            result["recommended_actions"].append("Retry later or check API connectivity.")
-            return result
+        if positions_raw is None:
+            logger.info("check_position_imbalance: fetching broker positions for imbalance check...")
+            try:
+                raw = api.get_positions()
+            except Exception as e:
+                logger.warning("check_position_imbalance: get_positions failed: %s", e)
+                result["details"].append(f"Could not fetch broker positions: {e}")
+                result["recommended_actions"].append("Retry later or check API connectivity.")
+                return result
+        else:
+            raw = positions_raw
         if not raw:
             raw = []
         rows = raw if isinstance(raw, list) else [raw]
@@ -628,6 +637,10 @@ class IronCondorPositionTracker:
                     if (entry_premium > 0 and mtm_pct >= CONVEX_TSL_ACTIVATION_MTM_PCT) or time_elapsed_pct >= CONVEX_TSL_ACTIVATION_TIME_PCT:
                         position['convex_tsl_active'] = True
                         self._save_active_positions()
+                        logger.info(
+                            "Unrealized MTM: TSL activated trade_id=%s mtm=₹%.2f mtm_pct=%.1f%% time_elapsed_pct=%.1f%%",
+                            position.get("trade_id", "?"), current_mtm, mtm_pct * 100, time_elapsed_pct * 100,
+                        )
                 
                 # Trailing stop: once active, track peak and exit on drawdown
                 if position.get('convex_tsl_active', False):
@@ -639,6 +652,15 @@ class IronCondorPositionTracker:
                     trailing_pct = CONVEX_TSL_TRAIL_PCT
                     if time_elapsed_pct > CONVEX_TSL_TIGHT_TIME_PCT or (current_atr_percentile is not None and current_atr_percentile < CONVEX_TSL_ATR_TIGHT_THRESHOLD):
                         trailing_pct = CONVEX_TSL_TRAIL_TIGHT_PCT
+                    # Log unrealized MTM and trail level (for debugging / audit)
+                    logger.info(
+                        "Unrealized MTM (TSL): trade_id=%s mtm=₹%.2f peak=₹%.2f trail_pct=%.0f%% threshold=₹%.2f",
+                        position.get("trade_id", "?"),
+                        current_mtm,
+                        peak,
+                        trailing_pct * 100,
+                        peak * (1.0 - trailing_pct),
+                    )
                     if current_mtm <= peak * (1.0 - trailing_pct):
                         return True, "CONVEX_TSL_HIT"
             

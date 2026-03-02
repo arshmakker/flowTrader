@@ -6,11 +6,12 @@ with BUY orders prioritized before SELL orders to avoid margin issues.
 
 Guardrails:
 - All orders are MIS only (product_type 'I'); no NRML.
-- Long legs before short legs; do not reorder.
-- Entry: LMT (price control), retention DAY; long must fill within LONG_LEG_FILL_TIMEOUT or we drop proposal. Exit: MKT.
-- Sequential placement: place longs, wait for fill, then place shorts; verify every order filled.
+- Entry: LMT (price control), retention DAY. Exit: MKT.
+- When USE_BASKET_ENTRY: all legs submitted in parallel (basket), then wait for all to fill; reduces imbalance from sequential delay.
+- When disabled: sequential placement (longs first, wait for fill, then shorts).
 """
 
+import concurrent.futures
 import json
 import logging
 import os
@@ -73,6 +74,12 @@ def _round_price_to_tick(price: float, tick_size: float, side: str) -> float:
 LONG_LEG_FILL_TIMEOUT_SECONDS = 120
 ORDER_FILL_POLL_INTERVAL_SECONDS = 2
 ORDER_FILL_TIMEOUT_SECONDS = 60  # used for short leg and exit orders
+
+# Submit all Convex entry legs in parallel (basket); then wait for all to fill. Reduces imbalance risk from sequential delay.
+USE_BASKET_ENTRY = True
+BASKET_FILL_TIMEOUT_SECONDS = 120  # all legs must fill within this window
+# When buys are filled but short(s) still pending, we cancel short limit and place market; give market this extra time.
+BASKET_MKT_FALLBACK_EXTRA_SECONDS = 60
 
 
 def generate_nifty_symbol(strike: float, option_type: str, expiry: str) -> str:
@@ -525,26 +532,122 @@ def _save_partial_fill_review(
         logger.exception("Failed to save partial-fill review: %s", e)
 
 
+def _place_convex_basket(api: Any, orders: List[Dict[str, Any]]) -> tuple:
+    """
+    Submit all Convex entry orders in parallel (basket), then wait for all to fill.
+    Returns (order_ids: List[str], success: bool). On success all legs filled; on failure
+    caller should run cleanup (cancel unfilled, close filled).
+    """
+    order_ids: List[str] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(place_single_order, api, o) for o in orders]
+        results: List[Optional[Dict[str, Any]]] = []
+        for f in futures:
+            try:
+                results.append(f.result())
+            except Exception as e:
+                logger.warning("Basket order submit failed for one leg: %s", e)
+                results.append(None)
+    # Check all submitted successfully
+    for i, r in enumerate(results):
+        if r is None:
+            logger.error("Basket: order %d failed to submit; cancelling any that were placed", i + 1)
+            for oid in order_ids:
+                try:
+                    api.cancel_order(orderno=oid)
+                    logger.info("Cancelled basket order %s after submit failure", oid)
+                except Exception as ce:
+                    logger.warning("Cancel failed for %s: %s", oid, ce)
+            return (order_ids, False)
+        oid = (r.get("norenordno") or r.get("order_id") or "").__str__()
+        if not oid:
+            logger.error("Basket: order %d returned no order ID; cancelling any that were placed", i + 1)
+            for oid_existing in order_ids:
+                try:
+                    api.cancel_order(orderno=oid_existing)
+                except Exception:
+                    pass
+            return (order_ids, False)
+        order_ids.append(oid)
+    # Order of order_ids matches orders: first all buys, then all sells.
+    n_buy = sum(1 for o in orders if (o.get("buy_or_sell") or "").strip().upper() == "B")
+    sell_upgraded: set = set()  # indices of order_ids we've replaced with market orders
+    deadline = time.monotonic() + BASKET_FILL_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        filled_indices: set = set()
+        terminal_fail_indices: set = set()
+        all_filled = True
+        for i, oid in enumerate(order_ids):
+            try:
+                hist = api.single_order_history(orderno=oid)
+            except Exception:
+                all_filled = False
+                break
+            records = hist if isinstance(hist, list) else [hist]
+            current = records[0] if records else None
+            if not isinstance(current, dict):
+                all_filled = False
+                break
+            if _is_order_filled(current):
+                filled_indices.add(i)
+                continue
+            if _is_order_terminal_fail(current):
+                logger.warning("Basket order %s terminal non-fill: %s", oid, current.get("rejreason") or current.get("status"))
+                return (order_ids, False)
+            all_filled = False
+        if all_filled:
+            logger.info("Basket: all %d leg(s) filled within timeout", len(order_ids))
+            return (order_ids, True)
+        # If all buy orders are filled but some short(s) still pending, replace those short limits with market.
+        buy_indices = set(range(n_buy))
+        sell_indices = set(range(n_buy, len(orders)))
+        pending_sells = sell_indices - filled_indices - terminal_fail_indices - sell_upgraded
+        if buy_indices <= filled_indices and pending_sells:
+            deadline = max(deadline, time.monotonic() + BASKET_MKT_FALLBACK_EXTRA_SECONDS)
+            for j in pending_sells:
+                try:
+                    api.cancel_order(orderno=order_ids[j])
+                    logger.info("Basket: cancelled short limit %s, placing market order for same leg", order_ids[j])
+                except Exception as ce:
+                    logger.warning("Basket: cancel short %s failed: %s", order_ids[j], ce)
+                mkt_order = {
+                    **orders[j],
+                    "price_type": "MKT",
+                    "price": 0.0,
+                    "trigger_price": None,
+                    "remarks": (orders[j].get("remarks") or "convex") + "_mkt",
+                }
+                try:
+                    ret = place_single_order(api, mkt_order)
+                    new_oid = (ret.get("norenordno") or ret.get("order_id") or "").__str__()
+                    if new_oid:
+                        order_ids[j] = new_oid
+                        sell_upgraded.add(j)
+                        logger.info("Basket: placed short market order %s for %s", new_oid, orders[j].get("tradingsymbol"))
+                    else:
+                        logger.warning("Basket: market order for short leg returned no order ID")
+                except Exception as e:
+                    logger.exception("Basket: place short market failed: %s", e)
+        time.sleep(ORDER_FILL_POLL_INTERVAL_SECONDS)
+    logger.warning("Basket: not all orders filled within timeout")
+    return (order_ids, False)
+
+
 def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = None) -> Dict:
     """
-    Place Convex trade with guardrails: longs first, wait for each fill, then shorts.
-
-    Guardrail: only after all long orders are filled are short orders placed.
+    Place Convex trade: either basket (all legs submitted in parallel) or sequential (longs first, then shorts).
     Returns success only when all legs are filled.
-
-    Args:
-        api: ShoonyaApiPy instance
-        proposal: Trade proposal
-        product_type: Ignored; Convex uses MIS only.
-
-    Returns:
-        Result dict with success status, order IDs, and placed orders.
     """
     orders = build_convex_entry_orders(proposal, product_type)
     buy_orders = [o for o in orders if o.get("buy_or_sell") == "B"]
     sell_orders = [o for o in orders if o.get("buy_or_sell") == "S"]
 
-    logger.info("=== Convex entry: %d long(s), then %d short(s) ===", len(buy_orders), len(sell_orders))
+    logger.info(
+        "=== Convex entry (%s): %d long(s), %d short(s) ===",
+        "basket" if USE_BASKET_ENTRY else "sequential",
+        len(buy_orders),
+        len(sell_orders),
+    )
     for i, order in enumerate(orders, 1):
         logger.info("%d. %s %s %s @ Rs %s", i, order["buy_or_sell"], order["quantity"], order["tradingsymbol"], order["price"])
 
@@ -567,7 +670,20 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
             )
         return {"success": False, "orders": orders, "order_ids": order_ids, "message": msg, **kwargs}
 
-    # Phase 1: place longs and wait for fill each
+    if USE_BASKET_ENTRY:
+        order_ids_out, success = _place_convex_basket(api, orders)
+        order_ids.extend(order_ids_out)
+        if success:
+            return {
+                "success": True,
+                "orders": orders,
+                "order_ids": order_ids,
+                "result": order_ids,
+            }
+        msg = "basket: not all legs filled within timeout" if order_ids else "basket: submit failure"
+        return _cleanup_and_return_failure("basket_fill_timeout", msg)
+
+    # Phase 1: place longs and wait for fill each (sequential path)
     for i, order in enumerate(buy_orders):
         try:
             ret = place_single_order(api, order)

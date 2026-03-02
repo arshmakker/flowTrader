@@ -606,9 +606,24 @@ def main():
                 
                 if time_since_position_check >= POSITION_CHECK_INTERVAL:
                     if is_market_hours():
-                        # Check for position imbalance (e.g. orphan leg, wrong long:short ratio)
+                        # Single get_positions() for both sync and imbalance (no extra broker call)
                         try:
-                            imbalance = position_tracker.check_position_imbalance(api)
+                            positions_raw = api.get_positions()
+                        except Exception as e:
+                            logger.warning("get_positions failed (position check skipped this cycle): %s", e)
+                            positions_raw = None
+                        if positions_raw is not None:
+                            try:
+                                position_tracker.sync_from_broker(api, positions_raw=positions_raw)
+                            except Exception as sync_e:
+                                logger.warning("Periodic sync from broker failed (continuing): %s", sync_e)
+                            # Check for position imbalance (e.g. orphan leg, wrong long:short ratio)
+                        try:
+                            imbalance = (
+                                position_tracker.check_position_imbalance(api, positions_raw=positions_raw)
+                                if positions_raw is not None
+                                else {"imbalanced": False, "details": [], "recommended_actions": [], "broker_legs": []}
+                            )
                             if imbalance.get("imbalanced"):
                                 logger.warning(
                                     Fore.YELLOW + "⚠️ Position imbalance detected: %s",
@@ -727,6 +742,13 @@ def main():
                                                         entry_range_state=entry_range_state,
                                                         current_range_state=regime_info.get('range_state'),
                                                         current_mtm=current_pnl
+                                                    )
+                                                    # Log unrealized MTM for Convex (persisted in file for debugging)
+                                                    peak_mtm = position.get('convex_peak_mtm', current_pnl)
+                                                    tsl_active = position.get('convex_tsl_active', False)
+                                                    logger.info(
+                                                        "Unrealized MTM: trade_id=%s mtm=₹%.2f peak=₹%.2f tsl_active=%s",
+                                                        position.get('trade_id', '?'), current_pnl, peak_mtm, tsl_active,
                                                     )
                                             
                                             # Calendar strategy removed - convex-only mode
