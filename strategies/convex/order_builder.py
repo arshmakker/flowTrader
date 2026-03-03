@@ -269,6 +269,9 @@ ORDER_REPORT_FILL = "Fill"        # report type: order fully or partially execut
 ORDER_STATUS_TERMINAL_FAIL = ("REJECTED", "CANCELLED", "CANCELED")
 ORDER_REPORT_TERMINAL_FAIL = ("Rejected", "Canceled")
 
+# When broker reports "Yel is down" (SAF:Yel), wait this long before treating as terminal (gives broker time to recover).
+YEL_DOWN_WAIT_SECONDS = 300  # 5 minutes
+
 
 def _order_dict_to_place_kwargs(order: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -379,6 +382,16 @@ def _is_order_terminal_fail(record: Dict[str, Any]) -> bool:
     return False
 
 
+def _is_yel_down_rejection(record: Dict[str, Any]) -> bool:
+    """True if rejection reason indicates broker 'Yel' service is down (transient)."""
+    msg = (
+        (record.get("rejreason") or "")
+        + " "
+        + (record.get("emsg") or "")
+    ).strip().upper()
+    return "YEL" in msg and ("DOWN" in msg or "SAF" in msg)
+
+
 def wait_for_order_fill(
     api: Any,
     order_id: str,
@@ -413,14 +426,21 @@ def wait_for_order_fill(
             if _is_order_filled(current):
                 return True
             if _is_order_terminal_fail(current):
-                logger.warning(
-                    "Order %s terminal non-fill: status=%s rpt=%s emsg=%s full_record=%r",
-                    order_id,
-                    current.get("status"),
-                    current.get("rpt"),
-                    current.get("emsg") or current.get("rejreason"),
-                    current,
-                )
+                if _is_yel_down_rejection(current):
+                    logger.warning(
+                        "Order %s rejected (Yel is down): waiting %s s before treating as terminal. rejreason=%s",
+                        order_id, YEL_DOWN_WAIT_SECONDS, current.get("rejreason") or current.get("emsg"),
+                    )
+                    time.sleep(YEL_DOWN_WAIT_SECONDS)
+                else:
+                    logger.warning(
+                        "Order %s terminal non-fill: status=%s rpt=%s emsg=%s full_record=%r",
+                        order_id,
+                        current.get("status"),
+                        current.get("rpt"),
+                        current.get("emsg") or current.get("rejreason"),
+                        current,
+                    )
                 return False
         time.sleep(poll_interval_seconds)
     logger.warning("Order %s fill check timed out after %s s", order_id, timeout_seconds)
@@ -592,7 +612,14 @@ def _place_convex_basket(api: Any, orders: List[Dict[str, Any]]) -> tuple:
                 filled_indices.add(i)
                 continue
             if _is_order_terminal_fail(current):
-                logger.warning("Basket order %s terminal non-fill: %s", oid, current.get("rejreason") or current.get("status"))
+                if _is_yel_down_rejection(current):
+                    logger.warning(
+                        "Basket order %s rejected (Yel is down): waiting %s s before treating as terminal. rejreason=%s",
+                        oid, YEL_DOWN_WAIT_SECONDS, current.get("rejreason") or current.get("emsg"),
+                    )
+                    time.sleep(YEL_DOWN_WAIT_SECONDS)
+                else:
+                    logger.warning("Basket order %s terminal non-fill: %s", oid, current.get("rejreason") or current.get("status"))
                 return (order_ids, False)
             all_filled = False
         if all_filled:
