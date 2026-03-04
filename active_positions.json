@@ -20896,5 +20896,41 @@
     "exit_time": "2026-03-02T14:34:07.606740",
     "exit_reason": "convex_exit_REGIME_CHANGED",
     "final_pnl": 360.7500000000043
+  },
+  {
+    "trade_id": "broker_sync_10MAR26_af7915c5",
+    "proposal_id": "broker_sync_10MAR26",
+    "entry_time": "2026-03-04T11:37:18.980428",
+    "lots": 2,
+    "lot_size": 65,
+    "entry_spot": null,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "SYNCED",
+    "status": "OPEN",
+    "expiry": "2026-03-10",
+    "legs": [
+      {
+        "tradingsymbol": "NIFTY10MAR26C24700",
+        "strike": 24700.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 0.0
+      }
+    ],
+    "entry_credit": 0,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0,
+    "days_to_expiry": null,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {},
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0
   }
 ]

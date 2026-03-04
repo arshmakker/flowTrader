@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 DEBUG_LOG = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
 
 # Configuration
-MAX_NET_DEBIT_PCT = 0.0025  # 0.25% of spot value
+MAX_NET_DEBIT_PCT = 0.0032  # 0.32% of spot value
 MAX_LOSS_PCT_OF_CAPITAL = 0.10  # 10% of total capital (₹1L for ₹10L capital)
 from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
 OTM_CALL_DISTANCE_PCT = 0.01  # ~1% above ATM for OTM calls
@@ -38,7 +38,8 @@ CONVEX_MARGIN_EXAMPLE_INR = 38_18_065  # ~38.18 lakh for 10 lots (MIS)
 
 
 def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFrame, 
-                                   capital: float = 1000000.0) -> Optional[Dict]:
+                                   capital: float = 1000000.0,
+                                   max_net_debit_pct: Optional[float] = None) -> Optional[Dict]:
     """
     Generate NIFTY Call Backspread trade proposal.
     
@@ -49,6 +50,8 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             - days_to_expiry: int
         option_chain: DataFrame with option chain data
         capital: Total capital allocated (default: ₹10L)
+        max_net_debit_pct: Optional override for net debit cap (e.g. backtest-only).
+            If None, uses MAX_NET_DEBIT_PCT.
     
     Returns:
         Trade proposal dictionary or None if rejected:
@@ -210,11 +213,12 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         # Sell 1 ATM, Buy 2 OTM
         net_debit = (2 * otm_price) - atm_price
         
-        # Validate net debit (must be ≤ 0.25% of spot value)
-        max_debit = spot_price * MAX_NET_DEBIT_PCT
+        # Validate net debit (must be ≤ cap % of spot value)
+        effective_pct = max_net_debit_pct if max_net_debit_pct is not None else MAX_NET_DEBIT_PCT
+        max_debit = spot_price * effective_pct
         # Allow debit (pay to open) or credit/zero (receive at open)
         if net_debit > max_debit:
-            logger.info(f"Net debit {net_debit:.2f} exceeds max {max_debit:.2f} (0.25% of spot)")
+            logger.info(f"Net debit {net_debit:.2f} exceeds max {max_debit:.2f} ({effective_pct*100:.2f}% of spot)")
             # #region agent log
             try:
                 with open(DEBUG_LOG, 'a') as _f:

@@ -352,6 +352,45 @@ class IronCondorPositionTracker:
             })
         return result
 
+    @staticmethod
+    def broker_mtm_from_positions_raw(positions_raw: Any) -> Dict[str, float]:
+        """
+        Sum broker MTM from get_positions() response. Separates NFO only.
+        Returns dict: broker_unrealized (urmtom), broker_realized (rpnl), broker_total.
+        """
+        out = {"broker_unrealized": 0.0, "broker_realized": 0.0, "broker_total": 0.0}
+        if not positions_raw:
+            return out
+        rows = positions_raw if isinstance(positions_raw, list) else [positions_raw]
+        nfo = [p for p in rows if (p.get("exch") or p.get("exchange") or "").strip().upper() == "NFO"]
+        for p in nfo:
+            try:
+                out["broker_unrealized"] += float(p.get("urmtom", 0) or 0)
+                out["broker_realized"] += float(p.get("rpnl", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        out["broker_total"] = out["broker_unrealized"] + out["broker_realized"]
+        return out
+
+    def get_system_realized_pnl_today(self) -> float:
+        """Sum final_pnl of all CLOSED positions that closed today (by exit_time date)."""
+        today = datetime.now().date()
+        total = 0.0
+        for p in self.active_positions:
+            if p.get("status") != "CLOSED":
+                continue
+            exit_time = (p.get("exit_time") or "").strip()
+            if not exit_time or len(exit_time) < 10:
+                continue
+            try:
+                exit_date_str = exit_time[:10]
+                exit_date = datetime.strptime(exit_date_str, "%Y-%m-%d").date()
+                if exit_date == today:
+                    total += float(p.get("final_pnl", 0) or 0)
+            except (ValueError, TypeError):
+                pass
+        return total
+
     def add_position(self, trade_proposal: Dict):
         """Add a new position to track"""
         import uuid
@@ -563,12 +602,19 @@ class IronCondorPositionTracker:
             
             # Exit condition 1: Regime changed from regime at entry (with confirmation to reduce whipsaw)
             # Skip regime-change exit once TSL is active: let TSL or max loss handle exit (reduces regime-change losses)
+            # Ignore regime change when in profit: let TSL or other exits handle (avoid crystallising profit on flicker)
             # Two-fork: TRENDING = convex-friendly, SIDEWAYS = not; treat TRENDING and CONVEX as equivalent for entry regime
             if not position.get('convex_tsl_active', False):
                 regime_at_entry = position.get('regime_at_entry') or 'CONVEX'
                 entry_is_trending = regime_at_entry in ('TRENDING', 'CONVEX')
                 current_is_trending = current_regime in ('TRENDING', 'CONVEX')
                 if entry_is_trending and not current_is_trending:
+                    if current_mtm is not None and current_mtm > 0:
+                        # In profit: ignore regime change; let TSL or other exits handle
+                        if position.get('convex_regime_change_count', 0) > 0:
+                            position['convex_regime_change_count'] = 0
+                            self._save_active_positions()
+                        return False, None
                     count = position.get('convex_regime_change_count', 0) + 1
                     position['convex_regime_change_count'] = count
                     self._save_active_positions()
@@ -581,11 +627,11 @@ class IronCondorPositionTracker:
                         position['convex_regime_change_count'] = 0
                         self._save_active_positions()
 
-            # Exit condition 2: Time elapsed > 40% of expiry duration
+            # Exit condition 2: Time elapsed > 40% of expiry duration — only when in loss (don't cut winners)
             if (entry_days_to_expiry is not None and days_to_expiry is not None
                     and entry_days_to_expiry > 0):
                 time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
-                if time_elapsed_pct > 0.40:
+                if time_elapsed_pct > 0.40 and (current_mtm is None or current_mtm <= 0):
                     return True, "TIME_ELAPSED_40PCT"
             
             # Exit condition 3: No ATR expansion within 40% of expiry time
@@ -652,9 +698,9 @@ class IronCondorPositionTracker:
                     trailing_pct = CONVEX_TSL_TRAIL_PCT
                     if time_elapsed_pct > CONVEX_TSL_TIGHT_TIME_PCT or (current_atr_percentile is not None and current_atr_percentile < CONVEX_TSL_ATR_TIGHT_THRESHOLD):
                         trailing_pct = CONVEX_TSL_TRAIL_TIGHT_PCT
-                    # Log unrealized MTM and trail level (for debugging / audit)
+                    # Log unrealized MTM and trail level (peak_profit tracked for audit)
                     logger.info(
-                        "Unrealized MTM (TSL): trade_id=%s mtm=₹%.2f peak=₹%.2f trail_pct=%.0f%% threshold=₹%.2f",
+                        "Unrealized MTM (TSL): trade_id=%s mtm=₹%.2f peak_profit=₹%.2f trail_pct=%.0f%% threshold=₹%.2f",
                         position.get("trade_id", "?"),
                         current_mtm,
                         peak,
@@ -700,11 +746,32 @@ class IronCondorPositionTracker:
         return False, None
     
     def close_position(self, position: Dict, exit_reason: str, final_pnl: float):
-        """Close a position and log performance by regime"""
+        """Close a position and log performance by regime. Tracks peak_profit and tsl_profit for Convex."""
         position['status'] = 'CLOSED'
         position['exit_time'] = datetime.now().isoformat()
         position['exit_reason'] = exit_reason
         position['final_pnl'] = final_pnl
+        # Track peak profit (Convex: highest MTM seen) and TSL profit (P&L when exited on TSL)
+        peak_profit = position.get('convex_peak_mtm')
+        if peak_profit is not None:
+            position['peak_profit'] = float(peak_profit)
+        if 'CONVEX_TSL_HIT' in (exit_reason or ''):
+            position['tsl_profit'] = float(final_pnl)
+            logger.info(
+                "Peak profit / TSL profit: trade_id=%s peak_profit=₹%.2f tsl_profit=₹%.2f exit_reason=%s",
+                position.get('trade_id', '?'),
+                position.get('peak_profit', 0) or 0,
+                final_pnl,
+                exit_reason,
+            )
+        elif position.get('book') == 'CONVEX' and peak_profit is not None:
+            logger.info(
+                "Peak profit: trade_id=%s peak_profit=₹%.2f exit_pnl=₹%.2f exit_reason=%s",
+                position.get('trade_id', '?'),
+                float(peak_profit),
+                final_pnl,
+                exit_reason,
+            )
         self._save_active_positions()
         
         # Log performance by regime
@@ -726,7 +793,7 @@ class IronCondorPositionTracker:
                 with open(performance_file, 'r') as f:
                     performance_data = json.load(f)
             
-            # Create performance entry
+            # Create performance entry (include peak_profit and tsl_profit for Convex)
             performance_entry = {
                 "strategy": position.get('strategy', 'UNKNOWN'),
                 "book": position.get('book', 'UNKNOWN'),
@@ -736,8 +803,12 @@ class IronCondorPositionTracker:
                 "pnl": final_pnl,
                 "max_loss": position.get('max_loss', 0),
                 "lots": position.get('lots', 0),
-                "trade_id": position.get('trade_id', '')
+                "trade_id": position.get('trade_id', ''),
             }
+            if position.get('peak_profit') is not None:
+                performance_entry["peak_profit"] = position['peak_profit']
+            if position.get('tsl_profit') is not None:
+                performance_entry["tsl_profit"] = position['tsl_profit']
             
             performance_data.append(performance_entry)
             

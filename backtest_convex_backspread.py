@@ -44,7 +44,7 @@ logger = logging.getLogger('ConvexBacktest')
 class ConvexBackspreadBacktester:
     """Backtest Convex Backspread strategy on historical data"""
     
-    def __init__(self, data_dir='market_data_*', initial_capital=100000, vix_low_override=None, vix_high_override=None):
+    def __init__(self, data_dir='market_data_*', initial_capital=100000, vix_low_override=None, vix_high_override=None, time_exit_pct=0.40):
         self.data_dir = data_dir
         self.initial_capital = initial_capital
         self.capital = initial_capital
@@ -55,6 +55,7 @@ class ConvexBackspreadBacktester:
         self.max_quote_staleness_minutes = 10
         self.vix_low_override = vix_low_override
         self.vix_high_override = vix_high_override
+        self.time_exit_pct = time_exit_pct  # Time-based exit threshold (e.g. 0.40 = 40% of expiry life)
         
     def load_historical_data(self, date_str: str) -> Dict:
         """Load all historical data for a specific date"""
@@ -370,10 +371,16 @@ class ConvexBackspreadBacktester:
             time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
 
         # 1. Regime change: exit when regime flips from TRENDING to SIDEWAYS (skip when TSL active)
+        # Ignore regime change when in profit: let TSL or other exits handle (avoid crystallising profit on flicker)
         entry_is_trending = regime_at_entry in ('TRENDING', 'CONVEX')
         current_is_trending = current_regime in ('TRENDING', 'CONVEX')
         if not position.get('convex_tsl_active', False):
             if entry_is_trending and not current_is_trending:
+                if current_mtm is not None and current_mtm > 0:
+                    # In profit: ignore regime change; let TSL or other exits handle
+                    if position.get('convex_regime_change_count', 0) > 0:
+                        position['convex_regime_change_count'] = 0
+                    return False, None
                 count = position.get('convex_regime_change_count', 0) + 1
                 position['convex_regime_change_count'] = count
                 if count >= CONVEX_REGIME_CHANGE_CONFIRMATION_CHECKS:
@@ -383,12 +390,14 @@ class ConvexBackspreadBacktester:
                 if position.get('convex_regime_change_count', 0) > 0:
                     position['convex_regime_change_count'] = 0
 
-        # 2. Time elapsed > 40%
-        if entry_days_to_expiry > 0 and time_elapsed_pct > 0.40:
-            return True, "TIME_ELAPSED_40PCT"
+        # 2. Time elapsed > threshold — only exit on time when in loss (don't cut winners)
+        threshold = getattr(self, 'time_exit_pct', 0.40)
+        if entry_days_to_expiry > 0 and time_elapsed_pct > threshold:
+            if current_mtm is None or current_mtm <= 0:
+                return True, "TIME_ELAPSED_40PCT"
 
-        # 3. No ATR expansion within 40%
-        if entry_days_to_expiry > 0 and time_elapsed_pct >= 0.40 and current_atr_percentile is not None:
+        # 3. No ATR expansion within threshold
+        if entry_days_to_expiry > 0 and time_elapsed_pct >= threshold and current_atr_percentile is not None:
             if current_atr_percentile < 30:
                 return True, "NO_ATR_EXPANSION"
 
@@ -422,7 +431,9 @@ class ConvexBackspreadBacktester:
     def run_backtest(self, start_date: str, end_date: str, check_interval_minutes: int = 15):
         """Run backtest using production regime (two-fork: TRENDING → Convex entry only)."""
         logger.info(f"Starting Convex Backspread backtest from {start_date} to {end_date}")
-        
+        avail_start, avail_end = get_available_date_range()
+        if avail_start and avail_end:
+            logger.info(f"Data available: market_data_* from {avail_start} to {avail_end}")
         start = datetime.strptime(start_date, '%Y%m%d').date()
         end = datetime.strptime(end_date, '%Y%m%d').date()
         current_date = start
@@ -528,17 +539,23 @@ class ConvexBackspreadBacktester:
                         if option_chain.empty:
                             self._diag_chain_empty += 1
                         else:
-                            # Generate trade proposal
+                            # Generate trade proposal (backtest-only: relax net debit cap so more proposals accepted)
                             trade_proposal = generate_nifty_call_backspread(
-                                market_state, option_chain, self.capital
+                                market_state, option_chain, self.capital,
+                                max_net_debit_pct=0.011,  # 1.1% of spot for backtest (allows ~275 at 25k spot)
                             )
                             if not trade_proposal:
                                 self._diag_proposal_none += 1
                             
                             if trade_proposal:
-                                # Enter position (state for production-aligned exit checks)
-                                expiry_date = current_date  # weekly expiry on backtest date
-                                position = {
+                                # Don't enter within 45 min of market close (avoid end_of_day exit immediately)
+                                market_close = current_time.replace(hour=15, minute=30, second=0, microsecond=0)
+                                if current_time >= market_close - timedelta(minutes=45):
+                                    pass  # skip entry this bar
+                                else:
+                                    # Enter position (state for production-aligned exit checks)
+                                    expiry_date = current_date  # weekly expiry on backtest date
+                                    position = {
                                     'entry_time': current_time,
                                     'trade_proposal': trade_proposal,
                                     'entry_price_atm': trade_proposal['legs'][0]['price'],
@@ -556,13 +573,15 @@ class ConvexBackspreadBacktester:
                                     'expiry_date': expiry_date,
                                     'convex_regime_change_count': 0,
                                     'convex_tsl_active': False,
+                                    'iv_percentile_at_entry': indicators.get('iv_percentile') or market_state.get('iv_percentile'),
+                                    'adx_at_entry': indicators.get('adx_14') or market_state.get('adx_14'),
                                 }
-                                self.open_positions.append(position)
-                                logger.info(
-                                    f"Entered backspread position: "
-                                    f"ATM={position['strike_atm']}, OTM={position['strike_otm']}, "
-                                    f"Debit=₹{position['net_debit']:.2f}"
-                                )
+                                    self.open_positions.append(position)
+                                    logger.info(
+                                        f"Entered backspread position: "
+                                        f"ATM={position['strike_atm']}, OTM={position['strike_otm']}, "
+                                        f"Debit=₹{position['net_debit']:.2f}"
+                                    )
                 
                 current_time += check_interval
             
@@ -601,6 +620,15 @@ class ConvexBackspreadBacktester:
         pnl_per_lot = (entry_atm - exit_atm) + 2 * (exit_otm - entry_otm)
         total_pnl = pnl_per_lot * position['lots'] * self.lot_size
         
+        # Enrich for pattern analysis (all from existing backtest data)
+        entry_t = position['entry_time']
+        if isinstance(entry_t, str):
+            entry_dt = datetime.fromisoformat(entry_t.replace(' ', 'T'))
+        else:
+            entry_dt = entry_t
+        exit_dt = exit_time if isinstance(exit_time, datetime) else datetime.fromisoformat(str(exit_time).replace(' ', 'T'))
+        hold_minutes = (exit_dt - entry_dt).total_seconds() / 60.0 if exit_dt and entry_dt else None
+        
         trade_record = {
             'entry_time': position['entry_time'],
             'exit_time': exit_time,
@@ -610,7 +638,13 @@ class ConvexBackspreadBacktester:
             'entry_debit': position['net_debit'],
             'exit_pnl': total_pnl,
             'exit_reason': reason,
-            'regime_at_entry': position['regime_at_entry']
+            'regime_at_entry': position['regime_at_entry'],
+            'entry_spot': position.get('entry_spot'),
+            'iv_percentile_at_entry': position.get('iv_percentile_at_entry'),
+            'adx_at_entry': position.get('adx_at_entry'),
+            'entry_range_state': position.get('entry_range_state', 'NORMAL'),
+            'entry_hour': entry_dt.hour if entry_dt else None,
+            'hold_minutes': hold_minutes,
         }
         
         self.trades.append(trade_record)
@@ -722,10 +756,25 @@ def run_comparison(start_date: str, end_date: str, check_interval_minutes: int =
 
 
 def main():
-    """Run Convex Backspread backtest. Use --compare to run VIX_LOW=12 vs 14."""
+    """Run Convex Backspread backtest. Use --compare to run VIX_LOW=12 vs 14. Use --time-exit 0.30 or 0.50 to override time-exit threshold."""
     import sys
     do_compare = "--compare" in sys.argv
-    args = [a for a in sys.argv[1:] if a != "--compare" and not a.startswith("-")]
+    time_exit_pct = 0.40
+    argv = sys.argv[1:]
+    args = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--time-exit" and i + 1 < len(argv):
+            try:
+                time_exit_pct = float(argv[i + 1])
+            except ValueError:
+                pass
+            i += 2
+            continue
+        if a != "--compare" and not a.startswith("-"):
+            args.append(a)
+        i += 1
 
     start_date = args[0] if len(args) >= 1 else None
     end_date = args[1] if len(args) >= 2 else None
@@ -738,7 +787,9 @@ def main():
     if do_compare:
         return run_comparison(start_date, end_date, check_interval_minutes=15)
 
-    backtester = ConvexBackspreadBacktester(initial_capital=100000)
+    if time_exit_pct != 0.40:
+        logger.info("Time-exit threshold override: %.0f%% of expiry life", time_exit_pct * 100)
+    backtester = ConvexBackspreadBacktester(initial_capital=100000, time_exit_pct=time_exit_pct)
     backtester.run_backtest(start_date, end_date, check_interval_minutes=15)
     report = backtester.generate_report()
 

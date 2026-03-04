@@ -42,9 +42,8 @@ If N = 200, that’s **12,000+** quote calls per minute; the data collector is t
 
 ## 3. Position check (main loop, every 60 s)
 
-- **1** `api.get_positions()` per cycle (fetched once in main, then passed to both):
+- **1** `api.get_positions()` per cycle (for sync only; imbalance check removed):
   - `position_tracker.sync_from_broker(api, positions_raw=...)` (sync tracker OPEN list from broker).
-  - `position_tracker.check_position_imbalance(api, positions_raw=...)`.
 - If there are open positions:
   - `get_nifty_spot_price()` → **1** `api.get_quotes(NSE, NIFTY)`.
   - Per position: `get_option_chain_data(..., count=50)` → one `get_quotes` per option in strike range (~100–200 calls per chain).

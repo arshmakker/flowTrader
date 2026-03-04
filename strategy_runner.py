@@ -1065,28 +1065,6 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
     try:
         logger.info("=== Running Strategy Check with Regime Detection ===")
 
-        # Step 0: If there is a position imbalance (e.g. orphan leg, wrong ratio), resolve with small profit then re-check; block new proposals until flat.
-        if position_tracker is not None:
-            imbalance = position_tracker.check_position_imbalance(api)
-            if imbalance.get("imbalanced"):
-                logger.warning(
-                    "Position imbalance detected; attempting auto-resolve with limit orders (small profit for brokerage). "
-                    "Details: %s",
-                    "; ".join(imbalance.get("details", [])),
-                )
-                for action in imbalance.get("recommended_actions", []):
-                    logger.warning("   Action: %s", action)
-                resolved = resolve_imbalance_with_profit(api, imbalance, symbol_manager)
-                if not resolved:
-                    logger.warning("Imbalance auto-resolve failed or partial; skipping strategy check until resolved.")
-                    return None
-                # Re-check: only allow strategy to run when no longer imbalanced.
-                imbalance_after = position_tracker.check_position_imbalance(api)
-                if imbalance_after.get("imbalanced"):
-                    logger.warning("Still imbalanced after resolve (e.g. orders pending); skipping strategy check.")
-                    return None
-                logger.info("Imbalance resolved; continuing with strategy check.")
-
         # Step 1: Get NIFTY spot price
         spot_price = get_nifty_spot_price(api, symbol_manager)
         if spot_price is None or spot_price <= 0:
@@ -1175,12 +1153,19 @@ def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital
         strategy_allowed = []
 
         # Attempt Convex generator (run even if regime is SIDEWAYS to support concurrent execution)
+        # Skip new Convex entry within 45 min of market close (avoid end-of-day exit immediately)
         try:
             strategy_allowed.append("CALL_BACKSPREAD")
-            convex_prop = _run_convex_backspread_strategy(
+            now_ist = get_now_ist()
+            market_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
+            if now_ist >= market_close - timedelta(minutes=45):
+                convex_prop = None
+                logger.debug("Skipping Convex entry: within 45 min of market close")
+            else:
+                convex_prop = _run_convex_backspread_strategy(
                 api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital,
-                regime='TRENDING' if regime == 'TRENDING' else None
-            )
+                    regime='TRENDING' if regime == 'TRENDING' else None
+                )
             if convex_prop:
                 proposals['CALL_BACKSPREAD'] = convex_prop
                 _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, 'CALL_BACKSPREAD', None, regime_info)

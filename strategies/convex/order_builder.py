@@ -7,8 +7,7 @@ with BUY orders prioritized before SELL orders to avoid margin issues.
 Guardrails:
 - All orders are MIS only (product_type 'I'); no NRML.
 - Entry: LMT (price control), retention DAY. Exit: MKT.
-- When USE_BASKET_ENTRY: all legs submitted in parallel (basket), then wait for all to fill; reduces imbalance from sequential delay.
-- When disabled: sequential placement (longs first, wait for fill, then shorts).
+- Sequential entry: place buy orders first, wait for each to fill; then refresh sell leg price from broker and place sell orders.
 """
 
 import concurrent.futures
@@ -70,13 +69,63 @@ def _round_price_to_tick(price: float, tick_size: float, side: str) -> float:
     except Exception:
         return float(price)
 
+
+def _get_nfo_token(api: Any, tradingsymbol: str) -> Optional[str]:
+    """Resolve NFO option token by tradingsymbol via searchscrip. Returns token string or None."""
+    try:
+        resp = api.searchscrip(exchange="NFO", searchtext=tradingsymbol)
+        if not resp or not isinstance(resp, dict):
+            return None
+        values = resp.get("values") or []
+        for s in values:
+            if isinstance(s, dict) and (s.get("tsym") or "").strip() == tradingsymbol.strip():
+                t = s.get("token")
+                return str(t) if t is not None else None
+        if values and isinstance(values[0], dict) and values[0].get("token") is not None:
+            return str(values[0]["token"])
+    except Exception as e:
+        logger.debug("searchscrip for %s failed: %s", tradingsymbol, e)
+    return None
+
+
+def _get_nfo_quote(api: Any, tradingsymbol: str) -> Optional[Dict[str, Any]]:
+    """Get current quote for NFO symbol. Returns broker quote dict (bp1, sp1, lp) or None."""
+    token = _get_nfo_token(api, tradingsymbol)
+    if not token:
+        return None
+    try:
+        return api.get_quotes("NFO", token)
+    except Exception as e:
+        logger.debug("get_quotes for %s failed: %s", tradingsymbol, e)
+    return None
+
+
+def _refresh_sell_order_price(api: Any, order: Dict[str, Any]) -> None:
+    """Update sell order price from current broker quote (ask for SELL). Modifies order in place."""
+    tsym = (order.get("tradingsymbol") or "").strip()
+    if not tsym:
+        return
+    quote = _get_nfo_quote(api, tsym)
+    if not quote:
+        logger.warning("Could not get quote for %s; using existing price", tsym)
+        return
+    ask = float(quote.get("sp1", 0) or 0)
+    ltp = float(quote.get("lp", 0) or 0)
+    price = ask if ask > 0 else ltp
+    if price <= 0:
+        logger.warning("No valid ask/ltp for %s; using existing price", tsym)
+        return
+    order["price"] = _round_price_to_tick(price, NIFTY_OPTION_TICK_SIZE, "S")
+    logger.info("Refreshed sell price for %s: Rs %.2f", tsym, order["price"])
+
+
 # Guardrail 4: sequential placement with fill check. Long must fill within this window or we drop proposal.
 LONG_LEG_FILL_TIMEOUT_SECONDS = 120
 ORDER_FILL_POLL_INTERVAL_SECONDS = 2
 ORDER_FILL_TIMEOUT_SECONDS = 60  # used for short leg and exit orders
 
-# Submit all Convex entry legs in parallel (basket); then wait for all to fill. Reduces imbalance risk from sequential delay.
-USE_BASKET_ENTRY = True
+# Sequential entry: place buy orders first, wait for fill, then refresh sell price and place sell orders.
+USE_BASKET_ENTRY = False
 BASKET_FILL_TIMEOUT_SECONDS = 120  # all legs must fill within this window
 # When buys are filled but short(s) still pending, we cancel short limit and place market; give market this extra time.
 BASKET_MKT_FALLBACK_EXTRA_SECONDS = 60
@@ -736,9 +785,10 @@ def place_convex_trade(api: Any, proposal: Dict, product_type: Optional[str] = N
             logger.exception("Place long order %d failed: %s", i + 1, e)
             return _cleanup_and_return_failure("long_place_exception", str(e))
 
-    # Phase 2: place shorts only after all longs filled
+    # Phase 2: refresh sell price from broker, then place shorts only after all longs filled
     for i, order in enumerate(sell_orders):
         try:
+            _refresh_sell_order_price(api, order)
             ret = place_single_order(api, order)
             oid = ret.get("norenordno") or ret.get("order_id") or ""
             if not oid:

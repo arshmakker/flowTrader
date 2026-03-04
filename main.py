@@ -360,7 +360,7 @@ def main():
         STRATEGY_CHECK_INTERVAL = 300  # Check every 5 minutes (300 seconds)
         last_strategy_check = datetime.now()
         
-        # Position monitoring timing (also runs imbalance check + get_positions; see docs/BROKER_API_AUDIT.md)
+        # Position monitoring timing (sync + get_positions; see docs/BROKER_API_AUDIT.md)
         POSITION_CHECK_INTERVAL = 60  # Check positions every 1 minute (60 seconds)
         last_position_check = datetime.now()
         
@@ -606,7 +606,7 @@ def main():
                 
                 if time_since_position_check >= POSITION_CHECK_INTERVAL:
                     if is_market_hours():
-                        # Single get_positions() for both sync and imbalance (no extra broker call)
+                        # Single get_positions() for sync (imbalance check removed)
                         try:
                             positions_raw = api.get_positions()
                         except Exception as e:
@@ -617,29 +617,9 @@ def main():
                                 position_tracker.sync_from_broker(api, positions_raw=positions_raw)
                             except Exception as sync_e:
                                 logger.warning("Periodic sync from broker failed (continuing): %s", sync_e)
-                            # Check for position imbalance (e.g. orphan leg, wrong long:short ratio)
-                        try:
-                            imbalance = (
-                                position_tracker.check_position_imbalance(api, positions_raw=positions_raw)
-                                if positions_raw is not None
-                                else {"imbalanced": False, "details": [], "recommended_actions": [], "broker_legs": []}
-                            )
-                            if imbalance.get("imbalanced"):
-                                logger.warning(
-                                    Fore.YELLOW + "⚠️ Position imbalance detected: %s",
-                                    "; ".join(imbalance.get("details", [])),
-                                )
-                                for action in imbalance.get("recommended_actions", []):
-                                    logger.warning(Fore.YELLOW + "   Action: %s", action)
-                                if imbalance.get("broker_legs"):
-                                    logger.info("   Broker NFO legs: %s", imbalance["broker_legs"])
-                            elif imbalance.get("broker_legs") and not imbalance.get("imbalanced"):
-                                logger.debug("Position balance check OK: %d NFO leg(s)", len(imbalance["broker_legs"]))
-                        except Exception as imb_e:
-                            logger.debug("Imbalance check failed: %s", imb_e)
                         try:
                             active_positions = position_tracker.get_active_positions()
-                            
+                            system_unrealized = 0.0  # Sum of MTM from our tracked OPEN positions (for broker vs system vs manual)
                             if active_positions:
                                 logger.info(f"Checking {len(active_positions)} open position(s) for profit target...")
                                 
@@ -700,6 +680,7 @@ def main():
                                             current_pnl = position_tracker.calculate_current_pnl(
                                                 position, current_prices
                                             )
+                                            system_unrealized += current_pnl
                                             # Iron Condor trailing PnL lock: first lock at ₹300, then trail ₹200 below current
                                             should_exit_trailing = False
                                             if position.get('book') == 'INCOME':
@@ -743,12 +724,12 @@ def main():
                                                         current_range_state=regime_info.get('range_state'),
                                                         current_mtm=current_pnl
                                                     )
-                                                    # Log unrealized MTM for Convex (persisted in file for debugging)
-                                                    peak_mtm = position.get('convex_peak_mtm', current_pnl)
+                                                    # Log unrealized MTM for Convex: peak_profit tracked, tsl_profit at exit
+                                                    peak_profit = position.get('convex_peak_mtm', current_pnl)
                                                     tsl_active = position.get('convex_tsl_active', False)
                                                     logger.info(
-                                                        "Unrealized MTM: trade_id=%s mtm=₹%.2f peak=₹%.2f tsl_active=%s",
-                                                        position.get('trade_id', '?'), current_pnl, peak_mtm, tsl_active,
+                                                        "Unrealized MTM: trade_id=%s mtm=₹%.2f peak_profit=₹%.2f tsl_active=%s",
+                                                        position.get('trade_id', '?'), current_pnl, peak_profit, tsl_active,
                                                     )
                                             
                                             # Calendar strategy removed - convex-only mode
@@ -840,6 +821,20 @@ def main():
                                             
                         except Exception as e:
                             logger.error(f"Error in position monitoring: {e}")
+                        # Separate broker MTM into system (our) profit vs manual/other trades
+                        if positions_raw is not None:
+                            broker = IronCondorPositionTracker.broker_mtm_from_positions_raw(positions_raw)
+                            system_realized_today = position_tracker.get_system_realized_pnl_today()
+                            manual_mtm = broker["broker_total"] - system_unrealized - system_realized_today
+                            logger.info(
+                                "MTM: broker_total=₹%.2f (urmtom=₹%.2f rpnl=₹%.2f) | system_unrealized=₹%.2f system_realized_today=₹%.2f | manual/other=₹%.2f",
+                                broker["broker_total"],
+                                broker["broker_unrealized"],
+                                broker["broker_realized"],
+                                system_unrealized,
+                                system_realized_today,
+                                manual_mtm,
+                            )
                     
                     last_position_check = current_time
                 
