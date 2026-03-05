@@ -45,20 +45,31 @@ def generate_daily_trade_summary(logger):
         with open(positions_file, 'r') as f:
             all_positions = json.load(f)
         
-        # Filter today's closed trades
+        # Filter today's closed trades and positions opened today (still open)
         todays_trades = []
         for pos in all_positions:
             exit_time = pos.get('exit_time', '')
             if exit_time and exit_time.startswith(today_str) and pos.get('status') == 'CLOSED':
                 todays_trades.append(pos)
+        opened_today = [
+            p for p in all_positions
+            if p.get('status') == 'OPEN' and (p.get('entry_time') or '').startswith(today_str)
+        ]
         
         if not todays_trades:
             logger.info(f"\n{'='*60}")
             logger.info(Fore.YELLOW + "END OF DAY SUMMARY")
             logger.info(f"{'='*60}")
-            logger.info("No trades were executed today")
+            logger.info("No trades were closed today.")
+            if opened_today:
+                logger.info(f"{len(opened_today)} position(s) opened today (still open):")
+                for p in opened_today:
+                    entry_time = (p.get('entry_time') or '')[:19]
+                    logger.info(f"  {p.get('trade_id', '?')} | {p.get('strategy', '?')} | entry {entry_time}")
+            else:
+                logger.info("No positions opened today.")
             logger.info(f"{'='*60}\n")
-            return None
+            return {'date': today_str, 'closed_trades': 0, 'opened_today': len(opened_today), 'opened_today_positions': opened_today} if opened_today else None
         
         # Calculate statistics
         total_pnl = sum(t.get('final_pnl', 0) for t in todays_trades)
@@ -129,6 +140,8 @@ def generate_daily_trade_summary(logger):
         for reason, stats in by_exit_reason.items():
             reason_color = Fore.GREEN if stats['pnl'] >= 0 else Fore.RED
             logger.info(f"  {reason}: {stats['count']} trades, {reason_color}₹{stats['pnl']:,.2f}")
+        if opened_today:
+            logger.info(f"\n{Fore.WHITE}Opened today (still open): {len(opened_today)}")
         
         logger.info(f"\n{'='*60}")
         
@@ -154,7 +167,9 @@ def generate_daily_trade_summary(logger):
             'max_profit': max_profit,
             'max_loss': max_loss,
             'by_strategy': by_strategy,
-            'by_exit_reason': by_exit_reason
+            'by_exit_reason': by_exit_reason,
+            'opened_today': len(opened_today),
+            'opened_today_positions': opened_today,
         }
         
     except Exception as e:
@@ -404,7 +419,11 @@ def main():
                         active_positions = position_tracker.get_active_positions()
                         if active_positions:
                             logger.info(Fore.YELLOW + f"⚠️ Closing {len(active_positions)} open positions before shutdown...")
-                            
+                            eod_positions_raw = None
+                            try:
+                                eod_positions_raw = api.get_positions()
+                            except Exception:
+                                pass
                             for position in active_positions:
                                 try:
                                     # Use LTP from position data (no API call needed when market is closed)
@@ -415,9 +434,12 @@ def main():
                                         ltp = leg.get('ltp', leg.get('price', 0))
                                         current_prices[f"{option_type}{strike}"] = ltp
                                     current_pnl = position_tracker.calculate_current_pnl(position, current_prices)
+                                    final_pnl = current_pnl
+                                    if position.get('book') == 'CONVEX' and eod_positions_raw is not None:
+                                        final_pnl = IronCondorPositionTracker.broker_mtm_for_tracked_positions(eod_positions_raw, [position])
                                     # When market already closed we only update tracker (broker orders not possible)
-                                    position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
-                                    logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
+                                    position_tracker.close_position(position, "end_of_day_liquidation", final_pnl)
+                                    logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{final_pnl:.2f}")
                                 except Exception as e:
                                     logger.error(f"Error closing position {position.get('trade_id')}: {e}")
                             
@@ -496,7 +518,11 @@ def main():
                             active_positions = position_tracker.get_active_positions()
                             if active_positions:
                                 logger.info(Fore.YELLOW + f"⚠️ End-of-day liquidation: Closing {len(active_positions)} positions before market close...")
-                                
+                                positions_raw_eod = None
+                                try:
+                                    positions_raw_eod = api.get_positions()
+                                except Exception:
+                                    pass
                                 # Get current prices and close each position
                                 for position in active_positions:
                                     try:
@@ -538,8 +564,11 @@ def main():
                                             except Exception as e:
                                                 logger.exception("close_convex_position (EOD) failed: %s", e)
                                                 continue
-                                        position_tracker.close_position(position, "end_of_day_liquidation", current_pnl)
-                                        logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{current_pnl:.2f}")
+                                        final_pnl = current_pnl
+                                        if position.get('book') == 'CONVEX' and positions_raw_eod is not None:
+                                            final_pnl = IronCondorPositionTracker.broker_mtm_for_tracked_positions(positions_raw_eod, [position])
+                                        position_tracker.close_position(position, "end_of_day_liquidation", final_pnl)
+                                        logger.info(f"✅ Closed position {position['trade_id']}: P&L=₹{final_pnl:.2f}")
                                     except Exception as e:
                                         logger.error(f"Error closing position {position.get('trade_id')}: {e}")
                                 
@@ -691,6 +720,13 @@ def main():
                                             should_exit_convex = False
                                             convex_exit_reason = None
                                             if position.get('book') == 'CONVEX' or 'BACKSPREAD' in position.get('strategy', '').upper():
+                                                # Use broker MTM for exit decisions (C4) when available so TSL/exit align with broker PnL
+                                                mtm_for_exit = current_pnl
+                                                if positions_raw is not None:
+                                                    broker_mtm = IronCondorPositionTracker.broker_mtm_for_tracked_positions(
+                                                        positions_raw, [position]
+                                                    )
+                                                    mtm_for_exit = broker_mtm
                                                 # Get current regime for convex exit check
                                                 from strategy_runner import build_market_state_from_chain
                                                 from regime import RegimeDetector
@@ -722,16 +758,32 @@ def main():
                                                         current_atr_percentile=regime_info.get('atr_percentile'),
                                                         entry_range_state=entry_range_state,
                                                         current_range_state=regime_info.get('range_state'),
-                                                        current_mtm=current_pnl
+                                                        current_mtm=mtm_for_exit
                                                     )
-                                                    # Log unrealized MTM for Convex: peak_profit tracked, tsl_profit at exit
-                                                    peak_profit = position.get('convex_peak_mtm', current_pnl)
-                                                    tsl_active = position.get('convex_tsl_active', False)
-                                                    logger.info(
-                                                        "Unrealized MTM: trade_id=%s mtm=₹%.2f peak_profit=₹%.2f tsl_active=%s",
-                                                        position.get('trade_id', '?'), current_pnl, peak_profit, tsl_active,
+                                                else:
+                                                    # market_state is None: still run convex exit with defaults so TSL/max-loss run
+                                                    days_to_expiry = (expiry_date - current_time.date()).days
+                                                    entry_days_to_expiry = position.get('days_to_expiry', days_to_expiry)
+                                                    entry_spot = position.get('entry_spot', spot_price)
+                                                    should_exit_convex, convex_exit_reason = position_tracker.check_convex_exit_conditions(
+                                                        position,
+                                                        'NEUTRAL',
+                                                        spot_price,
+                                                        entry_spot,
+                                                        days_to_expiry,
+                                                        entry_days_to_expiry,
+                                                        current_atr_percentile=None,
+                                                        entry_range_state=None,
+                                                        current_range_state=None,
+                                                        current_mtm=mtm_for_exit
                                                     )
-                                            
+                                                # Log unrealized MTM for Convex whenever we have current_pnl (even if market_state was None)
+                                                peak_profit = position.get('convex_peak_mtm', current_pnl)
+                                                tsl_active = position.get('convex_tsl_active', False)
+                                                logger.info(
+                                                    "Unrealized MTM: trade_id=%s mtm=₹%.2f peak_profit=₹%.2f tsl_active=%s",
+                                                    position.get('trade_id', '?'), current_pnl, peak_profit, tsl_active,
+                                                )
                                             # Calendar strategy removed - convex-only mode
                                             
                                             # Check trailing stop (Iron Condor: PnL dropped below locked level)
@@ -741,10 +793,13 @@ def main():
                                                     f"⚠️ Trailing stop hit for position {position['trade_id']}: "
                                                     f"P&L=₹{current_pnl:.2f} below lock=₹{lock:.2f}"
                                                 )
+                                                final_pnl = current_pnl
+                                                if position.get('book') == 'CONVEX' and positions_raw is not None:
+                                                    final_pnl = IronCondorPositionTracker.broker_mtm_for_tracked_positions(positions_raw, [position])
                                                 position_tracker.close_position(
                                                     position,
                                                     "trailing_stop_pnl",
-                                                    current_pnl
+                                                    final_pnl
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit (trailing stop)")
                                             # Profit-target exit: Convex must close via broker first; then update tracker
@@ -769,10 +824,13 @@ def main():
                                                     except Exception as e:
                                                         logger.exception("close_convex_position (profit target) failed: %s", e)
                                                         continue
+                                                final_pnl = current_pnl
+                                                if position.get('book') == 'CONVEX' and positions_raw is not None:
+                                                    final_pnl = IronCondorPositionTracker.broker_mtm_for_tracked_positions(positions_raw, [position])
                                                 position_tracker.close_position(
                                                     position,
                                                     "profit_target_margin",
-                                                    current_pnl
+                                                    final_pnl
                                                 )
                                                 logger.info(f"Position {position['trade_id']} marked for exit")
                                             
@@ -792,10 +850,11 @@ def main():
                                                             close_result.get('message', close_result),
                                                         )
                                                     else:
+                                                        final_pnl = IronCondorPositionTracker.broker_mtm_for_tracked_positions(positions_raw, [position]) if positions_raw is not None else current_pnl
                                                         position_tracker.close_position(
                                                             position,
                                                             f"convex_exit_{convex_exit_reason}",
-                                                            current_pnl
+                                                            final_pnl
                                                         )
                                                         logger.info(f"Position {position['trade_id']} marked for exit (convex)")
                                                 except Exception as e:
@@ -825,13 +884,16 @@ def main():
                         if positions_raw is not None:
                             broker = IronCondorPositionTracker.broker_mtm_from_positions_raw(positions_raw)
                             system_realized_today = position_tracker.get_system_realized_pnl_today()
-                            manual_mtm = broker["broker_total"] - system_unrealized - system_realized_today
+                            system_unrealized_broker = IronCondorPositionTracker.broker_mtm_for_tracked_positions(
+                                positions_raw, active_positions
+                            )
+                            manual_mtm = broker["broker_total"] - system_unrealized_broker - system_realized_today
                             logger.info(
                                 "MTM: broker_total=₹%.2f (urmtom=₹%.2f rpnl=₹%.2f) | system_unrealized=₹%.2f system_realized_today=₹%.2f | manual/other=₹%.2f",
                                 broker["broker_total"],
                                 broker["broker_unrealized"],
                                 broker["broker_realized"],
-                                system_unrealized,
+                                system_unrealized_broker,
                                 system_realized_today,
                                 manual_mtm,
                             )

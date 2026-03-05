@@ -2,6 +2,20 @@
 
 This document estimates how many calls we make to the broker (Shoonya/Noren) so you can avoid throttling or blocks.
 
+## get_positions() response fields (Shoonya API)
+
+Verified against [ShoonyaApi-py](https://github.com/Shoonya-Dev/ShoonyaApi-py). We use:
+
+| Field        | Description              | Our usage                          |
+|-------------|--------------------------|------------------------------------|
+| `exch`      | Exchange segment         | Filter NFO; `exch` or `exchange`   |
+| `tsym`      | Trading symbol           | Match legs; `tsym` or `tradingsymbol` |
+| `netqty`    | Net position quantity    | Leg size / open qty fallback       |
+| `netavgprc` | Net position average price | Entry/leg price; primary key in `_get_avg_price_from_broker_row` |
+| `openbuyqty` / `opensellqty` | Open buy/sell qty  | Open qty when `openqty` absent in `_effective_open_qty` |
+| `urmtom`    | Unrealized MTOM          | MTM for exit, final_pnl, breakdown |
+| `rpnl`      | Realized PNL             | Broker realized in MTM breakdown   |
+
 ## Summary (approximate)
 
 | Source | Interval | Calls per run | Est. calls/min |

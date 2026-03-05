@@ -25,6 +25,7 @@ CONVEX_TSL_TRAIL_TIGHT_PCT = 0.10      # Tighten to 10% when time > 40% or ATR% 
 CONVEX_TSL_TIGHT_TIME_PCT = 0.40
 CONVEX_TSL_ATR_TIGHT_THRESHOLD = 30
 CONVEX_MAX_LOSS_MTM_PCT = 0.30         # Absolute exit if mtm <= -30% of entry premium
+CONVEX_MAX_LOSS_ABSOLUTE_INR = 6000.0  # When entry_premium unknown (e.g. broker sync), exit if mtm <= -this (₹)
 
 
 def _to_json_serializable(obj: Any) -> Any:
@@ -97,21 +98,41 @@ class IronCondorPositionTracker:
     @staticmethod
     def _effective_open_qty(row: Dict) -> int:
         """
-        Open quantity for a broker position row. Prefer openqty (quantity that remains open);
-        fall back to netqty. Rows with openqty=0 are closed (squared off) and should not be counted.
+        Open quantity for a broker position row (Shoonya get_positions).
+        Prefer openqty; else openbuyqty - opensellqty; else netqty.
+        Rows with 0 are closed and should not be counted.
         """
         try:
             oq = row.get("openqty")
             if oq is not None and str(oq).strip() != "":
                 return int(float(oq))
+            ob = int(float(row.get("openbuyqty", 0) or 0))
+            os_ = int(float(row.get("opensellqty", 0) or 0))
+            if ob != 0 or os_ != 0:
+                return ob - os_  # long positive, short negative
             nq = row.get("netqty", 0) or row.get("qty", 0) or 0
             return int(float(nq))
         except (TypeError, ValueError):
             return 0
 
     @staticmethod
+    def _get_avg_price_from_broker_row(row: Dict) -> Optional[float]:
+        """Extract average price from broker position row. get_positions() uses netavgprc (Shoonya API)."""
+        for key in ("netavgprc", "avgprc", "avgprice", "prc", "fillprice", "ap", "avg_price"):
+            val = row.get(key)
+            if val is None or (isinstance(val, str) and val.strip() == ""):
+                continue
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
     def _build_positions_from_broker_nfo(nfo_rows: List[Dict]) -> List[Dict]:
-        """Build tracker position(s) from broker NFO position rows. Groups by expiry."""
+        """Build tracker position(s) from broker NFO position rows. Groups by expiry.
+        Uses broker avg price when available to set leg price and entry_credit (net debit for Convex).
+        """
         from collections import defaultdict
         # netqty: positive = long, negative = short
         by_expiry: Dict[str, List[Dict]] = defaultdict(list)
@@ -123,6 +144,7 @@ class IronCondorPositionTracker:
             netqty = IronCondorPositionTracker._effective_open_qty(row)
             if netqty == 0:
                 continue
+            avg_price = IronCondorPositionTracker._get_avg_price_from_broker_row(row)
             by_expiry[parsed["expiry_key"]].append({
                 "tradingsymbol": parsed["tradingsymbol"],
                 "strike": float(parsed["strike"]),
@@ -130,6 +152,7 @@ class IronCondorPositionTracker:
                 "quantity": 2 if netqty > 0 else 1,
                 "position": "LONG" if netqty > 0 else "SHORT",
                 "netqty": netqty,
+                "avg_price": avg_price,
             })
         positions = []
         lot_size = 65
@@ -140,21 +163,43 @@ class IronCondorPositionTracker:
             min_qty = min(abs(leg["netqty"]) for leg in legs)
             lots = max(1, min_qty // lot_size) if lot_size else 1
             legs_for_tracker = []
+            net_debit_total = 0.0  # Rupee cost: long = +, short = -
             for leg in legs:
+                ap = leg.get("avg_price")
+                price = ap if ap is not None else 0.0
                 legs_for_tracker.append({
                     "tradingsymbol": leg["tradingsymbol"],
                     "strike": leg["strike"],
                     "option_type": leg["option_type"],
                     "quantity": 2 if leg["position"] == "LONG" else 1,
                     "position": leg["position"],
-                    "price": 0.0,
+                    "price": price,
                 })
+                # Option premium: price per share; netqty is in shares. Value = price * abs(netqty).
+                # Long = we paid (positive), short = we received (negative).
+                if ap is not None:
+                    leg_value = ap * abs(leg["netqty"])
+                    if leg["position"] == "LONG":
+                        net_debit_total += leg_value
+                    else:
+                        net_debit_total -= leg_value
+            # entry_credit for Convex: positive = net debit paid (we use abs for entry_premium in TSL)
+            entry_credit = abs(net_debit_total) if net_debit_total > 0 else 0
             # Best-effort expiry date (DDMMMYY e.g. 02MAR26 -> YYYY-MM-DD)
             expiry_date = expiry_key
             try:
                 dd, mmm, yy = expiry_key[:2], expiry_key[2:5], expiry_key[5:7]
                 dt = datetime.strptime(f"{dd}{mmm}20{yy}", "%d%b%Y")
                 expiry_date = dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+            # Days to expiry at sync time (so time-based exits and TSL time gate work)
+            days_to_expiry_at_sync = None
+            try:
+                exp_dt = datetime.strptime(expiry_date[:10], "%Y-%m-%d").date()
+                days_to_expiry_at_sync = (exp_dt - datetime.now().date()).days
+                if days_to_expiry_at_sync < 0:
+                    days_to_expiry_at_sync = 0
             except Exception:
                 pass
             trade_id = f"broker_sync_{expiry_key}_{uuid.uuid4().hex[:8]}"
@@ -171,16 +216,16 @@ class IronCondorPositionTracker:
                 "status": "OPEN",
                 "expiry": expiry_date,
                 "legs": legs_for_tracker,
-                "entry_credit": 0,
+                "entry_credit": entry_credit,
                 "margin_used": None,
                 "profit_target_margin": None,
                 "profit_target_inr": None,
                 "max_loss": 0,
-                "days_to_expiry": None,
+                "days_to_expiry": days_to_expiry_at_sync,
                 "days_to_expiry_short": None,
                 "entry_range_state": None,
                 "entry_iv_percentile": None,
-                "entry_prices": {},
+                "entry_prices": {leg["option_type"] + str(int(leg["strike"])): leg["price"] for leg in legs_for_tracker},
                 "profit_locked_inr": 0,
                 "convex_tsl_active": False,
                 "convex_peak_mtm": 0.0,
@@ -217,11 +262,19 @@ class IronCondorPositionTracker:
         closed = [p for p in self.active_positions if p.get("status") == "CLOSED"]
         open_before = len([p for p in self.active_positions if p.get("status") == "OPEN"])
         if not nfo_open:
+            # Mark any previously OPEN positions as closed (broker flattened) so we keep history
+            for p in self.active_positions:
+                if p.get("status") == "OPEN":
+                    p["status"] = "CLOSED"
+                    p["exit_time"] = datetime.now().isoformat()
+                    p["exit_reason"] = "broker_flattened"
+                    p["final_pnl"] = p.get("final_pnl", 0)
+            closed = [p for p in self.active_positions if p.get("status") == "CLOSED"]
             self.active_positions = closed
             self._save_active_positions()
             if open_before > 0:
                 logger.info(
-                    "sync_from_broker: cleared %d local OPEN position(s) (broker has no open NFO positions)",
+                    "sync_from_broker: cleared %d local OPEN position(s) (broker has no open NFO positions); marked as broker_flattened",
                     open_before,
                 )
             else:
@@ -351,6 +404,56 @@ class IronCondorPositionTracker:
                 "quantity": abs(netqty),
             })
         return result
+
+    @staticmethod
+    def _leg_tradingsymbols(position: Dict) -> set:
+        """Return set of NFO tradingsymbols for this position's legs (for matching broker rows)."""
+        symbols = set()
+        expiry_str = position.get("expiry") or ""
+        legs = position.get("legs") or []
+        for leg in legs:
+            tsym = (leg.get("tradingsymbol") or "").strip()
+            if tsym:
+                symbols.add(tsym)
+                continue
+            # Build NFO symbol from expiry (YYYY-MM-DD) + strike + option_type (DDMMMYY + C/P + strike)
+            if not expiry_str or len(expiry_str) < 10:
+                continue
+            try:
+                dt = datetime.strptime(expiry_str[:10], "%Y-%m-%d")
+                dd = dt.strftime("%d")  # 01..31
+                mmm = dt.strftime("%b").upper()  # JAN, FEB, ...
+                yy = dt.strftime("%y")  # 26
+                strike = int(leg.get("strike", 0))
+                opt = (leg.get("option_type") or "CE").upper()
+                cp = "C" if opt == "CE" else "P"
+                symbols.add(f"NIFTY{dd}{mmm}{yy}{cp}{strike}")
+            except (ValueError, TypeError):
+                pass
+        return symbols
+
+    @staticmethod
+    def broker_mtm_for_tracked_positions(positions_raw: Any, open_positions: List[Dict]) -> float:
+        """
+        Sum broker unrealized MTM (urmtom) for NFO rows that match our tracked OPEN positions' legs.
+        Used for MTM breakdown so manual/other = broker_total - this - system_realized_today.
+        """
+        if not positions_raw or not open_positions:
+            return 0.0
+        rows = positions_raw if isinstance(positions_raw, list) else [positions_raw]
+        nfo = [p for p in rows if (p.get("exch") or p.get("exchange") or "").strip().upper() == "NFO"]
+        tracked_tsyms = set()
+        for pos in open_positions:
+            tracked_tsyms |= IronCondorPositionTracker._leg_tradingsymbols(pos)
+        total = 0.0
+        for p in nfo:
+            tsym = (p.get("tsym") or p.get("tradingsymbol") or "").strip()
+            if tsym in tracked_tsyms:
+                try:
+                    total += float(p.get("urmtom", 0) or 0)
+                except (TypeError, ValueError):
+                    pass
+        return total
 
     @staticmethod
     def broker_mtm_from_positions_raw(positions_raw: Any) -> Dict[str, float]:
@@ -558,8 +661,19 @@ class IronCondorPositionTracker:
         return False
 
     def check_profit_target(self, position: Dict, current_pnl: float) -> bool:
-        """Profit-target exit disabled: we use only TSL (trailing stop) for Convex and Iron Condor."""
-        return False
+        """Return True if position has a profit target set and current_pnl meets or exceeds it."""
+        strategy = position.get('strategy', '').upper()
+        book = position.get('book', '')
+        target = position.get('profit_target_inr') or position.get('profit_target_margin')
+        if target is None:
+            return False
+        try:
+            target_f = float(target)
+        except (TypeError, ValueError):
+            return False
+        if target_f <= 0:
+            return False
+        return current_pnl >= target_f
     
     def check_convex_exit_conditions(self, position: Dict, current_regime: str, 
                                      current_spot: float, entry_spot: float,
@@ -671,13 +785,17 @@ class IronCondorPositionTracker:
                 entry_premium = abs(position.get('entry_credit') or 0)
                 if entry_premium > 0 and current_mtm <= -CONVEX_MAX_LOSS_MTM_PCT * entry_premium:
                     return True, "CONVEX_MAX_LOSS"
+                # When entry_premium is 0 (e.g. broker-synced, no avg price), still cap loss by absolute ₹
+                if entry_premium == 0 and current_mtm <= -CONVEX_MAX_LOSS_ABSOLUTE_INR:
+                    return True, "CONVEX_MAX_LOSS"
                 
                 # Initialize peak MTM if not set (entry MTM = 0 at open)
                 if 'convex_peak_mtm' not in position:
                     position['convex_peak_mtm'] = float(current_mtm)
                     self._save_active_positions()
                 
-                # Activation gate: activate TSL if mtm >= +20% of entry premium OR time >= 25%
+                # Activation gate: activate TSL if mtm >= +5% of entry premium OR time >= 25%.
+                # When entry_premium == 0 (e.g. broker-synced position), only time gate applies.
                 if not position.get('convex_tsl_active', False):
                     mtm_pct = (current_mtm / entry_premium) if entry_premium > 0 else 0.0
                     if (entry_premium > 0 and mtm_pct >= CONVEX_TSL_ACTIVATION_MTM_PCT) or time_elapsed_pct >= CONVEX_TSL_ACTIVATION_TIME_PCT:

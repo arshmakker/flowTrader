@@ -20898,10 +20898,10 @@
     "final_pnl": 360.7500000000043
   },
   {
-    "trade_id": "broker_sync_10MAR26_af7915c5",
+    "trade_id": "broker_sync_10MAR26_2038c9bd",
     "proposal_id": "broker_sync_10MAR26",
-    "entry_time": "2026-03-04T11:37:18.980428",
-    "lots": 2,
+    "entry_time": "2026-03-05T11:41:44.757151",
+    "lots": 1,
     "lot_size": 65,
     "entry_spot": null,
     "strategy": "CALL_BACKSPREAD",
@@ -20911,11 +20911,51 @@
     "expiry": "2026-03-10",
     "legs": [
       {
-        "tradingsymbol": "NIFTY10MAR26C24700",
-        "strike": 24700.0,
+        "tradingsymbol": "NIFTY10MAR26C24850",
+        "strike": 24850.0,
         "option_type": "CE",
         "quantity": 2,
         "position": "LONG",
+        "price": 0.0
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24600",
+        "strike": 24600.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 0.0
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24900",
+        "strike": 24900.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 0.0
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24650",
+        "strike": 24650.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 0.0
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24800",
+        "strike": 24800.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 0.0
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24550",
+        "strike": 24550.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
         "price": 0.0
       }
     ],
