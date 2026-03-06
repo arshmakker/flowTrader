@@ -12,7 +12,7 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from strategy_runner import get_now_ist, is_market_hours as is_market_hours_ist
+from strategy_runner import get_now_ist, is_market_hours
 
 app = Flask(__name__)
 
@@ -121,7 +121,7 @@ def can_start_system():
     market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
     is_weekday = now.weekday() < 5
-    can_start = is_market_hours_ist()
+    can_start = is_market_hours()
     return can_start, {
         'is_weekday': is_weekday,
         'current_time': now.strftime('%H:%M:%S'),
@@ -130,10 +130,6 @@ def can_start_system():
         'after_market_open': now >= market_open,
         'before_market_close': now < market_close
     }
-
-def is_market_hours():
-    """Check if current time is during market hours (9:15 AM - 3:30 PM IST). Uses IST."""
-    return is_market_hours_ist()
 
 def get_system_status():
     """Get system status information (times in IST)."""

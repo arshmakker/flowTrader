@@ -60,19 +60,23 @@ backtest_trailing_comparison_*.json
 backtest_trailing_vs_*.json
 backtest_convex_vix_comparison_*.json
 
-# Trade Proposals
+# Trade Proposals & option snapshots
 trade_proposals/
 trade_proposals_by_id/
 *.trade_proposal.json
+option_snapshots/
 
 # Runtime Data (generated during execution)
 active_positions.json
 performance_by_regime.json
 strategy_decisions.json
 partial_fill_reviews.json
-
-# Trend entry state (cooldown, max trades per day)
 trend_state.json
+
+# Paper trading / data output (agent.md data/)
+data/paper_trades.csv
+data/paper_signals.log
+data/paper_summary.json
 
 # IDE
 .vscode/
@@ -80,9 +84,6 @@ trend_state.json
 *.swp
 *.swo
 *~
-.DS_Store
-
-# OS
 .DS_Store
 Thumbs.db
 

@@ -1,102 +1,32 @@
 """
-Strategy Runner Module
+Strategy Runner — helpers only (rebuild in progress per agent.md).
 
-Handles integration of Iron Condor strategy with the main system.
-Provides helper functions to fetch option chains, calculate market state,
-and run strategy checks.
+Provides: market hours, NIFTY spot, option chain, eligible expiries, India VIX, daily metrics.
+No strategy or regime logic; build new system per docs/agent.md.
 """
 
 import pandas as pd
 import logging
 import os
 import json
-import re
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-import uuid
-import gzip
-import io
 
 try:
     from zoneinfo import ZoneInfo
     IST = ZoneInfo("Asia/Kolkata")
 except ImportError:
-    IST = None  # Python < 3.9; fallback to local time
-from strategies.iron_condor import generate_iron_condor_trade
-from strategies.convex import generate_nifty_call_backspread
-from strategies.strategy_exclusion import get_active_strategy_type, can_enter_strategy, STRATEGY_IRON_CONDOR, STRATEGY_CONVEX
-from regime import RegimeDetector
-from technical_indicators import (
-    calculate_iv_percentile,
-    calculate_adx,
-    get_historical_price_data,
-    calculate_atm_iv
-)
-from strategies.size_config import MIN_LOTS, MAX_LOTS, clamp_lots
-from strategies.convex.call_backspread import CONVEX_MAX_LOTS
+    IST = None
 
-# Debug logging setup
-DEBUG_LOG_PATH = '/Users/arshdeep/git/regimetrader/.cursor/debug.log'
+logger = logging.getLogger(__name__)
 
-def _debug_log(location, message, data, hypothesis_id=None):
-    """Write debug log entry"""
-    try:
-        log_entry = {
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": hypothesis_id or "general",
-            "location": location,
-            "message": message,
-            "data": data,
-            "timestamp": int(datetime.now().timestamp() * 1000)
-        }
-        with open(DEBUG_LOG_PATH, 'a') as f:
-            f.write(json.dumps(log_entry) + '\n')
-    except Exception:
-        pass  # Silently fail if logging fails
+# Minimum days to expiry for eligible expiries (was in iron_condor.config)
+DAYS_TO_EXPIRY_MIN = 0
 
-logger = logging.getLogger('StrategyRunner')
-
-
-def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
-    """
-    Persist daily metrics (e.g. iv_percentile) to market_data_YYYYMMDD/daily_metrics.json.
-    Called when IV (and related regime inputs) are calculated so backtest can use them later.
-    Merges with existing file if present. Keys typically: iv_percentile, adx_14, atr_percentile, regime, date.
-    """
-    try:
-        when = date_str or datetime.now().strftime('%Y%m%d')
-        data_dir = f"market_data_{when}"
-        if not os.path.exists(data_dir):
-            os.makedirs(data_dir)
-        path = os.path.join(data_dir, 'daily_metrics.json')
-        existing = {}
-        if os.path.exists(path):
-            try:
-                with open(path, 'r') as f:
-                    existing = json.load(f)
-            except Exception:
-                pass
-        existing.update(metrics)
-        if 'date' not in existing:
-            existing['date'] = when
-        with open(path, 'w') as f:
-            json.dump(existing, f, indent=2)
-        logger.debug(f"Saved daily metrics to {path} (iv_percentile={metrics.get('iv_percentile')})")
-    except Exception as e:
-        logger.debug(f"Could not save daily metrics: {e}")
+INDIA_VIX_TOKEN_NSE = "26017"
 
 
 def _get_date_object(date_or_datetime):
-    """
-    Helper function to safely convert date or datetime or string to date object.
-    
-    Args:
-        date_or_datetime: datetime.date, datetime.datetime, str (YYYY-MM-DD or DD-MMM-YYYY), or None
-    
-    Returns:
-        datetime.date object
-    """
     if date_or_datetime is None:
         return datetime.now().date()
     if isinstance(date_or_datetime, datetime):
@@ -106,1519 +36,211 @@ def _get_date_object(date_or_datetime):
     if isinstance(date_or_datetime, str):
         s = date_or_datetime.strip()
         try:
-            # ISO: 2026-03-02
-            if len(s) == 10 and s[4] == '-' and s[7] == '-':
-                return datetime.strptime(s, '%Y-%m-%d').date()
-            # DD-MMM-YYYY or DD-MON-YY
-            if '-' in s and len(s) >= 9:
-                return datetime.strptime(s[:11], '%d-%b-%Y').date()
+            if len(s) == 10 and s[4] == "-" and s[7] == "-":
+                return datetime.strptime(s, "%Y-%m-%d").date()
+            if "-" in s and len(s) >= 9:
+                return datetime.strptime(s[:11], "%d-%b-%Y").date()
         except (ValueError, TypeError):
             pass
-    return datetime.now().date()
-
-
-def get_weekly_expiry(date=None):
-    """
-    Get the next weekly expiry date (Thursday) for NIFTY.
-    
-    If today is Thursday:
-    - Before 3:30 PM: Use today's expiry
-    - After 3:30 PM: Use next week's expiry
-    
-    Args:
-        date: Reference date (default: today)
-    
-    Returns:
-        datetime object for the weekly expiry
-    """
-    if date is None:
-        now = get_now_ist()
-        reference_date = now.date()
-        reference_datetime = now
-    else:
-        # If date is provided, convert to date if it's datetime
-        if isinstance(date, datetime):
-            reference_datetime = date
-            reference_date = date.date()
-        else:
-            reference_date = date
-            reference_datetime = datetime.combine(date, datetime.min.time())
-    
-    # If today is Thursday, check if market is still open
-    if reference_date.weekday() == 3:  # Thursday
-        market_close = reference_datetime.replace(hour=15, minute=30, second=0, microsecond=0)
-        if reference_datetime > market_close:
-            # Market closed, use next week's Thursday
-            expiry = reference_date + timedelta(days=7)
-            return expiry
-        else:
-            # Market still open, use today's expiry
-            return reference_date
-    
-    # Find next Thursday
-    days_ahead = 3 - reference_date.weekday()  # Thursday is weekday 3
-    if days_ahead <= 0:  # Shouldn't happen now, but handle edge case
-        days_ahead += 7
-    
-    expiry = reference_date + timedelta(days=days_ahead)
-    return expiry
-
-
-def get_next_available_expiry(symbol_manager, preferred_date=None):
-    """
-    Get the next available expiry date from the symbol file.
-    This ensures we only use expiries that actually exist in NFO.csv.
-    
-    Args:
-        symbol_manager: SymbolManager instance
-        preferred_date: Preferred expiry date (default: calculated weekly expiry)
-    
-    Returns:
-        date: Next available expiry date from symbol file
-    """
-    try:
-        # Calculate preferred expiry if not provided
-        if preferred_date is None:
-            preferred_date = get_weekly_expiry()
-        else:
-            preferred_date = _get_date_object(preferred_date)
-        
-        if symbol_manager.nse_fo is None:
-            logger.error("NFO symbols not loaded")
-            return preferred_date
-        
-        # Get all NIFTY options
-        nifty_options = symbol_manager.nse_fo[
-            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
-            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
-            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
-        ].copy()
-        
-        if nifty_options.empty:
-            logger.warning("No NIFTY options found in symbol manager, using calculated expiry")
-            return preferred_date
-        
-        # Convert expiry to datetime for date-based matching
-        nifty_options['expiry_date'] = pd.to_datetime(nifty_options['expiry'], format='%d-%b-%Y', errors='coerce')
-        
-        # Get unique expiry dates
-        valid_expiries = nifty_options['expiry_date'].dropna().dt.date.unique()
-        
-        if len(valid_expiries) == 0:
-            logger.warning("No valid expiry dates found, using calculated expiry")
-            return preferred_date
-        
-        # Find nearest future expiry (prefer future expiries)
-        future_expiries = [d for d in valid_expiries if d >= preferred_date]
-        if future_expiries:
-            nearest_expiry = min(future_expiries)
-        else:
-            # If no future expiries, use the latest available
-            nearest_expiry = max(valid_expiries)
-        
-        # Only log if different from preferred
-        if nearest_expiry != preferred_date:
-            logger.debug(f"Using available expiry: {nearest_expiry.strftime('%d-%b-%Y')} (preferred was {preferred_date.strftime('%d-%b-%Y')})")
-        
-        return nearest_expiry
-        
-    except Exception as e:
-        logger.error(f"Error getting next available expiry: {str(e)}", exc_info=True)
-        return preferred_date if preferred_date else datetime.now().date()
-
-
-def get_all_eligible_expiries(symbol_manager, max_expiries_to_check=10):
-    """
-    Get all available expiries from symbol file, sorted by date.
-    Returns expiries that could potentially meet eligibility criteria.
-    
-    Args:
-        symbol_manager: SymbolManager instance
-        max_expiries_to_check: Maximum number of expiries to check
-    
-    Returns:
-        list: List of expiry dates (datetime.date objects)
-    """
-    try:
-        if symbol_manager.nse_fo is None:
-            logger.error("NFO symbols not loaded")
-            return []
-        
-        # Get all NIFTY options
-        nifty_options = symbol_manager.nse_fo[
-            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
-            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
-            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
-        ].copy()
-        
-        if nifty_options.empty:
-            return []
-        
-        # Convert expiry to datetime for date-based matching
-        nifty_options['expiry_date'] = pd.to_datetime(nifty_options['expiry'], format='%d-%b-%Y', errors='coerce')
-        
-        # Get unique expiry dates, sorted
-        valid_expiries = sorted(nifty_options['expiry_date'].dropna().dt.date.unique())
-        
-        # Filter to future expiries only
-        today = datetime.now().date()
-        future_expiries = [d for d in valid_expiries if d >= today]
-        
-        # Filter out expiries with less than 3 days to expiry (DAYS_TO_EXPIRY_MIN)
-        from strategies.iron_condor.config import DAYS_TO_EXPIRY_MIN
-        eligible_expiries = []
-        for expiry_date in future_expiries:
-            days_to_expiry = (expiry_date - today).days
-            if days_to_expiry >= DAYS_TO_EXPIRY_MIN:
-                eligible_expiries.append(expiry_date)
-        
-        # Return up to max_expiries_to_check expiries
-        return eligible_expiries[:max_expiries_to_check]
-        
-    except Exception as e:
-        logger.error(f"Error getting eligible expiries: {str(e)}", exc_info=True)
-        return []
-
-
-def get_nifty_spot_price(api, symbol_manager):
-    """
-    Get current NIFTY spot price.
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-    
-    Returns:
-        float: Current spot price or None if error
-    """
-    try:
-        # Try to get NIFTY index token - NIFTY is stored as "Nifty 50" in NSE.csv
-        nifty_info = symbol_manager.get_token_info('Nifty 50', exchange='NSE')
-        
-        # Fallback: If not found, use direct token (NIFTY INDEX token is 26000)
-        if not nifty_info:
-            logger.debug("NIFTY not found by symbol, using direct token 26000")
-            nifty_info = {
-                'token': '26000',
-                'exchange': 'NSE'
-            }
-        
-        if not nifty_info or 'token' not in nifty_info:
-            logger.error("Could not find NIFTY token")
-            return None
-        
-        # Get quote
-        quote = api.get_quotes(exchange='NSE', token=nifty_info['token'])
-        if quote and 'lp' in quote:
-            spot_price = float(quote['lp'])
-            logger.debug(f"NIFTY spot price: {spot_price}")
-            return spot_price
-        else:
-            logger.error("Could not get NIFTY quote")
-            return None
-            
-    except Exception as e:
-        logger.error(f"Error getting NIFTY spot price: {str(e)}")
-        return None
-
-
-def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50):
-    """
-    Get option chain data for NIFTY weekly expiry.
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        spot_price: Current spot price
-        expiry_date: Expiry date (datetime)
-        count: Number of strikes on each side (default: 50)
-    
-    Returns:
-        pd.DataFrame: Option chain data with columns:
-            ['strike', 'option_type', 'ltp', 'bid', 'ask', 'delta', 'oi', 'volume']
-    """
-    try:
-        expiry_date_obj = _get_date_object(expiry_date)
-        expiry_str_formatted = expiry_date_obj.strftime('%d-%b-%Y').upper()  # Format: 25-DEC-2025
-        
-        # Get options directly from symbol manager for the expiry
-        # The expiry_date should already be from the symbol file (via get_next_available_expiry)
-        logger.info(f"Getting NIFTY options for expiry: {expiry_str_formatted}")
-        
-        # Get options from symbol manager filtered by expiry
-        if symbol_manager.nse_fo is None:
-            logger.error("NFO symbols not loaded")
-            return pd.DataFrame()
-        
-        # Get all NIFTY options
-        nifty_options_all = symbol_manager.nse_fo[
-            (symbol_manager.nse_fo['instrument'] == 'OPTIDX') &
-            (symbol_manager.nse_fo['symbol'] == 'NIFTY') &
-            (symbol_manager.nse_fo['optiontype'].isin(['CE', 'PE']))
-        ].copy()
-        
-        if nifty_options_all.empty:
-            logger.error("No NIFTY options found in symbol manager")
-            return pd.DataFrame()
-        
-        # Convert expiry to datetime for date-based matching
-        nifty_options_all['expiry_date'] = pd.to_datetime(nifty_options_all['expiry'], format='%d-%b-%Y', errors='coerce')
-        
-        # Find options matching the expiry date (should exist since we got it from symbol file)
-        options_df = nifty_options_all[
-            nifty_options_all['expiry_date'].dt.date == expiry_date_obj
-        ].copy()
-        
-        if options_df.empty:
-            # This shouldn't happen if get_next_available_expiry worked correctly, but handle gracefully
-            logger.error(f"No NIFTY options found for expiry {expiry_str_formatted} (this should not happen)")
-            return pd.DataFrame()
-        
-        # Get the actual expiry string from the first row (expiry column, not expiry_date)
-        actual_expiry_str = options_df['expiry'].iloc[0]
-        
-        # Drop the temporary expiry_date column
-        if 'expiry_date' in options_df.columns:
-            options_df = options_df.drop(columns=['expiry_date'])
-        
-        logger.info(f"Found {len(options_df)} NIFTY options for expiry {actual_expiry_str}")
-        
-        # Filter by strikes around spot price
-        strike_interval = 50  # NIFTY strike interval is typically 50
-        min_strike = int(spot_price) - (count * strike_interval)
-        max_strike = int(spot_price) + (count * strike_interval)
-        
-        options_df = options_df[
-            (options_df['strikeprice'] >= min_strike) &
-            (options_df['strikeprice'] <= max_strike)
-        ].copy()
-        
-        if options_df.empty:
-            logger.warning(f"No options found in strike range {min_strike}-{max_strike}")
-            return pd.DataFrame()
-        
-        logger.info(f"Filtered to {len(options_df)} options in strike range {min_strike}-{max_strike}")
-        
-        # #region agent log
-        _debug_log('strategy_runner.py:275', 'Options from symbol manager', {
-            'target_expiry': expiry_str_formatted,
-            'actual_expiry': actual_expiry_str,
-            'total_options': len(options_df),
-            'strike_range': f"{min_strike}-{max_strike}",
-            'sample_symbols': options_df['tradingsymbol'].head(5).tolist()
-        }, 'E')
-        # #endregion
-        
-        # Process options and fetch quotes
-        chain_data = []
-        total_options = len(options_df)
-        filtered_by_quote = 0
-        filtered_by_strike = 0
-        
-        for _, option_row in options_df.iterrows():
-            try:
-                tsym = option_row['tradingsymbol']
-                token = str(option_row['token'])
-                strike = float(option_row['strikeprice'])
-                option_type = option_row['optiontype']
-                
-                # Get quote for this option
-                quote = api.get_quotes(option_row['exchange'], token)
-                if not quote:
-                    filtered_by_quote += 1
-                    continue
-                
-                # Strike is already extracted from symbol manager data
-                if strike <= 0:
-                    filtered_by_strike += 1
-                    logger.debug(f"Invalid strike price for {tsym}")
-                    continue
-                
-                # Calculate mid price if bid/ask available
-                bid = float(quote.get('bp1', 0))
-                ask = float(quote.get('sp1', 0))
-                ltp = float(quote.get('lp', 0))
-                mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else ltp
-                
-                chain_data.append({
-                    'strike': strike,
-                    'option_type': option_type,
-                    'tradingsymbol': tsym,  # Exact NFO symbol for place_order (avoids "Invalid Trading Symbol")
-                    'ltp': ltp,
-                    'bid': bid,
-                    'ask': ask,
-                    'mid_price': mid_price,
-                    'delta': 0.0,  # Delta not available from symbol manager, would need to calculate
-                    'oi': int(quote.get('oi', 0)),
-                    'volume': int(quote.get('v', 0)),
-                    'lot_size': int(option_row.get('lotsize', 50))  # Get from NFO.csv
-                })
-                
-            except Exception as e:
-                logger.debug(f"Error processing option {tsym}: {str(e)}")
-                continue
-        
-        # #region agent log
-        _debug_log('strategy_runner.py:280', 'Filter results', {
-            'total_options': total_options,
-            'filtered_by_quote': filtered_by_quote,
-            'filtered_by_strike': filtered_by_strike,
-            'final_count': len(chain_data)
-        }, 'F')
-        # #endregion
-        
-        if not chain_data:
-            logger.warning(f"No valid option chain data processed for expiry {expiry_str_formatted}")
-            logger.debug(f"Total options found: {total_options}")
-            return pd.DataFrame()
-        
-        option_chain_df = pd.DataFrame(chain_data)
-        logger.info(f"Processed {len(option_chain_df)} option contracts for weekly expiry {expiry_str_formatted}")
-        
-        # Log sample strikes to verify
-        if not option_chain_df.empty:
-            sample_strikes = option_chain_df['strike'].unique()[:5]
-            logger.debug(f"Sample strikes found: {sample_strikes}")
-        
-        return option_chain_df
-        
-    except Exception as e:
-        logger.error(f"Error getting option chain data: {str(e)}", exc_info=True)
-        return pd.DataFrame()
-
-
-def calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry):
-    """
-    Calculate IV percentile from option chain data.
-    
-    NOTE: Shoonya API does not provide IV calculations, so this will return None.
-    
-    Args:
-        option_chain_df: Option chain DataFrame
-        spot_price: Current spot price
-        days_to_expiry: Days to expiration
-    
-    Returns:
-        float: IV percentile (0-100), or None if IV cannot be calculated
-    """
-    try:
-        iv_percentile = calculate_iv_percentile(
-            option_chain_df, spot_price, days_to_expiry
-        )
-        # Return None if IV cannot be calculated (Shoonya API doesn't provide IV)
-        if iv_percentile is None:
-            logger.debug("IV percentile not available (Shoonya API does not provide IV)")
-            return None
-        return iv_percentile
-    except Exception as e:
-        logger.error(f"Error calculating IV percentile: {str(e)}", exc_info=True)
-        # Return None instead of fallback - IV is not available
-        logger.debug("IV percentile calculation failed - returning None")
-        return None
-
-
-# India VIX token on NSE (same as convexcall project)
-INDIA_VIX_TOKEN_NSE = '26017'
-
-
-def get_india_vix(api) -> Optional[float]:
-    """
-    Fetch India VIX from NSE (convexcall-style low-vol check for CONVEX regime).
-    CONVEX can trigger when India VIX < 15 even if IV percentile is unavailable.
-    """
-    if api is None:
-        return None
-    try:
-        quote = api.get_quotes(exchange='NSE', token=INDIA_VIX_TOKEN_NSE)
-        if not quote:
-            logger.debug("Failed to get India VIX quote")
-            return None
-        vix = float(quote.get('lp', 0))
-        if vix <= 0:
-            return None
-        return vix
-    except Exception as e:
-        logger.debug(f"Could not fetch India VIX: {e}")
-        return None
-
-
-def calculate_adx_wrapper(api, symbol_manager, period=14):
-    """
-    Calculate ADX(14) from historical price data.
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        period: ADX period (default: 14)
-    
-    Returns:
-        float: ADX value, or None if calculation fails
-    """
-    try:
-        # Get historical price data for NIFTY
-        highs, lows, closes = get_historical_price_data(
-            api, symbol_manager, 'Nifty 50', days=30
-        )
-        
-        if highs is None or lows is None or closes is None:
-            # Try to estimate ADX based on available market data (similar to IV percentile)
-            # This allows the system to work even with limited historical data
-            logger.info("No historical price data available. Using intelligent ADX estimate based on typical market conditions.")
-            # Use a conservative estimate that allows trading but indicates limited trend strength
-            # ADX < 20 indicates weak/no trend, which is common in range-bound markets
-            estimated_adx = 18.0
-            logger.info(f"Estimated ADX: {estimated_adx:.1f} (indicates weak/no trend, suitable for Iron Condor)")
-            return estimated_adx
-        
-        # Calculate ADX (will adjust period based on available data)
-        adx_value = calculate_adx(highs, lows, closes, period)
-        
-        if adx_value is None:
-            # If calculation still fails, use intelligent estimate
-            logger.info("ADX calculation returned None. Using intelligent ADX estimate.")
-            estimated_adx = 18.0
-            logger.info(f"Estimated ADX: {estimated_adx:.1f} (indicates weak/no trend, suitable for Iron Condor)")
-            return estimated_adx
-        
-        return adx_value
-        
-    except Exception as e:
-        logger.error(f"Error calculating ADX: {str(e)}", exc_info=True)
-        # Fallback to default value if calculation fails
-        logger.warning("Using fallback ADX value")
-        return 18.0
-
-
-def check_major_events(expiry_date):
-    """
-    Check if there are major events (RBI meetings, etc.) in the next 48 hours.
-    
-    This is a placeholder - in production, you would check an event calendar.
-    
-    Args:
-        expiry_date: Expiry date
-    
-    Returns:
-        bool: True if major event detected, False otherwise
-    """
-    # TODO: Implement actual event calendar check
-    # For now, assume no major events
-    return False
-
-
-def build_market_state(api, symbol_manager, spot_price, expiry_date):
-    """
-    Build market state dictionary for Iron Condor strategy.
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        spot_price: Current spot price
-        expiry_date: Expiry date (datetime)
-    
-    Returns:
-        dict: Market state dictionary
-    """
-    try:
-        # Calculate days to expiry
-        expiry_date_obj = _get_date_object(expiry_date)
-        days_to_expiry = (expiry_date_obj - datetime.now().date()).days
-        
-        # Get option chain for IV calculation
-        option_chain = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=20)
-        
-        return build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain)
-        
-    except Exception as e:
-        logger.error(f"Error building market state: {str(e)}", exc_info=True)
-        return None
-
-
-def build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df):
-    """
-    Build market state dictionary from existing option chain DataFrame.
-    More efficient than build_market_state when option chain is already available.
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        spot_price: Current spot price
-        expiry_date: Expiry date (datetime)
-        option_chain_df: Option chain DataFrame
-    
-    Returns:
-        dict: Market state dictionary
-    """
-    try:
-        # Calculate days to expiry
-        expiry_date_obj = _get_date_object(expiry_date)
-        days_to_expiry = (expiry_date_obj - datetime.now().date()).days
-        
-        # Determine instrument type based on DTE
-        # DTE <= 7: Weekly expiry, DTE > 7: Monthly expiry
-        instrument_type = 'WEEKLY' if days_to_expiry <= 7 else 'MONTHLY'
-        
-        # Calculate market metrics
-        iv_percentile = calculate_iv_percentile_wrapper(option_chain_df, spot_price, days_to_expiry)
-        adx_14 = calculate_adx_wrapper(api, symbol_manager)
-        india_vix = get_india_vix(api)
-        has_major_event = check_major_events(expiry_date)
-        
-        # Calculate current IV for PoP calculation
-        # Format expiry date for IV fetch (DD-MMM-YYYY format)
-        expiry_date_str = expiry_date_obj.strftime('%d-%b-%Y').upper() if expiry_date_obj else None
-        current_iv = None
-        try:
-            current_iv = calculate_atm_iv(
-                option_chain_df, 
-                spot_price, 
-                days_to_expiry,
-                expiry_date_str=expiry_date_str,
-                api=api  # Pass API to use Shoonya option_greek
-            )
-        except Exception as e:
-            logger.debug(f"Could not calculate current IV: {str(e)}")
-        
-        market_state = {
-            'iv_percentile': iv_percentile,
-            'india_vix': india_vix,
-            'days_to_expiry': days_to_expiry,
-            'adx_14': adx_14,
-            'has_major_event': has_major_event,
-            'instrument': 'NIFTY',
-            'instrument_type': instrument_type,
-            'spot_price': spot_price,
-            'expiry': _get_date_object(expiry_date).strftime('%Y-%m-%d'),
-            'current_iv': current_iv  # Add current IV for PoP calculation
-        }
-        
-        # Format values safely (handle None)
-        iv_str = f"{iv_percentile:.1f}%" if iv_percentile is not None else "N/A"
-        adx_str = f"{adx_14:.1f}" if adx_14 is not None else "N/A"
-        dte_str = str(days_to_expiry) if days_to_expiry is not None else "N/A"
-        
-        logger.info(
-            f"Market state: IV={iv_str}, DTE={dte_str}, "
-            f"ADX={adx_str}, Event={has_major_event}"
-        )
-        
-        return market_state
-        
-    except Exception as e:
-        logger.error(f"Error building market state: {str(e)}", exc_info=True)
-        return None
-
-
-def save_trade_proposal(trade_proposal, output_dir='trade_proposals'):
-    """
-    Save trade proposal to JSON file.
-    
-    Args:
-        trade_proposal: Trade proposal dictionary
-        output_dir: Directory to save proposals
-    """
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Determine filename based on strategy type
-        strategy = trade_proposal.get('strategy', 'iron_condor').lower().replace('_', '_')
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = os.path.join(output_dir, f"{strategy}_{timestamp}.json")
-        
-        # Convert numpy types to native Python types for JSON serialization
-        def convert_types(obj):
-            if isinstance(obj, dict):
-                return {k: convert_types(v) for k, v in obj.items()}
-            elif isinstance(obj, list):
-                return [convert_types(item) for item in obj]
-            elif isinstance(obj, (pd.Timestamp, datetime)):
-                return obj.isoformat()
-            elif hasattr(obj, 'item'):  # numpy types
-                return obj.item()
-            else:
-                return obj
-        
-        trade_proposal_serializable = convert_types(trade_proposal)
-        
-        with open(filename, 'w') as f:
-            json.dump(trade_proposal_serializable, f, indent=2)
-        
-        logger.info(f"Saved trade proposal to {filename}")
-        
-    except Exception as e:
-        logger.error(f"Error saving trade proposal: {str(e)}")
-
-
-def _save_option_snapshot(option_chain_df, trade_id):
-    """
-    Save option chain snapshot as gzipped JSON and return file path.
-    """
-    try:
-        date_dir = datetime.now().strftime('%Y%m%d')
-        path_dir = os.path.join('option_snapshots', date_dir)
-        os.makedirs(path_dir, exist_ok=True)
-        filename = os.path.join(path_dir, f"{trade_id}_option_chain.json.gz")
-        with gzip.open(filename, 'wt', encoding='utf-8') as f:
-            # Use records orientation for easy loading
-            f.write(option_chain_df.to_json(orient='records', date_format='iso'))
-        return filename
-    except Exception as e:
-        logger.error(f"Could not save option snapshot for {trade_id}: {e}")
-        return None
-
-
-def _determine_neutral_sub_state(market_state: Dict, regime_info: Dict) -> str:
-    """
-    Determine NEUTRAL sub-state based on market conditions
-    
-    Rules:
-    - NEUTRAL_PASSIVE: ADX rising OR ATR ambiguous OR signals conflicting
-    - NEUTRAL_ACTIVE: Otherwise (neutral-safe strategies allowed, e.g., calendar spreads)
-    
-    Args:
-        market_state: Market state dictionary
-        regime_info: Regime detection result
-    
-    Returns:
-        "NEUTRAL_PASSIVE" or "NEUTRAL_ACTIVE"
-    """
-    try:
-        adx_14 = market_state.get('adx_14')
-        iv_percentile = market_state.get('iv_percentile')
-        atr_percentile = regime_info.get('atr_percentile')
-        range_state = regime_info.get('range_state')
-        
-        # Check for conflicting signals
-        conflicting_signals = False
-        if iv_percentile is not None and adx_14 is not None:
-            # High IV + High ADX = conflicting (should be INCOME but ADX too high)
-            if iv_percentile > 60 and adx_14 >= 20:
-                conflicting_signals = True
-        
-        # Check for ADX rising (would need historical ADX, simplified check)
-        # For now, check if ADX is in ambiguous zone (18-22)
-        adx_ambiguous = adx_14 is not None and 18 <= adx_14 < 22
-        
-        # Check for ATR ambiguous
-        atr_ambiguous = atr_percentile is None or (atr_percentile is not None and 20 <= atr_percentile <= 30)
-        
-        # Determine sub-state
-        if conflicting_signals or adx_ambiguous or atr_ambiguous:
-            return "NEUTRAL_PASSIVE"
-        else:
-            return "NEUTRAL_ACTIVE"
-            
-    except Exception as e:
-        logger.error(f"Error determining NEUTRAL sub-state: {str(e)}")
-        return "NEUTRAL_PASSIVE"  # Default to passive on error
-
-
-def _determine_no_trade_reason(market_state: Dict, regime_info: Dict, neutral_sub_state: str = None) -> str:
-    """
-    Determine reason why no trade is allowed (for auditability)
-    
-    Args:
-        market_state: Market state dictionary
-        regime_info: Regime detection result
-        neutral_sub_state: NEUTRAL sub-state if applicable
-    
-    Returns:
-        String describing no-trade reason
-    """
-    try:
-        iv_percentile = market_state.get('iv_percentile')
-        adx_14 = market_state.get('adx_14')
-        atr_percentile = regime_info.get('atr_percentile')
-        detected_regime = regime_info.get('detected_regime', 'NEUTRAL')
-        confirmed_regime = regime_info.get('regime', 'NEUTRAL')
-        
-        # Check for regime transition
-        if detected_regime != confirmed_regime:
-            return "REGIME_TRANSITION"
-        
-        # Check for high IV + high ADX
-        if iv_percentile is not None and adx_14 is not None:
-            if iv_percentile > 60 and adx_14 >= 20:
-                return "HIGH_IV_HIGH_ADX"
-        
-        # Check for conflicting signals
-        if neutral_sub_state == "NEUTRAL_PASSIVE":
-            if atr_percentile is None:
-                return "ATR_DATA_INSUFFICIENT"
-            elif iv_percentile is not None and adx_14 is not None:
-                if not (iv_percentile > 60 and adx_14 < 20) and not (iv_percentile < 40 and atr_percentile < 25):
-                    return "SIGNALS_CONFLICTING"
-        
-        # Default NEUTRAL reason
-        return "NEUTRAL_REGIME"
-        
-    except Exception as e:
-        logger.error(f"Error determining no-trade reason: {str(e)}")
-        return "UNKNOWN"
-
-
-def _log_strategy_decision(regime: str, neutral_sub_state: str, strategy_allowed: List[str],
-                          strategy_executed: str, no_trade_reason: str, regime_info: Dict):
-    """
-    Log strategy decision for auditability and post-analysis
-    
-    Args:
-        regime: Confirmed regime
-        neutral_sub_state: NEUTRAL sub-state if applicable
-        strategy_allowed: List of strategies allowed in this regime
-        strategy_executed: Strategy that was executed (if any)
-        no_trade_reason: Reason why no trade was executed (if applicable)
-        regime_info: Regime detection result
-    """
-    try:
-        decision_log = {
-            "timestamp": datetime.now().isoformat(),
-            "regime": regime,
-            "sub_state": neutral_sub_state,
-            "strategy_allowed": strategy_allowed,
-            "strategy_executed": strategy_executed,
-            "no_trade_reason": no_trade_reason if not strategy_executed else None,
-            "regime_details": {
-                "iv_percentile": regime_info.get('iv_percentile'),
-                "adx": regime_info.get('adx'),
-                "atr_percentile": regime_info.get('atr_percentile'),
-                "range_state": regime_info.get('range_state'),
-                "detected_regime": regime_info.get('detected_regime'),
-                "confirmation_count": regime_info.get('confirmation_count', 0)
-            }
-        }
-        
-        # Log to file for post-analysis
-        log_file = 'strategy_decisions.json'
-        decisions = []
-        if os.path.exists(log_file):
-            try:
-                with open(log_file, 'r') as f:
-                    decisions = json.load(f)
-            except:
-                pass
-        
-        decisions.append(decision_log)
-        
-        # Keep only last 1000 entries
-        if len(decisions) > 1000:
-            decisions = decisions[-1000:]
-        
-        with open(log_file, 'w') as f:
-            json.dump(decisions, f, indent=2)
-        
-        logger.debug(f"Strategy decision logged: regime={regime}, executed={strategy_executed}, reason={no_trade_reason}")
-        
-    except Exception as e:
-        logger.error(f"Error logging strategy decision: {str(e)}")
-
-
-# Ticks better than mid to try for small profit when flattening imbalance (covers brokerage).
-IMBALANCE_RESOLVE_PROFIT_TICKS = 1
-IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS = 60
-IMBALANCE_MKT_FALLBACK_TIMEOUT_SECONDS = 30
-
-
-def _get_token_for_nfo_symbol(api, tradingsymbol: str):
-    """Resolve NFO option token by tradingsymbol via searchscrip. Returns token string or None."""
-    try:
-        resp = api.searchscrip(exchange="NFO", searchtext=tradingsymbol)
-        if not resp or not isinstance(resp, dict):
-            return None
-        values = resp.get("values") or []
-        for s in values:
-            if isinstance(s, dict) and (s.get("tsym") or "").strip() == tradingsymbol.strip():
-                t = s.get("token")
-                return str(t) if t is not None else None
-        if values and isinstance(values[0], dict) and values[0].get("token") is not None:
-            return str(values[0]["token"])
-    except Exception as e:
-        logger.debug("searchscrip for %s failed: %s", tradingsymbol, e)
-    return None
-
-
-def resolve_imbalance_with_profit(api, imbalance_result: dict, symbol_manager) -> bool:
-    """
-    Attempt to flatten imbalanced NFO positions using limit orders for a small profit (brokerage cover),
-    then fall back to market if limit does not fill in time.
-
-    Uses imbalance_result['flatten_orders']: list of {tradingsymbol, side: 'B'|'S', quantity}.
-    Places LMT at bid-1tick (BUY) or ask+1tick (SELL), waits IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS;
-    if not filled, cancels and places MKT. All orders MIS (product I), retention DAY.
-
-    Returns True if all legs were flattened (limit or market), False if any step failed.
-    """
-    from strategies.convex.order_builder import (
-        place_single_order,
-        wait_for_order_fill,
-        _round_price_to_tick,
-        NIFTY_OPTION_TICK_SIZE,
-    )
-    flatten_orders = (imbalance_result or {}).get("flatten_orders") or []
-    if not flatten_orders:
-        logger.info("resolve_imbalance_with_profit: no flatten_orders, nothing to do")
-        return True
-    logger.info(
-        "resolve_imbalance_with_profit: attempting to flatten %d leg(s) with limit orders (small profit), then MKT fallback",
-        len(flatten_orders),
-    )
-    all_ok = True
-    for i, fo in enumerate(flatten_orders):
-        tsym = (fo.get("tradingsymbol") or "").strip()
-        side = (fo.get("side") or "B").strip().upper()
-        if side not in ("B", "S"):
-            logger.warning("resolve_imbalance_with_profit: invalid side %s for %s, skip", side, tsym)
-            all_ok = False
-            continue
-        qty = int(fo.get("quantity") or 0)
-        if qty <= 0:
-            logger.warning("resolve_imbalance_with_profit: invalid quantity for %s, skip", tsym)
-            all_ok = False
-            continue
-        token = _get_token_for_nfo_symbol(api, tsym)
-        if not token:
-            logger.warning("resolve_imbalance_with_profit: could not get token for %s, skip", tsym)
-            all_ok = False
-            continue
-        try:
-            quote = api.get_quotes("NFO", token)
-        except Exception as e:
-            logger.warning("resolve_imbalance_with_profit: get_quotes failed for %s: %s", tsym, e)
-            all_ok = False
-            continue
-        if not quote:
-            logger.warning("resolve_imbalance_with_profit: no quote for %s", tsym)
-            all_ok = False
-            continue
-        bid = float(quote.get("bp1", 0) or 0)
-        ask = float(quote.get("sp1", 0) or 0)
-        ltp = float(quote.get("lp", 0) or 0)
-        if side == "B":
-            raw_limit = (bid - IMBALANCE_RESOLVE_PROFIT_TICKS * NIFTY_OPTION_TICK_SIZE) if bid > 0 else (ltp - NIFTY_OPTION_TICK_SIZE)
-            limit_price = _round_price_to_tick(max(0.05, raw_limit), NIFTY_OPTION_TICK_SIZE, "B")
-        else:
-            raw_limit = (ask + IMBALANCE_RESOLVE_PROFIT_TICKS * NIFTY_OPTION_TICK_SIZE) if ask > 0 else (ltp + NIFTY_OPTION_TICK_SIZE)
-            limit_price = _round_price_to_tick(max(0.05, raw_limit), NIFTY_OPTION_TICK_SIZE, "S")
-        order = {
-            "buy_or_sell": "B" if side == "B" else "S",
-            "product_type": "I",
-            "exchange": "NFO",
-            "tradingsymbol": tsym,
-            "quantity": qty,
-            "price_type": "LMT",
-            "price": limit_price,
-            "retention": "DAY",
-            "remarks": f"imbalance_flatten_{i}_{tsym[:20]}",
-        }
-        try:
-            ret = place_single_order(api, order)
-            oid = (ret.get("norenordno") or ret.get("order_id") or "").__str__()
-            if not oid:
-                logger.warning("resolve_imbalance_with_profit: no order id for %s", tsym)
-                all_ok = False
-                continue
-            filled = wait_for_order_fill(api, oid, timeout_seconds=IMBALANCE_LIMIT_FILL_TIMEOUT_SECONDS)
-            if filled:
-                logger.info("resolve_imbalance_with_profit: limit filled for %s %s %s @ %s", side, qty, tsym, limit_price)
-                continue
-            try:
-                api.cancel_order(orderno=oid)
-                logger.info("resolve_imbalance_with_profit: cancelled limit %s, placing MKT for %s", oid, tsym)
-            except Exception as ce:
-                logger.warning("resolve_imbalance_with_profit: cancel failed for %s: %s", oid, ce)
-            mkt_order = {**order, "price_type": "MKT", "price": 0.0, "remarks": f"imbalance_mkt_{i}_{tsym[:20]}"}
-            ret2 = place_single_order(api, mkt_order)
-            oid2 = (ret2.get("norenordno") or ret2.get("order_id") or "").__str__()
-            if not oid2:
-                logger.warning("resolve_imbalance_with_profit: MKT order failed for %s", tsym)
-                all_ok = False
-                continue
-            filled2 = wait_for_order_fill(api, oid2, timeout_seconds=IMBALANCE_MKT_FALLBACK_TIMEOUT_SECONDS)
-            if filled2:
-                logger.info("resolve_imbalance_with_profit: MKT filled for %s %s %s", side, qty, tsym)
-            else:
-                logger.warning("resolve_imbalance_with_profit: MKT did not fill for %s (order %s)", tsym, oid2)
-                all_ok = False
-        except Exception as e:
-            logger.exception("resolve_imbalance_with_profit: failed for %s: %s", tsym, e)
-            all_ok = False
-    return all_ok
-
-
-def run_strategy_with_regime(api, symbol_manager, position_tracker=None, capital=800000.0):
-    """
-    Run strategy check with regime detection and routing (two-fork model).
-
-    TRENDING → Convex Backspread only.
-    SIDEWAYS → Iron Condor only.
-    Enforces mutual exclusion between Convex and Iron Condor.
-
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        position_tracker: Optional IronCondorPositionTracker instance
-        capital: Total capital allocated (default: ₹8L)
-
-    Returns:
-        dict: Trade proposal or None if no valid trade found
-    """
-    try:
-        logger.info("=== Running Strategy Check with Regime Detection ===")
-
-        # Step 1: Get NIFTY spot price
-        spot_price = get_nifty_spot_price(api, symbol_manager)
-        if spot_price is None or spot_price <= 0:
-            logger.warning("Could not get valid NIFTY spot price")
-            return None
-        
-        logger.info(f"NIFTY spot price: {spot_price}")
-        
-        # Step 2: Get available expiries
-        available_expiries = get_all_eligible_expiries(symbol_manager, max_expiries_to_check=7)
-        if not available_expiries:
-            logger.warning("No available expiries found")
-            return None
-        
-        # Step 3: Get option chain for first expiry (for regime detection)
-        expiry_date = available_expiries[0]
-        option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
-        if option_chain_df.empty:
-            logger.warning("Could not fetch option chain for regime detection")
-            return None
-        
-        # Step 4: Build market state
-        market_state = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
-        if not market_state:
-            logger.warning("Could not build market state")
-            return None
-        
-        # Step 5: Detect regime
-        regime_detector = RegimeDetector()
-        # Use 20 days so rolling_avg_range can be computed; CONVEX needs range_compressed (last_range < 0.6 * rolling_avg_range).
-        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
-        # #region agent log (hypotheses H-A, H-B, H-D, H-E: inputs and candle count)
-        try:
-            import json
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"strategy_runner.py:935","message":"Before detect_regime","data":{"india_vix":market_state.get('india_vix'),"iv_percentile":market_state.get('iv_percentile'),"adx_14":market_state.get('adx_14'),"recent_candles_len":len(recent_candles) if recent_candles else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"regime-debug","hypothesisId":"H-A,H-B,H-D,H-E"})+"\n")
-        except Exception:
-            pass
-        # #endregion
-        regime_info = regime_detector.detect_regime(market_state, recent_candles, api, symbol_manager)
-        regime = regime_info.get('regime', 'SIDEWAYS')
-        # Normalize legacy name for two-fork
-        if regime == 'TREND_CONTINUATION':
-            regime = 'TRENDING'
-        if regime not in ('TRENDING', 'SIDEWAYS'):
-            regime = 'SIDEWAYS'
-        detected_regime = regime_info.get('detected_regime', regime)
-        neutral_sub_state = None  # Unused in two-fork
-
-        logger.info(f"Regime: {regime} (detected: {detected_regime})")
-        logger.info(f"  IV Percentile: {regime_info.get('iv_percentile', 'N/A'):.1f}%")
-        logger.info(f"  ADX: {regime_info.get('adx', 'N/A'):.1f}")
-        logger.info(f"  ATR Percentile: {regime_info.get('atr_percentile', 'N/A')}")
-        logger.info(f"  Range State: {regime_info.get('range_state', 'N/A')}")
-        if regime_info.get('confirmation_count', 0) > 0:
-            logger.info(f"  Regime confirmation: {regime_info.get('confirmation_count')}/{regime_detector.confirmation_count}")
-        
-        # Step 5b: Add regime and regime_info to market_state for strategy use
-        market_state['regime'] = regime
-        market_state['atr'] = regime_info.get('atr')
-        market_state['atr_percentile'] = regime_info.get('atr_percentile')
-        market_state['adx_14'] = regime_info.get('adx', market_state.get('adx_14'))
-        
-        # Persist IV and regime inputs to daily data for future backtest use
-        daily_metrics = {
-            'date': datetime.now().strftime('%Y%m%d'),
-            'regime': regime,
-            'iv_percentile': regime_info.get('iv_percentile') or market_state.get('iv_percentile'),
-            'india_vix': regime_info.get('india_vix') or market_state.get('india_vix'),
-            'adx_14': regime_info.get('adx') or market_state.get('adx_14'),
-            'atr_percentile': regime_info.get('atr_percentile'),
-        }
-        save_daily_metrics({k: v for k, v in daily_metrics.items() if v is not None})
-        
-        # #region agent log
-        import json
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"strategy_runner.py:896","message":"Added regime to market_state","data":{"regime":regime,"market_state_regime":market_state.get('regime'),"atr":market_state.get('atr'),"atr_percentile":market_state.get('atr_percentile')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-trades","hypothesisId":"S1"})+"\n")
-        except: pass
-        # #endregion
-        
-        # Step 6: Route to strategies. Convex-only live: only Convex generator runs.
-        # (Iron Condor disabled for live; position tracker still monitors existing INCOME positions for exit.)
-        proposals = {}
-        strategy_allowed = []
-
-        # Attempt Convex generator (run even if regime is SIDEWAYS to support concurrent execution)
-        # Skip new Convex entry within 45 min of market close (avoid end-of-day exit immediately)
-        try:
-            strategy_allowed.append("CALL_BACKSPREAD")
-            now_ist = get_now_ist()
-            market_close = now_ist.replace(hour=15, minute=30, second=0, microsecond=0)
-            if now_ist >= market_close - timedelta(minutes=45):
-                convex_prop = None
-                logger.debug("Skipping Convex entry: within 45 min of market close")
-            else:
-                convex_prop = _run_convex_backspread_strategy(
-                api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital,
-                    regime='TRENDING' if regime == 'TRENDING' else None
-                )
-            if convex_prop:
-                proposals['CALL_BACKSPREAD'] = convex_prop
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, 'CALL_BACKSPREAD', None, regime_info)
-            else:
-                _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'NO_VALID_TRADE', regime_info)
-        except Exception as e:
-            logger.error("Convex generator error: %s", e, exc_info=True)
-            _log_strategy_decision(regime, neutral_sub_state, strategy_allowed, None, 'EXCEPTION', regime_info)
-
-        # Iron Condor disabled for Convex-only live trading.
-        # Uncomment block below to re-enable:
-        # try:
-        #     strategy_allowed.append("IRON_CONDOR")
-        #     ic_prop = _run_iron_condor_strategy_internal(...)
-        #     if ic_prop:
-        #         proposals['IRON_CONDOR'] = ic_prop
-        #     ...
-
-        if not proposals:
-            logger.info("❌ No valid trade proposals returned by any strategy")
-            return None
-
-        # Commit accepted proposals: enrich, snapshot option chain, estimate margin, save, and add to tracker.
-        accepted_ids = []
-        decision_entries = {}
-        combined_margin = 0.0
-
-        for name, prop in proposals.items():
-            try:
-                # attach stable trade id and metadata
-                tid = str(uuid.uuid4())
-                prop['trade_id'] = tid
-                prop['accepted_by'] = 'strategy_runner'
-                prop['commit_time'] = datetime.now().isoformat()
-
-                # attempt to capture option chain snapshot for replay/debug
-                prop['option_snapshot'] = None
-                try:
-                    exp = prop.get('expiry')
-                    spot = prop.get('entry_spot', spot_price)
-                    if exp:
-                        exp_date = _get_date_object(exp)
-                        opt_chain = get_option_chain_data(api, symbol_manager, spot, exp_date, count=50)
-                        if not opt_chain.empty:
-                            snap_path = _save_option_snapshot(opt_chain, tid)
-                            prop['option_snapshot'] = snap_path
-                except Exception as _e:
-                    logger.debug(f"Could not snapshot option chain for proposal {tid}: {_e}")
-
-                # margin estimate: Convex uses broker example (margin_estimate_inr); Iron Condor uses SPAN or fallback
-                margin_est = None
-                if name == 'CALL_BACKSPREAD' and prop.get('margin_estimate_inr') is not None:
-                    margin_est = float(prop['margin_estimate_inr'])
-                if margin_est is None:
-                    try:
-                        from strategies.iron_condor import margin_calculator as ic_margin_mod
-                        if hasattr(ic_margin_mod, 'calculate_iron_condor_margin'):
-                            try:
-                                margin_est = ic_margin_mod.calculate_iron_condor_margin(prop)
-                            except Exception:
-                                margin_est = None
-                    except Exception:
-                        margin_est = None
-
-                # fallback margin estimate: max_loss (total) or max_loss_per_lot * lots * lot_size
-                if margin_est is None:
-                    lot_size = None
-                    if prop.get('lot_size'):
-                        lot_size = int(prop.get('lot_size'))
-                    else:
-                        # try to infer from legs
-                        try:
-                            lot_size = int(prop.get('legs', [])[0].get('quantity', 50))
-                        except Exception:
-                            lot_size = 50
-                    max_loss = float(prop.get('max_loss', 0.0) or 0.0)
-                    lots = int(prop.get('lots', 1) or 1)
-                    margin_est = max_loss * lots * lot_size
-
-                prop['margin_estimate'] = float(margin_est)
-                combined_margin += float(margin_est)
-
-                # validate and clamp lots before saving/accepting
-                try:
-                    proposed_lots = int(prop.get('lots') or 0)
-                except Exception:
-                    proposed_lots = 0
-
-                if proposed_lots <= 0:
-                    logger.info(f"Rejecting proposal from {name}: lots={proposed_lots}")
-                    # record a trace in debug log
-                    _debug_log('strategy_runner.py:commit', 'Reject proposal - zero lots', {'strategy': name, 'lots': proposed_lots}, 'COMMIT')
-                    continue
-
-                # apply lot clamp: Convex uses CONVEX_MAX_LOTS only; others use global MIN/MAX
-                if name == 'CALL_BACKSPREAD':
-                    clamped = min(proposed_lots, CONVEX_MAX_LOTS)
-                else:
-                    clamped = clamp_lots(proposed_lots)
-                if clamped != proposed_lots:
-                    prop['_original_lots'] = proposed_lots
-                    prop['lots'] = clamped
-                    logger.info(f"Clamped lots for proposal {tid} from {proposed_lots} to {clamped}")
-
-                # Convex only: place orders via broker first; add to tracker only if all legs filled.
-                if name == 'CALL_BACKSPREAD':
-                    try:
-                        from strategies.convex.order_builder import place_convex_trade
-                        place_result = place_convex_trade(api, prop)
-                        if not place_result.get('success'):
-                            logger.error(
-                                "Convex order placement failed: %s (not adding to tracker)",
-                                place_result.get('message', place_result),
-                            )
-                            continue
-                        prop['order_ids'] = place_result.get('order_ids', [])
-                    except Exception as e:
-                        logger.exception("Convex place_convex_trade failed: %s", e)
-                        continue
-
-                # save proposal using existing helper
-                save_trade_proposal(prop)
-
-                # also persist canonical by-id copy for quick lookup
-                out_dir = os.path.join('trade_proposals_by_id', datetime.now().strftime('%Y%m%d'))
-                os.makedirs(out_dir, exist_ok=True)
-                by_id_path = os.path.join(out_dir, f"{tid}.json")
-                try:
-                    with open(by_id_path, 'w') as f:
-                        json.dump(prop, f, indent=2, default=str)
-                except Exception as _e:
-                    logger.debug(f"Could not write by-id proposal file for {tid}: {_e}")
-
-                # add to tracker
-                if position_tracker is not None:
-                    try:
-                        position_tracker.add_position(prop)
-                    except Exception as _e:
-                        logger.error(f"Error adding proposal {tid} to position tracker: {_e}", exc_info=True)
-
-                accepted_ids.append(tid)
-
-                # record entry for combined decision
-                decision_entries[tid] = {
-                    'strategy': name,
-                    'lots': prop.get('lots'),
-                    'net_credit_total': prop.get('net_credit_total'),
-                    'margin_estimate': prop.get('margin_estimate'),
-                    'trade_file': by_id_path,
-                    'option_snapshot': prop.get('option_snapshot')
-                }
-
-                logger.info(f"Accepted proposal from {name}: trade_id={tid}, lots={prop.get('lots')}, margin_est={margin_est:.2f}")
-
-            except Exception as e:
-                logger.error(f"Error committing proposal {name}: {e}", exc_info=True)
-
-        # Write combined decision entry (append to strategy_decisions.json)
-        decision_log_file = 'strategy_decisions.json'
-        decision_record = {
-            'timestamp': datetime.now().isoformat(),
-            'regime': regime,
-            'proposals': decision_entries,
-            'accepted_trade_ids': accepted_ids,
-            'combined_margin_estimate': combined_margin,
-            'market_state_snapshot': {
-                'iv_percentile': market_state.get('iv_percentile'),
-                'adx_14': market_state.get('adx_14'),
-                'atr_percentile': market_state.get('atr_percentile'),
-                'spot_price': market_state.get('spot_price'),
-                'expiry': market_state.get('expiry')
-            }
-        }
-        try:
-            decisions = []
-            if os.path.exists(decision_log_file):
-                try:
-                    with open(decision_log_file, 'r') as f:
-                        decisions = json.load(f)
-                except Exception:
-                    decisions = []
-            decisions.append(decision_record)
-            if len(decisions) > 2000:
-                decisions = decisions[-2000:]
-            with open(decision_log_file, 'w') as f:
-                json.dump(decisions, f, indent=2, default=str)
-        except Exception as e:
-            logger.error(f"Failed to write combined decision record: {e}", exc_info=True)
-
-        # Return all proposals (dict). For backward compatibility, callers expecting a single proposal
-        # can take the first value from the returned dict.
-        return proposals
-
-    except Exception as e:
-        logger.error(f"Error in regime-based strategy execution: {str(e)}", exc_info=True)
-        return None
-
-
-def _run_iron_condor_strategy_internal(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price):
-    """Internal Iron Condor strategy execution"""
-    try:
-        logger.info("=== Running Iron Condor Strategy (INCOME regime) ===")
-        
-        # Check each expiry until we find a valid trade
-        for expiry_date in available_expiries:
-            expiry_date_obj = _get_date_object(expiry_date)
-            days_to_expiry = (expiry_date_obj - datetime.now().date()).days
-            
-            logger.info(f"Checking expiry: {expiry_date_obj.strftime('%Y-%m-%d')} ({days_to_expiry} days)")
-            
-            # Get option chain for this expiry
-            option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
-            if option_chain_df.empty:
-                logger.debug(f"No option chain data for expiry {expiry_date_obj.strftime('%Y-%m-%d')}")
-                continue
-            
-            # Build market state for this expiry
-            market_state_expiry = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
-            if not market_state_expiry:
-                logger.debug(f"Could not build market state for expiry {expiry_date_obj.strftime('%Y-%m-%d')}")
-                continue
-            
-            # Get userid from credentials for margin calculation
-            userid = None
-            try:
-                import yaml
-                with open('cred.yml', 'r') as f:
-                    creds = yaml.safe_load(f)
-                    userid = creds.get('user')
-            except Exception as e:
-                logger.debug(f"Could not load userid from credentials: {e}")
-            
-            # Generate trade proposal
-            trade_proposal = generate_iron_condor_trade(
-                market_state_expiry, 
-                option_chain_df,
-                api=api,
-                userid=userid,
-                symbol_manager=symbol_manager
-            )
-            
-            if trade_proposal:
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:1082","message":"Trade proposal received from generate_iron_condor_trade","data":{"has_trade_proposal":trade_proposal is not None,"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"has_net_credit_total":'net_credit_total' in trade_proposal if trade_proposal else False},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C5"})+"\n")
-                except: pass
-                # #endregion
-                
-                # Add regime info to trade proposal
-                trade_proposal['regime_at_entry'] = 'INCOME'
-                trade_proposal['book'] = 'INCOME'
-                # Note: entry_range_state not needed for Iron Condor (only for Convex)
-                
-                # #region agent log
-                try:
-                    with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({"location":"strategy_runner.py:1090","message":"Trade proposal after adding regime info","data":{"net_credit":trade_proposal.get('net_credit'),"net_credit_total":trade_proposal.get('net_credit_total'),"lots":trade_proposal.get('lots'),"regime_at_entry":trade_proposal.get('regime_at_entry')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"credit-debug","hypothesisId":"C6"})+"\n")
-                except: pass
-                # #endregion
-                
-                logger.info("✅ Valid Iron Condor trade found!")
-                logger.info(f"   Strategy: {trade_proposal['strategy']}")
-                logger.info(f"   Expiry: {trade_proposal['expiry']}")
-                logger.info(f"   Lots: {trade_proposal['lots']}")
-                logger.info(f"   Net Credit: ₹{trade_proposal['net_credit']:.2f} per lot")
-                logger.info(f"   Total Credit: ₹{trade_proposal['net_credit_total']:.2f}")
-                logger.info(f"   Max Loss: ₹{trade_proposal['max_loss']:.2f}")
-                logger.info(f"   Max Profit: ₹{trade_proposal['max_profit']:.2f}")
-                logger.info(f"   Reward-to-Risk: {trade_proposal['reward_to_risk']:.2f}")
-                
-                # Log legs
-                logger.info("   Legs:")
-                for leg in trade_proposal['legs']:
-                    logger.info(
-                        f"     {leg['position']} {leg['option_type']} @ {leg['strike']} "
-                        f"(Price: ₹{leg['price']:.2f})"
-                    )
-                
-                # Save proposal
-                save_trade_proposal(trade_proposal)
-                
-                # Add to position tracker if provided
-                if position_tracker is not None:
-                    position_tracker.add_position(trade_proposal)
-                    logger.info(f"Position added to tracker: {trade_proposal['lots']} lots")
-                
-                return trade_proposal
-            else:
-                logger.debug(f"No valid trade for expiry {expiry_date_obj.strftime('%Y-%m-%d')}, trying next...")
-        
-        logger.info("❌ No valid Iron Condor trade found across all checked expiries")
-        return None
-        
-    except Exception as e:
-        logger.error(f"Error running Iron Condor strategy: {str(e)}", exc_info=True)
-        return None
-
-
-def _run_convex_backspread_strategy(api, symbol_manager, position_tracker, market_state, available_expiries, spot_price, capital, regime=None):
-    """Run Convex Backspread strategy. regime: actual regime at entry ('CONVEX' or 'NEUTRAL' when fallback)."""
-    try:
-        # #region agent log
-        try:
-            _exp = available_expiries[0] if available_expiries else None
-            _exp_obj = _get_date_object(_exp) if _exp else None
-            _dte = (_exp_obj - datetime.now().date()).days if _exp_obj else None
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
-                _f.write(json.dumps({"location":"strategy_runner.py:_run_convex_backspread_strategy","message":"Convex entry","data":{"len_available_expiries":len(available_expiries) if available_expiries else 0,"first_expiry":str(_exp),"days_to_expiry":_dte,"spot_price":spot_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H2"})+"\n")
-        except Exception: pass
-        # #endregion
-        logger.info("=== Running Convex Backspread Strategy (CONVEX regime) ===")
-        
-        # Use first expiry (weekly)
-        expiry_date = available_expiries[0]
-        expiry_date_obj = _get_date_object(expiry_date)
-        days_to_expiry = (expiry_date_obj - datetime.now().date()).days
-        
-        # Get option chain
-        option_chain_df = get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=30)
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
-                _f.write(json.dumps({"location":"strategy_runner.py:convex_option_chain","message":"Convex option chain","data":{"empty":option_chain_df.empty,"rows":len(option_chain_df) if hasattr(option_chain_df,'__len__') else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H3"})+"\n")
-        except Exception: pass
-        # #endregion
-        if option_chain_df.empty:
-            logger.warning("No option chain data for Convex strategy")
-            return None
-        
-        # Build market state for this expiry
-        market_state_expiry = build_market_state_from_chain(api, symbol_manager, spot_price, expiry_date, option_chain_df)
-        # #region agent log
-        try:
-            _ms = market_state_expiry or {}
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
-                _f.write(json.dumps({"location":"strategy_runner.py:convex_market_state","message":"Convex market state","data":{"is_none":market_state_expiry is None,"has_expiry":'expiry' in _ms,"has_days_to_expiry":'days_to_expiry' in _ms,"days_to_expiry":_ms.get('days_to_expiry'),"expiry":_ms.get('expiry'),"spot_price":_ms.get('spot_price')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H5"})+"\n")
-        except Exception: pass
-        # #endregion
-        if not market_state_expiry:
-            logger.warning("Could not build market state for Convex strategy")
-            return None
-        
-        # Get regime info for entry range state (needed for convex exit checks)
-        regime_detector = RegimeDetector()
-        recent_candles = regime_detector.get_recent_candles(api, symbol_manager, spot_price, lookback_days=20)
-        regime_info = regime_detector.detect_regime(market_state_expiry, recent_candles, api, symbol_manager)
-        entry_range_state = regime_info.get('range_state')
-        
-        # Generate trade proposal
-        trade_proposal = generate_nifty_call_backspread(market_state_expiry, option_chain_df, capital)
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as _f:
-                _f.write(json.dumps({"location":"strategy_runner.py:convex_generate_result","message":"Convex generate result","data":{"has_proposal":trade_proposal is not None},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"convex-debug","hypothesisId":"H4"})+"\n")
-        except Exception: pass
-        # #endregion
-        if trade_proposal:
-            # Actual regime at entry (CONVEX when in CONVEX regime, NEUTRAL when taken as fallback)
-            trade_proposal['regime_at_entry'] = regime if regime else 'CONVEX'
-            trade_proposal['entry_range_state'] = entry_range_state
-            
-            logger.info("✅ Valid Convex Backspread trade found!")
-            logger.info(f"   Strategy: {trade_proposal['strategy']}")
-            logger.info(f"   Expiry: {trade_proposal['expiry']}")
-            logger.info(f"   Lots: {trade_proposal['lots']}")
-            logger.info(f"   Net Debit: ₹{trade_proposal['net_debit']:.2f} per lot")
-            logger.info(f"   Total Debit: ₹{trade_proposal['net_debit_total']:.2f}")
-            logger.info(f"   Max Loss: ₹{trade_proposal['max_loss']:.2f}")
-            
-            # Log legs
-            logger.info("   Legs:")
-            for leg in trade_proposal['legs']:
-                logger.info(
-                    f"     {leg['position']} {leg['option_type']} @ {leg['strike']} "
-                    f"(Price: ₹{leg['price']:.2f}, Qty: {leg.get('quantity', 1)})"
-                )
-            
-            # Do NOT save or add to tracker here. Main commit loop will place orders
-            # via place_convex_trade() and only then save_trade_proposal + add_position.
-            return trade_proposal
-        else:
-            logger.info("❌ No valid Convex Backspread trade found")
-            return None
-        
-    except Exception as e:
-        logger.error(f"Error running Convex Backspread strategy: {str(e)}", exc_info=True)
-        return None
-
-
-def run_iron_condor_strategy(api, symbol_manager, position_tracker=None):
-    """
-    Run Iron Condor strategy check - checks multiple expiries to find valid trade.
-    
-    DEPRECATED: Use run_strategy_with_regime() instead for regime-aware execution.
-    This function is kept for backward compatibility.
-    
-    This function:
-    1. Gets NIFTY spot price
-    2. Gets all available expiries from symbol file
-    3. Checks each expiry until finding a valid trade:
-       - Fetches option chain
-       - Builds market state
-       - Generates trade proposal
-    4. Saves proposal if valid
-    5. Adds to position tracker if provided
-    
-    Args:
-        api: ShoonyaApiPy instance
-        symbol_manager: SymbolManager instance
-        position_tracker: Optional IronCondorPositionTracker instance
-    
-    Returns:
-        dict: Trade proposal or None if no valid trade found across all expiries
-    """
-    # Delegate to regime-aware function
-    try:
-        return run_strategy_with_regime(api, symbol_manager, position_tracker)
-    except Exception as e:
-        logger.error(f"Error running Iron Condor strategy: {str(e)}", exc_info=True)
-        return None
+        return datetime.now().date()
 
 
 def get_now_ist():
-    """Current time in India Standard Time (IST). Used for market hours and 3:30 PM close."""
+    """Current time in India Standard Time (IST)."""
     if IST is not None:
         return datetime.now(IST)
     return datetime.now()
 
 
+def get_weekly_expiry(date=None):
+    """Next weekly expiry (Thursday) for NIFTY."""
+    if date is None:
+        now = get_now_ist()
+        reference_date = now.date()
+        reference_datetime = now
+    else:
+        reference_datetime = date if isinstance(date, datetime) else datetime.combine(date, datetime.min.time())
+        reference_date = reference_datetime.date() if isinstance(date, datetime) else date
+    if reference_date.weekday() == 3:
+        market_close = reference_datetime.replace(hour=15, minute=30, second=0, microsecond=0)
+        if reference_datetime > market_close:
+            return reference_date + timedelta(days=7)
+            return reference_date
+    days_ahead = 3 - reference_date.weekday()
+    if days_ahead <= 0:
+        days_ahead += 7
+    return reference_date + timedelta(days=days_ahead)
+
+
+def get_next_available_expiry(symbol_manager, preferred_date=None):
+    """Next available expiry from symbol file."""
+    try:
+        preferred_date = _get_date_object(preferred_date or get_weekly_expiry())
+        if symbol_manager.nse_fo is None:
+            return preferred_date
+        nifty_options = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo["instrument"] == "OPTIDX")
+            & (symbol_manager.nse_fo["symbol"] == "NIFTY")
+            & (symbol_manager.nse_fo["optiontype"].isin(["CE", "PE"]))
+        ].copy()
+        if nifty_options.empty:
+            return preferred_date
+        nifty_options["expiry_date"] = pd.to_datetime(nifty_options["expiry"], format="%d-%b-%Y", errors="coerce")
+        valid_expiries = nifty_options["expiry_date"].dropna().dt.date.unique()
+        if len(valid_expiries) == 0:
+            return preferred_date
+        future_expiries = [d for d in valid_expiries if d >= preferred_date]
+        return min(future_expiries) if future_expiries else max(valid_expiries)
+    except Exception as e:
+        logger.error("Error getting next available expiry: %s", e, exc_info=True)
+        return preferred_date if preferred_date else datetime.now().date()
+
+
+def get_all_eligible_expiries(symbol_manager, max_expiries_to_check=10):
+    """Eligible expiries from symbol file (future, >= DAYS_TO_EXPIRY_MIN days)."""
+    try:
+        if symbol_manager.nse_fo is None:
+            return []
+        nifty_options = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo["instrument"] == "OPTIDX")
+            & (symbol_manager.nse_fo["symbol"] == "NIFTY")
+            & (symbol_manager.nse_fo["optiontype"].isin(["CE", "PE"]))
+        ].copy()
+        if nifty_options.empty:
+            return []
+        nifty_options["expiry_date"] = pd.to_datetime(nifty_options["expiry"], format="%d-%b-%Y", errors="coerce")
+        valid_expiries = sorted(nifty_options["expiry_date"].dropna().dt.date.unique())
+        today = datetime.now().date()
+        future = [d for d in valid_expiries if d >= today and (d - today).days >= DAYS_TO_EXPIRY_MIN]
+        return future[:max_expiries_to_check]
+    except Exception as e:
+        logger.error("Error getting eligible expiries: %s", e, exc_info=True)
+        return []
+
+
+def get_nifty_spot_price(api, symbol_manager):
+    """Current NIFTY spot price."""
+    try:
+        nifty_info = symbol_manager.get_token_info("Nifty 50", exchange="NSE")
+        if not nifty_info:
+            nifty_info = {"token": "26000", "exchange": "NSE"}
+        if not nifty_info or "token" not in nifty_info:
+            return None
+        quote = api.get_quotes(exchange="NSE", token=nifty_info["token"])
+        if quote and "lp" in quote:
+            return float(quote["lp"])
+            return None
+    except Exception as e:
+        logger.error("Error getting NIFTY spot price: %s", e)
+        return None
+
+
+def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50):
+    """Option chain for NIFTY for given expiry (DataFrame with strike, option_type, ltp, bid, ask, etc.)."""
+    try:
+        expiry_date_obj = _get_date_object(expiry_date)
+        expiry_str = expiry_date_obj.strftime("%d-%b-%Y").upper()
+        if symbol_manager.nse_fo is None:
+            return pd.DataFrame()
+        nifty_options = symbol_manager.nse_fo[
+            (symbol_manager.nse_fo["instrument"] == "OPTIDX")
+            & (symbol_manager.nse_fo["symbol"] == "NIFTY")
+            & (symbol_manager.nse_fo["optiontype"].isin(["CE", "PE"]))
+        ].copy()
+        nifty_options["expiry_date"] = pd.to_datetime(nifty_options["expiry"], format="%d-%b-%Y", errors="coerce")
+        options_df = nifty_options[nifty_options["expiry_date"].dt.date == expiry_date_obj].copy()
+        if options_df.empty:
+            return pd.DataFrame()
+        if "expiry_date" in options_df.columns:
+            options_df = options_df.drop(columns=["expiry_date"])
+        strike_interval = 50
+        min_strike = int(spot_price) - count * strike_interval
+        max_strike = int(spot_price) + count * strike_interval
+        options_df = options_df[(options_df["strikeprice"] >= min_strike) & (options_df["strikeprice"] <= max_strike)].copy()
+        if options_df.empty:
+            return pd.DataFrame()
+        chain_data = []
+        for _, option_row in options_df.iterrows():
+            try:
+                tsym = option_row["tradingsymbol"]
+                token = str(option_row["token"])
+                strike = float(option_row["strikeprice"])
+                option_type = option_row["optiontype"]
+                quote = api.get_quotes(option_row["exchange"], token)
+                if not quote or strike <= 0:
+                    continue
+                bid = float(quote.get("bp1", 0))
+                ask = float(quote.get("sp1", 0))
+                ltp = float(quote.get("lp", 0))
+                mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else ltp
+                chain_data.append({
+                    "strike": strike,
+                    "option_type": option_type,
+                    "tradingsymbol": tsym,
+                    "ltp": ltp,
+                    "bid": bid,
+                    "ask": ask,
+                    "mid_price": mid_price,
+                    "delta": 0.0,
+                    "oi": int(quote.get("oi", 0)),
+                    "volume": int(quote.get("v", 0)),
+                    "lot_size": int(option_row.get("lotsize", 50)),
+                })
+            except Exception:
+                continue
+        return pd.DataFrame(chain_data) if chain_data else pd.DataFrame()
+    except Exception as e:
+        logger.error("Error getting option chain: %s", e, exc_info=True)
+        return pd.DataFrame()
+
+
+def get_india_vix(api) -> Optional[float]:
+    """Fetch India VIX from NSE."""
+    if api is None:
+        return None
+    try:
+        quote = api.get_quotes(exchange="NSE", token=INDIA_VIX_TOKEN_NSE)
+        if not quote:
+            return None
+        vix = float(quote.get("lp", 0))
+        return vix if vix > 0 else None
+    except Exception:
+        return None
+
+
+def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
+    """Persist daily metrics to market_data_YYYYMMDD/daily_metrics.json."""
+    try:
+        when = date_str or datetime.now().strftime("%Y%m%d")
+        data_dir = f"market_data_{when}"
+        os.makedirs(data_dir, exist_ok=True)
+        path = os.path.join(data_dir, "daily_metrics.json")
+        existing = {}
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    existing = json.load(f)
+        except Exception:
+            pass
+        existing.update(metrics)
+        existing.setdefault("date", when)
+        with open(path, "w") as f:
+            json.dump(existing, f, indent=2)
+        except Exception as e:
+        logger.debug("Could not save daily metrics: %s", e)
+
+
 def is_market_closed_ist():
-    """
-    True if it is past 3:30 PM IST on a weekday (NSE market closed).
-    Use this to stop the main loop at market close regardless of server timezone.
-    """
+    """True if past 3:30 PM IST on a weekday."""
     now = get_now_ist()
     if now.weekday() >= 5:
         return False
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    return now >= market_close
+    return now >= now.replace(hour=15, minute=30, second=0, microsecond=0)
 
 
 def is_market_hours():
-    """
-    Check if current time is during market hours (9:15 AM - 3:30 PM IST).
-    Uses IST so behaviour is correct regardless of server timezone.
-    
-    Returns:
-        bool: True if market is open
-    """
+    """True if 9:15 AM - 3:30 PM IST on a weekday."""
     now = get_now_ist()
     market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    is_weekday = now.weekday() < 5
-    return is_weekday and market_open <= now <= market_close
-
+    return now.weekday() < 5 and market_open <= now <= market_close

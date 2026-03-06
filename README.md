@@ -116,6 +116,18 @@ To leave the venv: `deactivate`.
 
 ---
 
+### Paper trading only (no real orders)
+
+By default the app runs in **paper trading only** mode: no real orders are sent to the broker (no margin used). Convex entries and exits are simulated and logged; positions are still tracked locally.
+
+- **Paper only (default):** `PAPER_TRADING_ONLY=1` or unset (default is on).
+- **Live trading:** set `PAPER_TRADING_ONLY=0` before starting, e.g.:
+  ```bash
+  PAPER_TRADING_ONLY=0 python main.py
+  ```
+
+---
+
 ### One-time setup (credentials)
 
 1. Create `cred.yml` from template:
