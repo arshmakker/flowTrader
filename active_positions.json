@@ -20898,10 +20898,166 @@
     "final_pnl": 360.7500000000043
   },
   {
-    "trade_id": "broker_sync_10MAR26_2038c9bd",
+    "trade_id": "broker_sync_10MAR26_409cdea2",
     "proposal_id": "broker_sync_10MAR26",
-    "entry_time": "2026-03-05T11:41:44.757151",
+    "entry_time": "2026-03-05T13:53:25.817920",
     "lots": 1,
+    "lot_size": 65,
+    "entry_spot": null,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "SYNCED",
+    "status": "CLOSED",
+    "expiry": "2026-03-10",
+    "legs": [
+      {
+        "tradingsymbol": "NIFTY10MAR26C24850",
+        "strike": 24850.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 119.08
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24600",
+        "strike": 24600.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 233.7
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24900",
+        "strike": 24900.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 111.59
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24650",
+        "strike": 24650.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 228.89
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24800",
+        "strike": 24800.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 124.15
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24550",
+        "strike": 24550.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 244.65
+      }
+    ],
+    "entry_credit": 0,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0,
+    "days_to_expiry": 5,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE24850": 119.08,
+      "CE24600": 233.7,
+      "CE24900": 111.59,
+      "CE24650": 228.89,
+      "CE24800": 124.15,
+      "CE24550": 244.65
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "exit_time": "2026-03-05T13:54:10.381422",
+    "exit_reason": "convex_exit_CONVEX_MAX_LOSS",
+    "final_pnl": -15674.280000000002,
+    "peak_profit": 0.0
+  },
+  {
+    "trade_id": "broker_sync_10MAR26_cb4b0e9a",
+    "proposal_id": "broker_sync_10MAR26",
+    "entry_time": "2026-03-05T13:54:36.155578",
+    "lots": 3,
+    "lot_size": 65,
+    "entry_spot": null,
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "SYNCED",
+    "status": "CLOSED",
+    "expiry": "2026-03-10",
+    "legs": [
+      {
+        "tradingsymbol": "NIFTY10MAR26C24850",
+        "strike": 24850.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 119.08
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24600",
+        "strike": 24600.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 233.7
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24900",
+        "strike": 24900.0,
+        "option_type": "CE",
+        "quantity": 2,
+        "position": "LONG",
+        "price": 111.59
+      },
+      {
+        "tradingsymbol": "NIFTY10MAR26C24650",
+        "strike": 24650.0,
+        "option_type": "CE",
+        "quantity": 1,
+        "position": "SHORT",
+        "price": 228.89
+      }
+    ],
+    "entry_credit": 0,
+    "margin_used": null,
+    "profit_target_margin": null,
+    "profit_target_inr": null,
+    "max_loss": 0,
+    "days_to_expiry": 5,
+    "days_to_expiry_short": null,
+    "entry_range_state": null,
+    "entry_iv_percentile": null,
+    "entry_prices": {
+      "CE24850": 119.08,
+      "CE24600": 233.7,
+      "CE24900": 111.59,
+      "CE24650": 228.89
+    },
+    "profit_locked_inr": 0,
+    "convex_tsl_active": false,
+    "convex_peak_mtm": 0.0,
+    "exit_time": "2026-03-05T13:55:21.251895",
+    "exit_reason": "convex_exit_CONVEX_MAX_LOSS",
+    "final_pnl": -11793.539999999997,
+    "peak_profit": 0.0
+  },
+  {
+    "trade_id": "broker_sync_10MAR26_bf748dc0",
+    "proposal_id": "broker_sync_10MAR26",
+    "entry_time": "2026-03-05T13:56:36.112548",
+    "lots": 2,
     "lot_size": 65,
     "entry_spot": null,
     "strategy": "CALL_BACKSPREAD",
@@ -20916,15 +21072,7 @@
         "option_type": "CE",
         "quantity": 2,
         "position": "LONG",
-        "price": 0.0
-      },
-      {
-        "tradingsymbol": "NIFTY10MAR26C24600",
-        "strike": 24600.0,
-        "option_type": "CE",
-        "quantity": 1,
-        "position": "SHORT",
-        "price": 0.0
+        "price": 119.08
       },
       {
         "tradingsymbol": "NIFTY10MAR26C24900",
@@ -20932,7 +21080,7 @@
         "option_type": "CE",
         "quantity": 2,
         "position": "LONG",
-        "price": 0.0
+        "price": 111.59
       },
       {
         "tradingsymbol": "NIFTY10MAR26C24650",
@@ -20940,23 +21088,7 @@
         "option_type": "CE",
         "quantity": 1,
         "position": "SHORT",
-        "price": 0.0
-      },
-      {
-        "tradingsymbol": "NIFTY10MAR26C24800",
-        "strike": 24800.0,
-        "option_type": "CE",
-        "quantity": 2,
-        "position": "LONG",
-        "price": 0.0
-      },
-      {
-        "tradingsymbol": "NIFTY10MAR26C24550",
-        "strike": 24550.0,
-        "option_type": "CE",
-        "quantity": 1,
-        "position": "SHORT",
-        "price": 0.0
+        "price": 228.89
       }
     ],
     "entry_credit": 0,
@@ -20964,11 +21096,15 @@
     "profit_target_margin": null,
     "profit_target_inr": null,
     "max_loss": 0,
-    "days_to_expiry": null,
+    "days_to_expiry": 5,
     "days_to_expiry_short": null,
     "entry_range_state": null,
     "entry_iv_percentile": null,
-    "entry_prices": {},
+    "entry_prices": {
+      "CE24850": 119.08,
+      "CE24900": 111.59,
+      "CE24650": 228.89
+    },
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
     "convex_peak_mtm": 0.0

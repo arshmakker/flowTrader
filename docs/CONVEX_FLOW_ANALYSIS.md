@@ -4,6 +4,13 @@ This document summarizes the end-to-end flow analysis, identified flaws, fixes a
 
 ---
 
+## Design goal (north star)
+
+**All trades should be profitable and exit with positive TSL.**  
+Entry, exit logic, TSL parameters, profit targets, and risk caps should be tuned and validated with this goal in mind: aim to lock in profit via trailing stop and avoid letting winners reverse into losers.
+
+---
+
 ## 1. Startup Flow
 
 - **Init:** `main.py` creates `IronCondorPositionTracker()`, loads `active_positions.json`.
@@ -99,3 +106,53 @@ This document summarizes the end-to-end flow analysis, identified flaws, fixes a
 - **Exit when option_chain is empty:** Use broker MTM + position `days_to_expiry` to run convex exit (minimal path) so we don’t skip exit for a full cycle.
 - **final_pnl from broker:** When closing, if we have broker MTM for that position, optionally set `final_pnl` to that for consistency with broker books.
 - **Broker avg price field name:** If your broker uses a different key for average price, add it in `_get_avg_price_from_broker_row` in `position_tracker.py`.
+
+---
+
+## 11. Holes Poked (Second Pass)
+
+### Fixed
+
+| Hole | Risk | Fix |
+|------|------|-----|
+| **get_positions() error response** | Shoonya returns `{"stat": "Not_Ok", "emsg": "..."}` on failure. We treated it as "no positions" and marked all OPEN as `broker_flattened`. | Added `is_valid_positions_response(raw)`; sync and main treat invalid response as "no data" and skip sync / set `positions_raw = None` so we don't overwrite OPEN or use broker MTM from error. |
+| **EOD final_pnl from error response** | If `get_positions()` returned error at EOD, we passed it to `broker_mtm_for_tracked_positions` and got 0, storing wrong final_pnl. | EOD paths validate response and only use broker MTM when valid. |
+
+### Known gaps (no fix yet)
+
+| Gap | Risk | Mitigation |
+|-----|------|------------|
+| **option_chain empty** | When `get_option_chain_data` returns empty for a position, we `continue` and skip TSL/max-loss/profit-target for that cycle. | Retry next 60s; optional: run convex exit using broker MTM + `days_to_expiry` when chain empty. |
+| **close_convex_position partial fill** | If one exit leg fills and the next fails (e.g. timeout), we return `success: False` and do not call `close_position`. Tracker stays OPEN; broker has mixed state. | Next sync may see reduced legs; manual or retry. Optional: mark partial_exit and retry close. |
+| **EOD pre-close stale positions_raw** | We fetch `positions_raw_eod` once; after closing first position, broker state changes but we reuse same raw for subsequent `final_pnl`. | Usually one Convex position; optional: re-fetch after each close. |
+| **Market-closed path no broker close** | When we detect market closed, we only update tracker (no orders). If clock said closed early, broker might still have open positions. | EOD pre-close 15 min before to flatten when market open. |
+| **Iron Condor trailing vs Convex** | `should_exit_trailing` only for `book == 'INCOME'`; Convex uses `should_exit_convex`. Wrong `book` could skip a path. | Ensure proposal sets `book == 'CONVEX'` for Convex. |
+
+---
+
+## 12. Goal-alignment scan (profitable + exit with positive TSL)
+
+**North star:** All trades should be profitable and exit with positive TSL.
+
+### Fixes applied (this pass)
+
+| Flaw | Against goal | Fix |
+|------|--------------|-----|
+| **TSL could fire in loss** | When TSL activated on time (25%) with mtm=0, peak=0; trail 15% from peak → exit at mtm ≤ 0. That crystallizes loss as "TSL exit". | In `check_convex_exit_conditions`, only return `CONVEX_TSL_HIT` when `current_mtm > 0`. If trail is hit but mtm ≤ 0, skip TSL exit and let max loss or time/regime handle. Same logic in `backtest_convex_backspread.py`. |
+| **NO_ATR_EXPANSION cut winners** | We exited on NO_ATR_EXPANSION regardless of MTM, so we could close a position that was in profit. | Only exit with NO_ATR_EXPANSION when `current_mtm is None or current_mtm <= 0`. Same for backtest. |
+| **RE_COMPRESSION cut winners** | Same: we could exit in profit on re-compression. | Only exit with RE_COMPRESSION when `current_mtm is None or current_mtm <= 0`. Same for backtest. |
+
+### Already aligned
+
+- **Regime change when in profit:** We ignore regime change when `current_mtm > 0`; TSL or other exits handle.
+- **TIME_ELAPSED_40PCT:** Only exits when in loss (`current_mtm <= 0`); we don't cut winners on time.
+- **Max loss:** Caps downside; doesn't force exit when in profit.
+
+### Remaining trade-offs (no code change)
+
+| Item | Note |
+|------|------|
+| **REGIME_CHANGED when in loss** | We still exit after 3 confirmations when regime flips to SIDEWAYS and we're in loss. That locks in loss but limits further drawdown. Deferring to TSL only would require not exiting on regime when in loss (risk: hold into bigger loss). |
+| **Convex has no profit_target_inr** | Proposal does not set `profit_target_inr`; we rely on TSL only for taking profit. Optional: set e.g. 1% of capital as profit target so we have a second path to lock profit. |
+| **EOD liquidation** | We close all positions 15 min before close regardless of PnL (MIS requirement). Some positions may close at a loss; we rely on TSL/profit target earlier in the day. |
+| **option_chain empty** | One cycle without exit evaluation; next cycle retries. Optional: use broker MTM when chain empty to still run TSL/max loss. |

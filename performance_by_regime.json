@@ -4513,5 +4513,29 @@
     "max_loss": 3121.6249999999986,
     "lots": 1,
     "trade_id": "2026-03-02T14:30:41.649005_2d54c566_98f6cb45"
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "SYNCED",
+    "entry_time": "2026-03-05T13:53:25.817920",
+    "exit_time": "2026-03-05T13:54:10.381422",
+    "pnl": -15674.280000000002,
+    "max_loss": 0,
+    "lots": 1,
+    "trade_id": "broker_sync_10MAR26_409cdea2",
+    "peak_profit": 0.0
+  },
+  {
+    "strategy": "CALL_BACKSPREAD",
+    "book": "CONVEX",
+    "regime_at_entry": "SYNCED",
+    "entry_time": "2026-03-05T13:54:36.155578",
+    "exit_time": "2026-03-05T13:55:21.251895",
+    "pnl": -11793.539999999997,
+    "max_loss": 0,
+    "lots": 3,
+    "trade_id": "broker_sync_10MAR26_cb4b0e9a",
+    "peak_profit": 0.0
   }
 ]

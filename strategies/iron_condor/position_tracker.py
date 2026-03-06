@@ -233,6 +233,18 @@ class IronCondorPositionTracker:
             positions.append(position)
         return positions
 
+    @staticmethod
+    def is_valid_positions_response(raw: Any) -> bool:
+        """
+        True if raw is a valid get_positions() success response (Shoonya: list of position rows).
+        False for error response (e.g. dict with stat='Not_Ok') so we don't treat it as 'no positions'.
+        """
+        if raw is None:
+            return False
+        if isinstance(raw, dict) and (str(raw.get("stat") or "").strip().upper() == "NOT_OK"):
+            return False
+        return True
+
     def sync_from_broker(self, api: Any, positions_raw: Any = None) -> None:
         """
         Sync OPEN positions from broker. Broker is source of truth.
@@ -240,6 +252,7 @@ class IronCondorPositionTracker:
         - Keeps all CLOSED positions (history).
         - Replaces OPEN list: if broker has no NFO positions, clear OPEN; else set OPEN from broker.
         If positions_raw is provided (e.g. from a shared get_positions() in the same interval), no API call is made.
+        Ignores error responses (stat=Not_Ok) so we don't wrongly mark OPEN positions as broker_flattened.
         """
         if positions_raw is None:
             logger.info("sync_from_broker: fetching broker positions from broker for sync...")
@@ -250,6 +263,9 @@ class IronCondorPositionTracker:
                 return
         else:
             raw = positions_raw
+        if not self.is_valid_positions_response(raw):
+            logger.warning("sync_from_broker: invalid/error get_positions response (e.g. stat=Not_Ok); skipping sync this cycle")
+            return
         if not raw:
             raw = []
         rows = raw if isinstance(raw, list) else [raw]
@@ -748,30 +764,25 @@ class IronCondorPositionTracker:
                 if time_elapsed_pct > 0.40 and (current_mtm is None or current_mtm <= 0):
                     return True, "TIME_ELAPSED_40PCT"
             
-            # Exit condition 3: No ATR expansion within 40% of expiry time
-            # Check if we're past 40% of time and ATR hasn't expanded
+            # Exit condition 3: No ATR expansion within 40% of expiry time — only when in loss (don't cut winners)
             if (entry_days_to_expiry is not None and days_to_expiry is not None
                     and entry_days_to_expiry > 0):
                 time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
                 if time_elapsed_pct >= 0.40:
-                    # Check if ATR has expanded (percentile should be higher)
-                    if current_atr_percentile is not None:
-                        # If ATR percentile is still low (< 30), no expansion occurred
-                        if current_atr_percentile < 30:
+                    if current_atr_percentile is not None and current_atr_percentile < 30:
+                        if current_mtm is None or current_mtm <= 0:
                             return True, "NO_ATR_EXPANSION"
             
-            # Exit condition 4: Price re-entered compression range
-            # If range was COMPRESSED at entry and is still COMPRESSED, check if price moved back
+            # Exit condition 4: Price re-entered compression range — only when in loss (don't cut winners)
             if entry_range_state == "COMPRESSED" and current_range_state == "COMPRESSED":
-                # Calculate price movement from entry
                 if entry_spot and entry_spot != 0:
                     price_change_pct = abs(current_spot - entry_spot) / entry_spot
-                    # If price moved significantly but range is still compressed, might indicate re-compression
                     if (entry_days_to_expiry is not None and days_to_expiry is not None
                             and entry_days_to_expiry > 0):
                         time_elapsed_pct = (entry_days_to_expiry - days_to_expiry) / entry_days_to_expiry
-                        if time_elapsed_pct > 0.30 and price_change_pct < 0.005:  # Less than 0.5% movement
-                            return True, "RE_COMPRESSION"
+                        if time_elapsed_pct > 0.30 and price_change_pct < 0.005:
+                            if current_mtm is None or current_mtm <= 0:
+                                return True, "RE_COMPRESSION"
             
             # Time elapsed for TSL / absolute protection (reuse in this block)
             if (entry_days_to_expiry is not None and days_to_expiry is not None
@@ -825,8 +836,15 @@ class IronCondorPositionTracker:
                         trailing_pct * 100,
                         peak * (1.0 - trailing_pct),
                     )
+                    # Only exit on TSL when in profit (goal: exit with positive TSL)
                     if current_mtm <= peak * (1.0 - trailing_pct):
-                        return True, "CONVEX_TSL_HIT"
+                        if current_mtm > 0:
+                            return True, "CONVEX_TSL_HIT"
+                        # In loss: don't crystallize via TSL; let max loss or time/regime handle
+                        logger.debug(
+                            "TSL trail hit but mtm=₹%.2f <= 0; skipping exit (goal: exit with positive TSL)",
+                            current_mtm,
+                        )
             
             return False, None
             

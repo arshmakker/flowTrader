@@ -80,23 +80,50 @@ A Python-based multi-strategy trading system with regime detection for NIFTY der
 
 ## Installation & Setup
 
-1. Clone the repository:
+### Using a virtual environment (recommended)
+
+Use a venv so dependencies stay isolated from the system Python.
+
+1. Clone and enter the repo:
 ```bash
 git clone <repository-url>
 cd regimetrader
 ```
 
-2. Install required packages:
+2. Create and activate a virtual environment:
+```bash
+# Create venv in project directory (ignored by git)
+python3 -m venv venv
+
+# Activate (macOS/Linux)
+source venv/bin/activate
+
+# Activate (Windows)
+# venv\Scripts\activate
+```
+
+3. Install dependencies inside the venv:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create `cred.yml` from template:
+4. When the venv is active, run the app:
+```bash
+python main.py
+```
+
+To leave the venv: `deactivate`.
+
+---
+
+### One-time setup (credentials)
+
+1. Create `cred.yml` from template:
 ```bash
 cp cred.yml.template cred.yml
 ```
 
-4. Edit `cred.yml` with your credentials:
+2. Edit `cred.yml` with your credentials:
 ```yaml
 user: "YOUR_USER_ID"
 pwd: "YOUR_PASSWORD"

@@ -396,15 +396,15 @@ class ConvexBackspreadBacktester:
             if current_mtm is None or current_mtm <= 0:
                 return True, "TIME_ELAPSED_40PCT"
 
-        # 3. No ATR expansion within threshold
+        # 3. No ATR expansion within threshold — only when in loss (don't cut winners)
         if entry_days_to_expiry > 0 and time_elapsed_pct >= threshold and current_atr_percentile is not None:
-            if current_atr_percentile < 30:
+            if current_atr_percentile < 30 and (current_mtm is None or current_mtm <= 0):
                 return True, "NO_ATR_EXPANSION"
 
-        # 4. Re-compression
+        # 4. Re-compression — only when in loss (don't cut winners)
         if entry_range_state == "COMPRESSED" and current_range_state == "COMPRESSED" and entry_spot and entry_spot > 0:
             price_change_pct = abs(spot_price - entry_spot) / entry_spot
-            if time_elapsed_pct > 0.30 and price_change_pct < 0.005:
+            if time_elapsed_pct > 0.30 and price_change_pct < 0.005 and (current_mtm is None or current_mtm <= 0):
                 return True, "RE_COMPRESSION"
 
         # 5. Max loss & TSL
@@ -424,7 +424,7 @@ class ConvexBackspreadBacktester:
             trailing_pct = CONVEX_TSL_TRAIL_PCT
             if time_elapsed_pct > CONVEX_TSL_TIGHT_TIME_PCT or (current_atr_percentile is not None and current_atr_percentile < CONVEX_TSL_ATR_TIGHT_THRESHOLD):
                 trailing_pct = CONVEX_TSL_TRAIL_TIGHT_PCT
-            if current_mtm <= peak * (1.0 - trailing_pct):
+            if current_mtm <= peak * (1.0 - trailing_pct) and current_mtm > 0:
                 return True, "CONVEX_TSL_HIT"
         return False, None
 
@@ -539,10 +539,12 @@ class ConvexBackspreadBacktester:
                         if option_chain.empty:
                             self._diag_chain_empty += 1
                         else:
-                            # Generate trade proposal (backtest-only: relax net debit cap so more proposals accepted)
+                            # Generate trade proposal (backtest-only: relax net debit + max loss % + max 5 lots)
                             trade_proposal = generate_nifty_call_backspread(
                                 market_state, option_chain, self.capital,
-                                max_net_debit_pct=0.011,  # 1.1% of spot for backtest (allows ~275 at 25k spot)
+                                max_net_debit_pct=0.030,  # 3% of spot for backtest (production uses 0.32%)
+                                max_loss_pct_of_capital_override=0.25,  # 25% for backtest (production uses 10%)
+                                max_lots_override=5,  # backtest-only: allow up to 5 lots (production uses 1)
                             )
                             if not trade_proposal:
                                 self._diag_proposal_none += 1

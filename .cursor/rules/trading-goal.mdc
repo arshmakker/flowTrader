@@ -1,0 +1,15 @@
+---
+description: North star for Convex/trading logic — profitable trades, exit with positive TSL
+alwaysApply: true
+---
+
+# Trading goal (north star)
+
+**All trades should be profitable and exit with positive TSL (trailing stop loss).**
+
+When changing or reviewing:
+
+- **Exit logic** (TSL, profit target, max loss, regime change, time exit): prefer choices that lock in profit and avoid letting winners reverse into losers.
+- **TSL parameters** (activation MTM %, time %, trail %): tune so exits tend to be in profit when TSL triggers.
+- **Entry filters and sizing**: support trades that have a realistic path to positive TSL exit.
+- **Backtests and analysis**: evaluate strategies against this goal (e.g. % of trades that exit with positive TSL, not just total PnL).

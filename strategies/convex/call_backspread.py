@@ -39,7 +39,9 @@ CONVEX_MARGIN_EXAMPLE_INR = 38_18_065  # ~38.18 lakh for 10 lots (MIS)
 
 def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFrame, 
                                    capital: float = 1000000.0,
-                                   max_net_debit_pct: Optional[float] = None) -> Optional[Dict]:
+                                   max_net_debit_pct: Optional[float] = None,
+                                   max_loss_pct_of_capital_override: Optional[float] = None,
+                                   max_lots_override: Optional[int] = None) -> Optional[Dict]:
     """
     Generate NIFTY Call Backspread trade proposal.
     
@@ -52,6 +54,10 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         capital: Total capital allocated (default: ₹10L)
         max_net_debit_pct: Optional override for net debit cap (e.g. backtest-only).
             If None, uses MAX_NET_DEBIT_PCT.
+        max_loss_pct_of_capital_override: Optional override for max loss % of capital (e.g. backtest-only).
+            If None, uses MAX_LOSS_PCT_OF_CAPITAL.
+        max_lots_override: Optional override for max lots per trade (e.g. backtest-only).
+            If None, uses CONVEX_MAX_LOTS.
     
     Returns:
         Trade proposal dictionary or None if rejected:
@@ -229,7 +235,8 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
         
         # Max loss: when we pay a debit, loss at expiry at/below ATM = debit paid; when we receive credit, that scenario has no loss
         max_loss_per_lot = max(0.0, net_debit)
-        max_allowed_loss = capital * MAX_LOSS_PCT_OF_CAPITAL
+        loss_pct = max_loss_pct_of_capital_override if max_loss_pct_of_capital_override is not None else MAX_LOSS_PCT_OF_CAPITAL
+        max_allowed_loss = capital * loss_pct
         if max_loss_per_lot > 0 and max_loss_per_lot > max_allowed_loss:
             logger.info(f"Max loss {max_loss_per_lot:.2f} exceeds {max_allowed_loss:.2f} (1% of capital)")
             # #region agent log
@@ -262,7 +269,8 @@ def generate_nifty_call_backspread(market_state: Dict, option_chain: pd.DataFram
             return None
         if clamped != lots:
             lots = clamped
-        lots = min(lots, CONVEX_MAX_LOTS)
+        max_lots = max_lots_override if max_lots_override is not None else CONVEX_MAX_LOTS
+        lots = min(lots, max_lots)
 
         # Log lot/quantity calculation: long leg = 2 × lots × lot_size, short leg = 1 × lots × lot_size
         long_qty = 2 * lots * lot_size

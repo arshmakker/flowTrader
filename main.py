@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import yaml
 import time
@@ -247,9 +248,18 @@ def initialize_api():
         logging.info("Attempting to login to Shoonya API...")
         logging.debug(f"Using credentials - User: {creds['user']}, Vendor: {creds['vc']}")
         
-        # Always prompt for 2FA code
-        factor2 = input(Fore.CYAN + "Enter your 2FA code: ")
-        
+        # 2FA: use env TWOFA if set; else prompt only when stdin is a TTY (avoid hang in IDE/venv)
+        factor2 = os.environ.get("TWOFA", "").strip()
+        if not factor2:
+            if not sys.stdin.isatty():
+                msg = "No TTY and TWOFA not set. Run in a terminal and enter 2FA when prompted, or: TWOFA=<code> python main.py"
+                logging.error(Fore.RED + msg)
+                raise ValueError(msg)
+            try:
+                factor2 = input(Fore.CYAN + "Enter your 2FA code: ")
+            except (EOFError, KeyboardInterrupt):
+                logging.error(Fore.RED + "2FA required. Set env TWOFA or run in a terminal and enter when prompted.")
+                raise ValueError("2FA code is required")
         if not factor2:
             logging.error(Fore.RED + "2FA code is required")
             raise ValueError("2FA code is required")
@@ -421,7 +431,9 @@ def main():
                             logger.info(Fore.YELLOW + f"⚠️ Closing {len(active_positions)} open positions before shutdown...")
                             eod_positions_raw = None
                             try:
-                                eod_positions_raw = api.get_positions()
+                                raw = api.get_positions()
+                                if IronCondorPositionTracker.is_valid_positions_response(raw):
+                                    eod_positions_raw = raw
                             except Exception:
                                 pass
                             for position in active_positions:
@@ -520,7 +532,9 @@ def main():
                                 logger.info(Fore.YELLOW + f"⚠️ End-of-day liquidation: Closing {len(active_positions)} positions before market close...")
                                 positions_raw_eod = None
                                 try:
-                                    positions_raw_eod = api.get_positions()
+                                    raw_eod = api.get_positions()
+                                    if IronCondorPositionTracker.is_valid_positions_response(raw_eod):
+                                        positions_raw_eod = raw_eod
                                 except Exception:
                                     pass
                                 # Get current prices and close each position
@@ -638,6 +652,9 @@ def main():
                         # Single get_positions() for sync (imbalance check removed)
                         try:
                             positions_raw = api.get_positions()
+                            if not IronCondorPositionTracker.is_valid_positions_response(positions_raw):
+                                logger.warning("get_positions returned error response (e.g. stat=Not_Ok); skipping sync and broker MTM this cycle")
+                                positions_raw = None
                         except Exception as e:
                             logger.warning("get_positions failed (position check skipped this cycle): %s", e)
                             positions_raw = None
