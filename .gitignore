@@ -66,17 +66,24 @@ trade_proposals_by_id/
 *.trade_proposal.json
 option_snapshots/
 
-# Runtime Data (generated during execution)
+# Runtime Data (generated during execution — old system)
 active_positions.json
+active_positions.*.json
 performance_by_regime.json
+performance_by_regime.*.json
 strategy_decisions.json
 partial_fill_reviews.json
 trend_state.json
+ledger.json
+dedupe_report.json
+duplication_deep_report.json
+backtest_main_flow_report_*.json
 
-# Paper trading / data output (agent.md data/)
+# Paper trading data (new system — agent.md)
 data/paper_trades.csv
 data/paper_signals.log
 data/paper_summary.json
+data/
 
 # IDE
 .vscode/
