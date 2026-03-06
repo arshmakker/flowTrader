@@ -65,7 +65,7 @@ def get_weekly_expiry(date=None):
         market_close = reference_datetime.replace(hour=15, minute=30, second=0, microsecond=0)
         if reference_datetime > market_close:
             return reference_date + timedelta(days=7)
-            return reference_date
+        return reference_date
     days_ahead = 3 - reference_date.weekday()
     if days_ahead <= 0:
         days_ahead += 7
@@ -129,7 +129,7 @@ def get_nifty_spot_price(api, symbol_manager):
         quote = api.get_quotes(exchange="NSE", token=nifty_info["token"])
         if quote and "lp" in quote:
             return float(quote["lp"])
-            return None
+        return None
     except Exception as e:
         logger.error("Error getting NIFTY spot price: %s", e)
         return None
@@ -220,13 +220,13 @@ def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
             try:
                 with open(path, "r") as f:
                     existing = json.load(f)
-        except Exception:
-            pass
+            except Exception:
+                pass
         existing.update(metrics)
         existing.setdefault("date", when)
         with open(path, "w") as f:
             json.dump(existing, f, indent=2)
-        except Exception as e:
+    except Exception as e:
         logger.debug("Could not save daily metrics: %s", e)
 
 

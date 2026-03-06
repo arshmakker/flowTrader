@@ -22425,7 +22425,7 @@
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
     "convex_peak_mtm": 0.0,
-    "convex_regime_change_count": 0
+    "convex_regime_change_count": 1
   },
   {
     "trade_id": "2026-03-06T13:11:13.141602_1ca89582_84b75664",
@@ -22485,7 +22485,7 @@
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
     "convex_peak_mtm": 0.0,
-    "convex_regime_change_count": 0
+    "convex_regime_change_count": 1
   },
   {
     "trade_id": "2026-03-06T13:20:04.145527_351c127f_79561b9e",
@@ -22783,7 +22783,7 @@
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
     "convex_peak_mtm": 0.0,
-    "convex_regime_change_count": 1
+    "convex_regime_change_count": 2
   },
   {
     "trade_id": "2026-03-06T14:21:59.373498_6203f0f6_3b59bcbd",
@@ -22843,6 +22843,6 @@
     "profit_locked_inr": 0,
     "convex_tsl_active": false,
     "convex_peak_mtm": 0.0,
-    "convex_regime_change_count": 1
+    "convex_regime_change_count": 2
   }
 ]
