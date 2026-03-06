@@ -3,86 +3,30 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
+dist/
+build/
 
 # Virtual Environment
 venv/
 env/
-ENV/
-env.bak/
-venv.bak/
 
 # Credentials & Secrets
 cred.yml
 *.env
 .env
-.secrets
 *.pem
 
 # Logs
 logs/
 *.log
-.cursor/debug.log
 
-# Market Data
+# Market Data (daily snapshots)
 market_data_*/
-data/raw_data/
-data/processed_data/
-market_data_iv/
-market_data_atr/
-
-# Backtest Reports
-backtest_report_*.json
-backtest_regime_report_*.json
-backtest_convex_report_*.json
-backtest_trend_report_*.json
-backtest_trend_comparison_*.json
-backtest_calendar_report_*.json
-backtest_trailing_comparison_*.json
-backtest_trailing_vs_*.json
-backtest_convex_vix_comparison_*.json
-
-# Trade Proposals & option snapshots
-trade_proposals/
-trade_proposals_by_id/
-*.trade_proposal.json
 option_snapshots/
 
-# Runtime Data (generated during execution — old system)
-active_positions.json
-active_positions.*.json
-performance_by_regime.json
-performance_by_regime.*.json
-strategy_decisions.json
-partial_fill_reviews.json
-trend_state.json
-ledger.json
-dedupe_report.json
-duplication_deep_report.json
-backtest_main_flow_report_*.json
-
-# Paper trading data (new system — agent.md)
-data/paper_trades.csv
-data/paper_signals.log
-data/paper_summary.json
+# Paper Trading Output (new system)
 data/
 
 # IDE
@@ -92,29 +36,16 @@ data/
 *.swo
 *~
 .DS_Store
-Thumbs.db
-
-# Jupyter Notebook
-.ipynb_checkpoints
 
 # pytest
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Git diagnostics
-git-diagnostics-*.zip
+# Symbols (downloaded at runtime)
+symbols/
 
-# Daily Reports
-pnl_*.json
-daily_report_*.json
-
-# Temporary files
+# Temporary
 *.tmp
 *.bak
 *.backup
-calculate_pnl.py
-
-# Test config (local)
-conftest.py
-tests/conftest.py
