@@ -56,6 +56,9 @@ class MarketData:
             if len(parts) == 2:
                 exchange, tsym_or_name = parts
                 token = self._resolve_token(exchange, tsym_or_name)
+                if token == tsym_or_name and exchange == "NFO":
+                    logger.warning("get_ltp: could not resolve token for %s — symbol not in master", symbol_key)
+                    return 0.0
                 quote = self.api.get_quotes(exchange=exchange, token=token)
             else:
                 quote = self.api.get_quotes(exchange="NSE", token=symbol_key)
@@ -64,8 +67,10 @@ class MarketData:
                 ltp = float(quote["lp"])
                 self._ltp_cache[symbol_key] = (ltp, now)
                 return ltp
+            else:
+                logger.warning("get_ltp: no quote or no 'lp' for %s (response=%s)", symbol_key, quote)
         except Exception:
-            logger.debug("get_ltp failed for %s", symbol_key, exc_info=True)
+            logger.warning("get_ltp failed for %s", symbol_key, exc_info=True)
         return 0.0
 
     def _resolve_token(self, exchange: str, name: str) -> str:

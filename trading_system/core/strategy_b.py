@@ -84,7 +84,10 @@ class StrategyB:
         buy_ltp = self.md.get_ltp(buy_sym)
         sell_ltp = self.md.get_ltp(sell_sym)
         if buy_ltp <= 0 or sell_ltp <= 0:
-            logger.warning("StrategyB: cannot get LTP; skipping entry")
+            logger.warning(
+                "StrategyB: cannot get LTP; skipping. BUY=%s(%.2f) SELL=%s(%.2f)",
+                buy_sym, buy_ltp, sell_sym, sell_ltp,
+            )
             return None
 
         debit = buy_ltp - sell_ltp

@@ -74,7 +74,10 @@ class StrategyA:
         call_ltp = self.md.get_ltp(call_sym)
         put_ltp = self.md.get_ltp(put_sym)
         if call_ltp <= 0 or put_ltp <= 0:
-            logger.warning("StrategyA: cannot get LTP for legs; skipping entry")
+            logger.warning(
+                "StrategyA: cannot get LTP; skipping. CE=%s(%.2f) PE=%s(%.2f)",
+                call_sym, call_ltp, put_sym, put_ltp,
+            )
             return None
 
         premium = call_ltp + put_ltp

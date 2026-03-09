@@ -38,19 +38,21 @@ class PaperOrderManager:
     ) -> str:
         """
         Build a Shoonya-style trading symbol.
-        e.g. 'NFO|NIFTY25MAR24000CE'
-        expiry can be a date object or string like '27-MAR-2025'.
+        Format: NIFTY17MAR26C23850  (DDMMMYYtypeSTRIKE)
+        opt_type 'CE' → 'C', 'PE' → 'P'
+        expiry can be a date object or string like '17-MAR-2026'.
         """
+        from datetime import datetime as _dt
         if hasattr(expiry, "strftime"):
-            exp_str = expiry.strftime("%y%b").upper()
+            exp_str = expiry.strftime("%d%b%y").upper()
         else:
-            from datetime import datetime as _dt
             try:
                 d = _dt.strptime(str(expiry)[:11].strip(), "%d-%b-%Y")
-                exp_str = d.strftime("%y%b").upper()
+                exp_str = d.strftime("%d%b%y").upper()
             except (ValueError, TypeError):
-                exp_str = str(expiry).replace("-", "").upper()[:5]
-        return f"NFO|{symbol}{exp_str}{int(strike)}{opt_type}"
+                exp_str = str(expiry).replace("-", "").upper()
+        ot = opt_type[0] if opt_type else "C"  # CE→C, PE→P
+        return f"NFO|{symbol}{exp_str}{ot}{int(strike)}"
 
     @staticmethod
     def _calc_stt(symbol: str, side: str, price: float, qty: int) -> float:

@@ -118,7 +118,11 @@ class StrategyD:
         lc_ltp = self.md.get_ltp(lc_sym)
         lp_ltp = self.md.get_ltp(lp_sym)
         if any(p <= 0 for p in (sc_ltp, sp_ltp, lc_ltp, lp_ltp)):
-            logger.warning("StrategyD: cannot get LTP for all legs; skipping entry")
+            logger.warning(
+                "StrategyD: cannot get LTP for all legs; skipping entry. "
+                "SC=%s(%.2f) SP=%s(%.2f) LC=%s(%.2f) LP=%s(%.2f)",
+                sc_sym, sc_ltp, sp_sym, sp_ltp, lc_sym, lc_ltp, lp_sym, lp_ltp,
+            )
             return None
 
         net_prem = (sc_ltp + sp_ltp) - (lc_ltp + lp_ltp)
