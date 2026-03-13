@@ -787,14 +787,6 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # Check up to 20 calendar days to ensure we get enough trading days with data
         days_to_check = 20  # Check last 20 calendar days to account for weekends and holidays
         
-        # #region agent log
-        import json
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:614","message":"Starting multi-day 15min candle build","data":{"days_to_check":days_to_check,"lookback_hours":lookback_hours,"today":today.strftime('%Y%m%d')},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"A"})+"\n")
-        except: pass
-        # #endregion
-        
         # Read data from multiple days (most recent first)
         days_found = 0
         for days_back in range(days_to_check):
@@ -844,23 +836,11 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
                     })
                     days_found += 1
                     
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"technical_indicators.py:644","message":"Loaded day data","data":{"date_str":date_str,"tick_count":len(day_data),"futures_file":futures_file,"contract":contract_symbol,"first_price":first_price,"last_price":last_price},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"B"})+"\n")
-                    except: pass
-                    # #endregion
             except Exception as e:
                 logger.debug(f"Error reading futures file {futures_path}: {str(e)}")
                 continue
         
         if not day_data_list:
-            # #region agent log
-            try:
-                with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"technical_indicators.py:650","message":"No data found","data":{"days_to_check":days_to_check,"days_found":days_found},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"C"})+"\n")
-            except: pass
-            # #endregion
             logger.debug(f"No NIFTY futures data found in last {days_to_check} days")
             return None
         
@@ -894,13 +874,6 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
                         _logged_rollovers.add(rollover_key)
                         logger.info(f"Contract rollover detected: {current_contract} -> {newer_contract}, "
                                    f"adjustment: {rollover_gap:.2f} pts (cumulative: {cumulative_adjustment:.2f})")
-                    
-                    # #region agent log
-                    try:
-                        with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({"location":"technical_indicators.py:rollover","message":"Contract rollover adjustment","data":{"old_contract":current_contract,"new_contract":newer_contract,"older_last_price":older_last_price,"newer_first_price":newer_first_price,"rollover_gap":rollover_gap,"cumulative_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"R"})+"\n")
-                    except: pass
-                    # #endregion
                 
                 rollover_adjustments.append(cumulative_adjustment)
         
@@ -920,26 +893,9 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
             
             all_tick_data.append(adjusted_data)
         
-        # #region agent log
-        try:
-            total_ticks = sum(len(df) for df in all_tick_data)
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:653","message":"Combining multi-day data","data":{"days_found":days_found,"total_ticks":total_ticks,"days_to_check":days_to_check,"total_rollover_adjustment":cumulative_adjustment},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"D"})+"\n")
-        except: pass
-        # #endregion
-        
         # Combine all days' data (all already have timestamp as index)
         tick_data = pd.concat(all_tick_data, axis=0)
         tick_data = tick_data.sort_index()  # Sort by timestamp index
-        
-        # #region agent log
-        try:
-            total_ticks = len(tick_data)
-            time_range_hours = (tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:655","message":"Combined all days data","data":{"total_ticks":total_ticks,"time_range_hours":time_range_hours,"days_combined":len(all_tick_data),"rollover_adjusted":cumulative_adjustment != 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"H"})+"\n")
-        except: pass
-        # #endregion
         
         if tick_data.empty:
             logger.debug(f"No tick data available across {days_to_check} days")
@@ -956,14 +912,6 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # Remove rows with NaN (incomplete candles)
         candles = candles.dropna()
         
-        # #region agent log
-        try:
-            candles_before_limit = len(candles)
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:668","message":"After resampling","data":{"candles_count":candles_before_limit,"tick_data_points":len(tick_data),"time_range_hours":(tick_data.index.max() - tick_data.index.min()).total_seconds() / 3600 if not tick_data.empty else 0},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"E"})+"\n")
-        except: pass
-        # #endregion
-        
         if candles.empty:
             logger.debug("No complete 15-minute candles after resampling")
             return None
@@ -972,18 +920,12 @@ def get_15min_candle_data(api, symbol_manager, symbol_name, lookback_hours=30):
         # If we have more than 100, take last 100 (most recent)
         # If we have less than 100, use what we have (but will fail check below)
         if len(candles) > 100:
+            candles_before_limit = len(candles)
             candles = candles.tail(100)  # Take last 100 candles (most recent)
             logger.debug(f"Taking last 100 candles from {candles_before_limit} total candles")
         
         # Extract close prices
         closes = candles['close'].tolist()
-        
-        # #region agent log
-        try:
-            with open('/Users/arshdeep/git/regimetrader/.cursor/debug.log', 'a') as f:
-                f.write(json.dumps({"location":"technical_indicators.py:695","message":"Final candle count check","data":{"candles_count":len(closes),"needs_100":len(closes) >= 100,"needs_50":len(closes) >= 50,"can_ema50":len(closes) >= 50,"can_ema100":len(closes) >= 100},"timestamp":int(datetime.now().timestamp()*1000),"sessionId":"debug-session","runId":"check-15min","hypothesisId":"F"})+"\n")
-        except: pass
-        # #endregion
         
         if len(closes) < 100:
             logger.debug(f"Insufficient 15-minute candles: {len(closes)} (need at least 100 for EMA(100))")

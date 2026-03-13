@@ -61,7 +61,7 @@ class ShoonyaApiPy(NorenApi):
             try:
                 result.append(future.result())
             except Exception as exc:
-                print(exc)
+                logger.error("Basket order failed: %s", exc, exc_info=True)
                 resp_err = resp_err + 1
             else:
                 resp_ok = resp_ok + 1

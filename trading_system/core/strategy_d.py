@@ -39,6 +39,13 @@ class IronCondorPosition:
     lots: int = 0
     entry_time: str = ""
 
+    def to_dict(self) -> Dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "IronCondorPosition":
+        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+
 
 class StrategyD:
     """Wide Iron Condor — sell volatility on elevated-VIX ranging days."""
@@ -50,6 +57,14 @@ class StrategyD:
 
     def is_active(self) -> bool:
         return self._position is not None
+
+    def save_state(self) -> Optional[Dict]:
+        return {"strategy": "D", "position": self._position.to_dict()} if self._position else None
+
+    def restore_state(self, state: Dict) -> None:
+        if state and state.get("position"):
+            self._position = IronCondorPosition.from_dict(state["position"])
+            logger.info("StratD: restored position from disk")
 
     # ── Helpers ─────────────────────────────────────────────────────────
 
@@ -75,7 +90,7 @@ class StrategyD:
         return (max(recent) - min(recent)) <= settings.SD_VIX_STABLE_BAND
 
     @staticmethod
-    def get_strikes(spot: float, vix: float, step: int = 50) -> Tuple[float, float, float, float]:
+    def get_strikes(spot: float, vix: float, step: int = settings.NIFTY_STRIKE_STEP) -> Tuple[float, float, float, float]:
         """Returns (short_call, short_put, long_call, long_put)."""
         otm = StrategyD._get_otm_pct(vix)
         wing = otm + settings.SD_WING_PCT
@@ -154,23 +169,38 @@ class StrategyD:
         sp_ltp = self.md.get_ltp(pos.sp_sym)
         lc_ltp = self.md.get_ltp(pos.lc_sym)
         lp_ltp = self.md.get_ltp(pos.lp_sym)
+        if any(v <= 0 for v in (sc_ltp, sp_ltp, lc_ltp, lp_ltp)):
+            logger.warning(
+                "StratD monitor: LTP=0 on a leg (SC=%.2f SP=%.2f LC=%.2f LP=%.2f) — skipping cycle",
+                sc_ltp, sp_ltp, lc_ltp, lp_ltp,
+            )
+            return None
 
         current_value = (sc_ltp + sp_ltp) - (lc_ltp + lp_ltp)
-        pnl = pos.net_premium - current_value
+        pnl_per_unit = pos.net_premium - current_value
+        qty = pos.lots * settings.NIFTY_LOT_SIZE
 
-        if pnl >= pos.net_premium * settings.SD_TARGET_PCT:
-            return self.exit("TARGET_HIT", pnl)
-        if pnl <= -pos.net_premium * settings.SD_STOP_PCT:
-            return self.exit("STOP_HIT", pnl)
+        if pnl_per_unit >= pos.net_premium * settings.SD_TARGET_PCT:
+            return self.exit("TARGET_HIT", pnl_per_unit * qty)
+        if pnl_per_unit <= -pos.net_premium * settings.SD_STOP_PCT:
+            return self.exit("STOP_HIT", pnl_per_unit * qty)
         return None
 
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
         qty = pos.lots * settings.NIFTY_LOT_SIZE
-        self.om.place_order(pos.sc_sym, "BUY", qty)
-        self.om.place_order(pos.sp_sym, "BUY", qty)
-        self.om.place_order(pos.lc_sym, "SELL", qty)
-        self.om.place_order(pos.lp_sym, "SELL", qty)
+        orders = [
+            self.om.place_order(pos.sc_sym, "BUY", qty, track_position=False),
+            self.om.place_order(pos.sp_sym, "BUY", qty, track_position=False),
+            self.om.place_order(pos.lc_sym, "SELL", qty, track_position=False),
+            self.om.place_order(pos.lp_sym, "SELL", qty, track_position=False),
+        ]
+        if any(order.get("status") != "COMPLETE" for order in orders):
+            logger.error("StratD EXIT [%s] failed; preserving position for retry", reason)
+            return None
+        if getattr(self.om, "tracker", None) is not None:
+            for order in orders:
+                self.om.tracker.add_position(order)
         logger.info("StratD EXIT [%s]: pnl=%.2f lots=%d", reason, pnl, pos.lots)
         result = {
             "strategy": "D",
@@ -192,5 +222,11 @@ class StrategyD:
         sp_ltp = self.md.get_ltp(pos.sp_sym)
         lc_ltp = self.md.get_ltp(pos.lc_sym)
         lp_ltp = self.md.get_ltp(pos.lp_sym)
-        pnl = pos.net_premium - ((sc_ltp + sp_ltp) - (lc_ltp + lp_ltp))
-        return self.exit("HARD_CLOSE", pnl)
+        if any(v <= 0 for v in (sc_ltp, sp_ltp, lc_ltp, lp_ltp)):
+            logger.error(
+                "StratD force_exit: LTP=0 on a leg (SC=%.2f SP=%.2f LC=%.2f LP=%.2f) — P&L may be inaccurate",
+                sc_ltp, sp_ltp, lc_ltp, lp_ltp,
+            )
+        pnl_per_unit = pos.net_premium - ((sc_ltp + sp_ltp) - (lc_ltp + lp_ltp))
+        total_pnl = pnl_per_unit * pos.lots * settings.NIFTY_LOT_SIZE
+        return self.exit("HARD_CLOSE", total_pnl)

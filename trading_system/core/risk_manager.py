@@ -54,7 +54,7 @@ class RiskManager:
         base = _MAX_LOTS.get(strategy, 1)
         mult = size_mult
         if self.monthly_pnl <= -settings.MONTHLY_DD_LIMIT:
-            mult *= 0.5
+            mult *= settings.MONTHLY_DD_SIZE_CUT
             logger.warning(
                 "Monthly DD limit hit (₹%s) — halving size multiplier",
                 f"{self.monthly_pnl:,.0f}",
@@ -68,3 +68,19 @@ class RiskManager:
         self.daily_pnl = 0.0
         self.trades_today = 0
         self.halted = False
+
+    def save_state(self) -> dict:
+        return {
+            "daily_pnl": self.daily_pnl,
+            "monthly_pnl": self.monthly_pnl,
+            "trades_today": self.trades_today,
+            "halted": self.halted,
+            "daily_loss_limit": self._daily_loss_limit,
+        }
+
+    def restore_state(self, state: dict, *, reset_daily: bool = False) -> None:
+        self.daily_pnl = 0.0 if reset_daily else float(state.get("daily_pnl", 0.0))
+        self.monthly_pnl = float(state.get("monthly_pnl", 0.0))
+        self.trades_today = 0 if reset_daily else int(state.get("trades_today", 0))
+        self.halted = False if reset_daily else bool(state.get("halted", False))
+        self._daily_loss_limit = float(state.get("daily_loss_limit", settings.LOSS_LIMIT_CALM))

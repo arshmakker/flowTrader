@@ -32,12 +32,29 @@ class StranglePosition:
     lots: int = 0
     entry_time: str = ""
 
+    def to_dict(self) -> Dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "StranglePosition":
+        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+
 
 class StrategyA:
     """Short Strangle — sell premium on low-VIX ranging days."""
 
-    ENTRY_START = time(10, 0)
-    ENTRY_END = time(13, 0)
+    @staticmethod
+    def _parse_time(s: str) -> time:
+        h, m = s.split(":")
+        return time(int(h), int(m))
+
+    @property
+    def ENTRY_START(self):
+        return self._parse_time(settings.SA_ENTRY_START)
+
+    @property
+    def ENTRY_END(self):
+        return self._parse_time(settings.SA_ENTRY_END)
 
     def __init__(self, order_manager: Any, market_data: Any):
         self.om = order_manager
@@ -46,6 +63,14 @@ class StrategyA:
 
     def is_active(self) -> bool:
         return self._position is not None
+
+    def save_state(self) -> Optional[Dict]:
+        return {"strategy": "A", "position": self._position.to_dict()} if self._position else None
+
+    def restore_state(self, state: Dict) -> None:
+        if state and state.get("position"):
+            self._position = StranglePosition.from_dict(state["position"])
+            logger.info("StratA: restored position from disk")
 
     # ── Strike selection ────────────────────────────────────────────────
 
@@ -108,20 +133,30 @@ class StrategyA:
         pos = self._position
         call_ltp = self.md.get_ltp(pos.call_symbol)
         put_ltp = self.md.get_ltp(pos.put_symbol)
+        if call_ltp <= 0 or put_ltp <= 0:
+            logger.warning("StratA monitor: LTP=0 (CE=%.2f PE=%.2f) — skipping cycle", call_ltp, put_ltp)
+            return None
         current_combined = call_ltp + put_ltp
-        pnl = pos.premium_received - current_combined
+        pnl_per_unit = pos.premium_received - current_combined
+        qty = pos.lots * settings.NIFTY_LOT_SIZE
 
-        if pnl >= pos.premium_received * settings.SA_TARGET_PCT:
-            return self.exit("TARGET_HIT", pnl)
-        if pnl <= -pos.premium_received * settings.SA_STOP_MULT:
-            return self.exit("STOP_HIT", pnl)
+        if pnl_per_unit >= pos.premium_received * settings.SA_TARGET_PCT:
+            return self.exit("TARGET_HIT", pnl_per_unit * qty)
+        if pnl_per_unit <= -pos.premium_received * settings.SA_STOP_MULT:
+            return self.exit("STOP_HIT", pnl_per_unit * qty)
         return None
 
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
         qty = pos.lots * settings.NIFTY_LOT_SIZE
-        self.om.place_order(pos.call_symbol, "BUY", qty)
-        self.om.place_order(pos.put_symbol, "BUY", qty)
+        call_order = self.om.place_order(pos.call_symbol, "BUY", qty, track_position=False)
+        put_order = self.om.place_order(pos.put_symbol, "BUY", qty, track_position=False)
+        if any(order.get("status") != "COMPLETE" for order in (call_order, put_order)):
+            logger.error("StratA EXIT [%s] failed; preserving position for retry", reason)
+            return None
+        if getattr(self.om, "tracker", None) is not None:
+            self.om.tracker.add_position(call_order)
+            self.om.tracker.add_position(put_order)
         logger.info("StratA EXIT [%s]: pnl=%.2f  lots=%d", reason, pnl, pos.lots)
         result = {
             "strategy": "A",
@@ -136,11 +171,13 @@ class StrategyA:
         return result
 
     def force_exit(self) -> Optional[Dict]:
-        """Hard close at 14:15."""
         if not self.is_active():
             return None
         pos = self._position
         call_ltp = self.md.get_ltp(pos.call_symbol)
         put_ltp = self.md.get_ltp(pos.put_symbol)
-        pnl = pos.premium_received - (call_ltp + put_ltp)
-        return self.exit("HARD_CLOSE", pnl)
+        if call_ltp <= 0 or put_ltp <= 0:
+            logger.error("StratA force_exit: LTP=0 (CE=%.2f PE=%.2f) — using entry premium as loss estimate", call_ltp, put_ltp)
+        pnl_per_unit = pos.premium_received - (call_ltp + put_ltp)
+        total_pnl = pnl_per_unit * pos.lots * settings.NIFTY_LOT_SIZE
+        return self.exit("HARD_CLOSE", total_pnl)

@@ -23,7 +23,11 @@ logger = logging.getLogger(__name__)
 # Minimum days to expiry for eligible expiries (was in iron_condor.config)
 DAYS_TO_EXPIRY_MIN = 0
 
-INDIA_VIX_TOKEN_NSE = "26017"
+try:
+    from trading_system.config import settings as _settings
+    INDIA_VIX_TOKEN_NSE = _settings.INDIA_VIX_TOKEN
+except ImportError:
+    INDIA_VIX_TOKEN_NSE = "26017"
 
 
 def _get_date_object(date_or_datetime):
@@ -123,13 +127,16 @@ def get_nifty_spot_price(api, symbol_manager):
     try:
         nifty_info = symbol_manager.get_token_info("Nifty 50", exchange="NSE")
         if not nifty_info:
-            nifty_info = {"token": "26000", "exchange": "NSE"}
+            try:
+                nifty_info = {"token": _settings.NIFTY_SPOT_TOKEN, "exchange": _settings.NIFTY_SPOT_EXCHANGE}
+            except NameError:
+                nifty_info = {"token": "26000", "exchange": "NSE"}
         if not nifty_info or "token" not in nifty_info:
             return None
         quote = api.get_quotes(exchange="NSE", token=nifty_info["token"])
         if quote and "lp" in quote:
             return float(quote["lp"])
-        return None
+            return None
     except Exception as e:
         logger.error("Error getting NIFTY spot price: %s", e)
         return None
@@ -166,7 +173,7 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
                 token = str(option_row["token"])
                 strike = float(option_row["strikeprice"])
                 option_type = option_row["optiontype"]
-                quote = api.get_quotes(option_row["exchange"], token)
+                quote = api.get_quotes(option_row.get("exchange", "NFO"), token)
                 if not quote or strike <= 0:
                     continue
                 bid = float(quote.get("bp1", 0))

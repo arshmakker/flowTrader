@@ -14,9 +14,9 @@ import logging
 import os
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from trading_system.config import settings
 
-DATA_DIR = "data"
+logger = logging.getLogger(__name__)
 
 _HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -207,7 +207,7 @@ class WebDashboard:
 
         @app.route("/api/summary")
         def api_summary():
-            path = os.path.join(DATA_DIR, "paper_summary.json")
+            path = os.path.join(settings.DATA_DIR, "paper_summary.json")
             try:
                 if os.path.exists(path):
                     with open(path) as f:
@@ -218,7 +218,7 @@ class WebDashboard:
 
         @app.route("/api/trades")
         def api_trades():
-            path = os.path.join(DATA_DIR, "paper_trades.csv")
+            path = os.path.join(settings.DATA_DIR, "paper_trades.csv")
             try:
                 if os.path.exists(path):
                     with open(path) as f:
@@ -231,7 +231,7 @@ class WebDashboard:
 
         @app.route("/api/signals")
         def api_signals():
-            path = os.path.join(DATA_DIR, "paper_signals.log")
+            path = os.path.join(settings.DATA_DIR, "paper_signals.log")
             try:
                 if os.path.exists(path):
                     with open(path) as f:
@@ -245,7 +245,7 @@ class WebDashboard:
         def api_golive():
             try:
                 summary = pnl.get_summary() if pnl else {}
-                trades_path = os.path.join(DATA_DIR, "paper_trades.csv")
+                trades_path = os.path.join(settings.DATA_DIR, "paper_trades.csv")
                 import pandas as pd
                 if os.path.exists(trades_path):
                     df = pd.read_csv(trades_path)

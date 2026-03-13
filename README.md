@@ -126,6 +126,8 @@ By default the app runs in **paper trading only** mode: no real orders are sent 
   PAPER_TRADING_ONLY=0 python main.py
   ```
 
+Open positions are persisted in `data/open_positions.json` and are restored on restart until the system is verified flat. A normal end-of-day shutdown no longer deletes recoverable state unless all strategies and tracked positions are closed.
+
 ---
 
 ### One-time setup (credentials)
@@ -265,5 +267,4 @@ See [`WEB_DASHBOARD_README.md`](WEB_DASHBOARD_README.md) for detailed instructio
 ## Note
 
 This is a data collection system designed for market analysis. The collected data can be used for backtesting, research, and strategy development. Always validate data quality before using for analysis.
-
 

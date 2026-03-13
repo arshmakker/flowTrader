@@ -39,6 +39,13 @@ class DeepITMPosition:
     lots: int = 1
     entry_time: str = ""
 
+    def to_dict(self) -> Dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "DeepITMPosition":
+        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+
 
 class StrategyE:
     """Deep ITM directional — limited-risk trend capture in high-VIX environments."""
@@ -50,6 +57,14 @@ class StrategyE:
 
     def is_active(self) -> bool:
         return self._position is not None
+
+    def save_state(self) -> Optional[Dict]:
+        return {"strategy": "E", "position": self._position.to_dict()} if self._position else None
+
+    def restore_state(self, state: Dict) -> None:
+        if state and state.get("position"):
+            self._position = DeepITMPosition.from_dict(state["position"])
+            logger.info("StratE: restored position from disk")
 
     @staticmethod
     def _parse_time(s: str) -> time:
@@ -71,7 +86,7 @@ class StrategyE:
         candidates = [
             o for o in chain
             if o.get("type") == opt_type
-            and abs(o.get("delta", 0)) >= 0.65
+            and abs(o.get("delta", 0)) >= settings.SE_DELTA_FILTER
             and (
                 (o["strike"] < spot) if opt_type == "CE" else (o["strike"] > spot)
             )
@@ -135,6 +150,9 @@ class StrategyE:
             return None
         pos = self._position
         ltp = self.md.get_ltp(pos.option_symbol)
+        if ltp <= 0:
+            logger.warning("StratE monitor: LTP=0 for %s — skipping cycle", pos.option_symbol)
+            return None
         pnl = (ltp - pos.entry_price) * pos.lots * settings.NIFTY_LOT_SIZE
 
         if ltp >= pos.target_price:
@@ -151,7 +169,12 @@ class StrategyE:
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
         qty = pos.lots * settings.NIFTY_LOT_SIZE
-        self.om.place_order(pos.option_symbol, "SELL", qty)
+        order = self.om.place_order(pos.option_symbol, "SELL", qty, track_position=False)
+        if order.get("status") != "COMPLETE":
+            logger.error("StratE EXIT [%s] failed; preserving position for retry", reason)
+            return None
+        if getattr(self.om, "tracker", None) is not None:
+            self.om.tracker.add_position(order)
         logger.info("StratE EXIT [%s]: pnl=%.2f", reason, pnl)
         result = {
             "strategy": "E",
@@ -171,5 +194,7 @@ class StrategyE:
             return None
         pos = self._position
         ltp = self.md.get_ltp(pos.option_symbol)
+        if ltp <= 0:
+            logger.error("StratE force_exit: LTP=0 for %s — P&L may be inaccurate", pos.option_symbol)
         pnl = (ltp - pos.entry_price) * pos.lots * settings.NIFTY_LOT_SIZE
         return self.exit("HARD_CLOSE", pnl)

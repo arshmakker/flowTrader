@@ -35,12 +35,29 @@ class SpreadPosition:
     lots: int = 0
     entry_time: str = ""
 
+    def to_dict(self) -> Dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "SpreadPosition":
+        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+
 
 class StrategyB:
     """Directional (bull/bear) debit spread."""
 
-    ENTRY_START = time(10, 30)
-    ENTRY_END = time(13, 0)
+    @staticmethod
+    def _parse_time(s: str) -> time:
+        h, m = s.split(":")
+        return time(int(h), int(m))
+
+    @property
+    def ENTRY_START(self):
+        return self._parse_time(settings.SB_ENTRY_START)
+
+    @property
+    def ENTRY_END(self):
+        return self._parse_time(settings.SB_ENTRY_END)
 
     def __init__(self, order_manager: Any, market_data: Any):
         self.om = order_manager
@@ -49,6 +66,14 @@ class StrategyB:
 
     def is_active(self) -> bool:
         return self._position is not None
+
+    def save_state(self) -> Optional[Dict]:
+        return {"strategy": "B", "position": self._position.to_dict()} if self._position else None
+
+    def restore_state(self, state: Dict) -> None:
+        if state and state.get("position"):
+            self._position = SpreadPosition.from_dict(state["position"])
+            logger.info("StratB: restored position from disk")
 
     # ── Entry gate ──────────────────────────────────────────────────────
 
@@ -124,20 +149,30 @@ class StrategyB:
         pos = self._position
         buy_ltp = self.md.get_ltp(pos.buy_symbol)
         sell_ltp = self.md.get_ltp(pos.sell_symbol)
+        if buy_ltp <= 0 or sell_ltp <= 0:
+            logger.warning("StratB monitor: LTP=0 (BUY=%.2f SELL=%.2f) — skipping cycle", buy_ltp, sell_ltp)
+            return None
         current_value = buy_ltp - sell_ltp
-        pnl = current_value - pos.debit_paid
+        pnl_per_unit = current_value - pos.debit_paid
+        qty = pos.lots * settings.NIFTY_LOT_SIZE
 
-        if pnl >= pos.max_profit * settings.SB_TARGET_PCT:
-            return self.exit("TARGET_HIT", pnl)
+        if pnl_per_unit >= pos.max_profit * settings.SB_TARGET_PCT:
+            return self.exit("TARGET_HIT", pnl_per_unit * qty)
         if current_value <= pos.debit_paid * (1 - settings.SB_STOP_DEBIT_PCT):
-            return self.exit("STOP_HIT", pnl)
+            return self.exit("STOP_HIT", pnl_per_unit * qty)
         return None
 
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
         qty = pos.lots * settings.NIFTY_LOT_SIZE
-        self.om.place_order(pos.buy_symbol, "SELL", qty)
-        self.om.place_order(pos.sell_symbol, "BUY", qty)
+        buy_order = self.om.place_order(pos.buy_symbol, "SELL", qty, track_position=False)
+        sell_order = self.om.place_order(pos.sell_symbol, "BUY", qty, track_position=False)
+        if any(order.get("status") != "COMPLETE" for order in (buy_order, sell_order)):
+            logger.error("StratB EXIT [%s] failed; preserving position for retry", reason)
+            return None
+        if getattr(self.om, "tracker", None) is not None:
+            self.om.tracker.add_position(buy_order)
+            self.om.tracker.add_position(sell_order)
         logger.info("StratB EXIT [%s]: pnl=%.2f  lots=%d", reason, pnl, pos.lots)
         result = {
             "strategy": "B",
@@ -159,5 +194,8 @@ class StrategyB:
         pos = self._position
         buy_ltp = self.md.get_ltp(pos.buy_symbol)
         sell_ltp = self.md.get_ltp(pos.sell_symbol)
-        pnl = (buy_ltp - sell_ltp) - pos.debit_paid
-        return self.exit("HARD_CLOSE", pnl)
+        if buy_ltp <= 0 or sell_ltp <= 0:
+            logger.error("StratB force_exit: LTP=0 (BUY=%.2f SELL=%.2f) — P&L may be inaccurate", buy_ltp, sell_ltp)
+        pnl_per_unit = (buy_ltp - sell_ltp) - pos.debit_paid
+        total_pnl = pnl_per_unit * pos.lots * settings.NIFTY_LOT_SIZE
+        return self.exit("HARD_CLOSE", total_pnl)

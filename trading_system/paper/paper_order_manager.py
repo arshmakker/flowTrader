@@ -25,8 +25,9 @@ class PaperOrderManager:
 
     _id_counter = itertools.count(1)
 
-    def __init__(self, market_data: Any) -> None:
+    def __init__(self, market_data: Any, position_tracker: Any = None) -> None:
         self.md = market_data
+        self.tracker = position_tracker
         self.orders: list[Dict] = []
 
     def _next_id(self) -> str:
@@ -56,12 +57,11 @@ class PaperOrderManager:
 
     @staticmethod
     def _calc_stt(symbol: str, side: str, price: float, qty: int) -> float:
-        """STT estimate: 0.05% sell-side options, 0.01% futures both sides."""
         turnover = price * qty
         if "FUT" in symbol:
-            return turnover * 0.0001  # 0.01%
+            return turnover * settings.STT_FUTURES
         if side == "SELL" or side == "S":
-            return turnover * 0.0005  # 0.05% options sell
+            return turnover * settings.STT_OPTIONS_SELL
         return 0.0
 
     def place_order(
@@ -71,17 +71,40 @@ class PaperOrderManager:
         quantity: int,
         price_type: str = "MKT",
         price: float = 0.0,
+        track_position: bool = True,
     ) -> Dict:
         ltp = self.md.get_ltp(tradingsymbol)
         if ltp <= 0:
-            ltp = price if price > 0 else 1.0
-            logger.warning("Paper LTP=0 for %s; using fallback %.2f", tradingsymbol, ltp)
+            if price > 0:
+                ltp = price
+                logger.warning("Paper LTP=0 for %s; using explicit fallback %.2f", tradingsymbol, ltp)
+            else:
+                logger.error("Paper order rejected for %s: missing LTP and no fallback price", tradingsymbol)
+                return {
+                    "order_id": self._next_id(),
+                    "symbol": tradingsymbol,
+                    "side": buy_or_sell,
+                    "quantity": quantity,
+                    "fill_price": 0.0,
+                    "stt": 0.0,
+                    "brokerage": 0.0,
+                    "status": "REJECTED",
+                    "timestamp": datetime.now().isoformat(),
+                    "paper": True,
+                    "reason": "missing_ltp",
+                }
 
-        slip = ltp * 0.0005
+        is_option = "C" in tradingsymbol.split("|")[-1][-6:] or "P" in tradingsymbol.split("|")[-1][-6:]
+        if is_option and ltp < settings.SLIPPAGE_OTM_THRESHOLD:
+            slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
+        else:
+            slip = max(ltp * settings.SLIPPAGE_PCT, settings.SLIPPAGE_MIN_ABS)
         if buy_or_sell in ("BUY", "B"):
             fill = ltp + slip
         else:
             fill = ltp - slip
+
+        fill = round(round(fill / settings.PRICE_TICK) * settings.PRICE_TICK, 2)
 
         stt = self._calc_stt(tradingsymbol, buy_or_sell, fill, quantity)
 
@@ -90,14 +113,16 @@ class PaperOrderManager:
             "symbol": tradingsymbol,
             "side": buy_or_sell,
             "quantity": quantity,
-            "fill_price": round(fill, 2),
+            "fill_price": fill,
             "stt": round(stt, 2),
-            "brokerage": 20.0,
+            "brokerage": settings.BROKERAGE_PER_ORDER,
             "status": "COMPLETE",
             "timestamp": datetime.now().isoformat(),
             "paper": True,
         }
         self.orders.append(order)
+        if self.tracker is not None and track_position:
+            self.tracker.add_position(order)
         logger.info(
             "PAPER ORDER %s %s %d @ %.2f (stt=%.2f)",
             buy_or_sell, tradingsymbol, quantity, fill, stt,

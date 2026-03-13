@@ -21,9 +21,10 @@ class DataCollector:
         self.logger = logging.getLogger('DataCollector')
         self.collection_active = False
         self.collection_thread = None
+        self._stop_event = threading.Event()
+        self._symbols = []
         self.data_queue = queue.Queue()
-        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
-        self.raw_data_directory = os.path.join(self.data_directory, 'raw_data')
+        self._refresh_paths()
         self.ensure_directory()
         
         # Define index specifications
@@ -45,6 +46,17 @@ class DataCollector:
             }
         }
         
+    def _refresh_paths(self):
+        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
+        self.raw_data_directory = os.path.join(self.data_directory, 'raw_data')
+
+    def refresh_for_current_day(self):
+        previous = getattr(self, 'data_directory', None)
+        self._refresh_paths()
+        if previous != self.data_directory:
+            self.logger.info(f"Rotated data collector directory: {previous} -> {self.data_directory}")
+            self.ensure_directory()
+
     def ensure_directory(self):
         """Create data directory if it doesn't exist"""
         try:
@@ -91,6 +103,10 @@ class DataCollector:
 
     def start_collection(self, symbols=None):
         """Start collecting data for all symbols"""
+        self.refresh_for_current_day()
+        if self.collection_thread and self.collection_thread.is_alive():
+            self.logger.warning("Data collection already running; ignoring duplicate start request")
+            return
         if symbols is None:
             symbols = self.get_index_symbols()
             
@@ -98,7 +114,9 @@ class DataCollector:
             self.logger.error("No valid symbols found for data collection")
             return
             
+        self._symbols = symbols
         self.collection_active = True
+        self._stop_event.clear()
         self.collection_thread = threading.Thread(
             target=self._collect_data,
             args=(symbols,)
@@ -131,6 +149,8 @@ class DataCollector:
                 }
                 
                 for symbol in symbols:
+                    if self._stop_event.is_set():
+                        break
                     try:
                         quote = self.api.get_quotes(
                             exchange=symbol['exchange'],
@@ -188,17 +208,22 @@ class DataCollector:
                 # Log collection summary
                 summary = [f"{inst}: {count}" for inst, count in counts.items() if count > 0]
                 self.logger.info(f"Collection cycle complete - {', '.join(summary)}")
-                time.sleep(COLLECTION_CYCLE_INTERVAL_SECONDS)
+                if self._stop_event.wait(COLLECTION_CYCLE_INTERVAL_SECONDS):
+                    break
                 
             except Exception as e:
                 self.logger.error(f"Error in data collection loop: {str(e)}")
-                time.sleep(5)  # Wait before retrying
+                if self._stop_event.wait(5):
+                    break  # Wait before retrying
 
     def stop_collection(self):
         """Stop data collection"""
         self.collection_active = False
+        self._stop_event.set()
         if self.collection_thread:
-            self.collection_thread.join()
+            self.collection_thread.join(timeout=10)
+            if self.collection_thread.is_alive():
+                self.logger.warning("Data collection thread did not stop within timeout")
         self.logger.info("Stopped data collection")
 
     def _save_raw_data(self, data_point):

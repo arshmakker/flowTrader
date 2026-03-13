@@ -16,9 +16,9 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-logger = logging.getLogger(__name__)
+from trading_system.config import settings
 
-DATA_DIR = "data"
+logger = logging.getLogger(__name__)
 
 TRADE_COLUMNS = [
     "trade_id", "date", "time_entry", "time_exit", "strategy",
@@ -36,18 +36,35 @@ TRADE_COLUMNS = [
 
 
 class TradeLogger:
-    def __init__(self, data_dir: str = DATA_DIR) -> None:
+    def __init__(self, data_dir: str = settings.DATA_DIR) -> None:
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
         self._trades_path = os.path.join(self.data_dir, "paper_trades.csv")
         self._signals_path = os.path.join(self.data_dir, "paper_signals.log")
         self._ensure_csv_header()
-        self._trade_counter = 0
+        self._trade_counter = self._read_last_counter()
 
     def _ensure_csv_header(self) -> None:
         if not os.path.exists(self._trades_path):
             with open(self._trades_path, "w", newline="") as f:
                 csv.writer(f).writerow(TRADE_COLUMNS)
+
+    def _read_last_counter(self) -> int:
+        """Resume counter from existing CSV to avoid duplicate trade IDs across restarts."""
+        if not os.path.exists(self._trades_path):
+            return 0
+        try:
+            with open(self._trades_path, "r", newline="") as f:
+                reader = csv.reader(f)
+                last_id = ""
+                for row in reader:
+                    if row and row[0] != "trade_id":
+                        last_id = row[0]
+                if last_id and "_" in last_id:
+                    return int(last_id.rsplit("_", 1)[1])
+        except Exception:
+            logger.debug("Could not read last trade counter from CSV", exc_info=True)
+        return 0
 
     def _next_trade_id(self) -> str:
         self._trade_counter += 1
@@ -55,13 +72,30 @@ class TradeLogger:
 
     # ── Trade logging ───────────────────────────────────────────────────
 
+    # Strategy results use different keys than CSV columns — normalize here
+    _KEY_ALIASES = {
+        "exit_reason": ["reason", "exit_reason"],
+        "gross_pnl": ["pnl", "gross_pnl"],
+        "net_pnl": ["pnl", "net_pnl"],
+        "time_entry": ["entry_time", "time_entry"],
+        "costs": ["costs", "total_costs"],
+    }
+
     def log_trade(self, trade: Dict[str, Any]) -> str:
         trade_id = self._next_trade_id()
         trade["trade_id"] = trade_id
         trade.setdefault("date", datetime.now().strftime("%Y-%m-%d"))
         trade.setdefault("paper", True)
 
-        row = [trade.get(col, "") for col in TRADE_COLUMNS]
+        row = []
+        for col in TRADE_COLUMNS:
+            val = trade.get(col, "")
+            if val == "" and col in self._KEY_ALIASES:
+                for alias in self._KEY_ALIASES[col]:
+                    val = trade.get(alias, "")
+                    if val != "":
+                        break
+            row.append(val)
         try:
             with open(self._trades_path, "a", newline="") as f:
                 csv.writer(f).writerow(row)

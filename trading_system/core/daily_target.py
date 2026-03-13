@@ -38,3 +38,13 @@ class DailyTarget:
     def reset(self) -> None:
         self._target = 0.0
         self._hit = False
+
+    def save_state(self) -> dict:
+        return {
+            "target": self._target,
+            "hit": self._hit,
+        }
+
+    def restore_state(self, state: dict, *, reset_hit: bool = False) -> None:
+        self._target = float(state.get("target", 0.0))
+        self._hit = False if reset_hit else bool(state.get("hit", False))

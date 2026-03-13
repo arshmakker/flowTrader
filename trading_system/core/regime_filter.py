@@ -26,28 +26,21 @@ class RegimeFilter:
     - Cached for 60 seconds to reduce API calls.
     """
 
-    INDIA_VIX_TOKEN_NSE = "26017"
-
     def __init__(self, api: Any):
         self.api = api
-        self._vix_cache: Optional[Tuple[float, float]] = None  # (vix_value, monotonic_ts)
+        self._vix_cache: Optional[Tuple[float, float]] = None
 
     def get_vix(self) -> float:
-        """
-        Fetch India VIX live from Shoonya: symbol 'NSE|India VIX'.
-        Cache for 60 seconds to avoid excess API calls.
-        """
         if self._vix_cache is not None:
             v, ts = self._vix_cache
-            if (time.monotonic() - ts) <= 60.0 and v > 0:
+            if (time.monotonic() - ts) <= settings.VIX_CACHE_SEC and v > 0:
                 return v
 
         q = None
-        # ShoonyaApiPy wrappers differ; support both positional and keyword styles.
         try:
-            q = self.api.get_quotes("NSE", self.INDIA_VIX_TOKEN_NSE)
+            q = self.api.get_quotes(settings.NIFTY_SPOT_EXCHANGE, settings.INDIA_VIX_TOKEN)
         except TypeError:
-            q = self.api.get_quotes(exchange="NSE", token=self.INDIA_VIX_TOKEN_NSE)
+            q = self.api.get_quotes(exchange=settings.NIFTY_SPOT_EXCHANGE, token=settings.INDIA_VIX_TOKEN)
 
         v = 0.0
         try:

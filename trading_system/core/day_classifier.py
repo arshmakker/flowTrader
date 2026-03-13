@@ -8,11 +8,14 @@ from VWAP. Classification is locked for the day — cannot be overridden.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
 
 from trading_system.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -46,7 +49,15 @@ class DayClassifier:
             return self._result  # locked once set
 
         open_px = self.md.get_open_price(settings.NIFTY_SYMBOL)
-        current = self.md.get_ltp("NSE|Nifty 50")
+        current = self.md.get_ltp(settings.NIFTY_SPOT_KEY)
+        if open_px <= 0 or current <= 0:
+            self._result = DayClassification(
+                day_type="RANGING", confidence="LOW",
+                open_price=open_px, current_price=current,
+                move_pct=0.0, vwap_distance_pct=0.0,
+                classified_at=datetime.now().strftime("%H:%M:%S"),
+            )
+            return self._result
         move_pct = (current - open_px) / open_px
         vwap = self.se.compute_vwap_value()
         vwap_dist = abs(current - vwap) / vwap if vwap else 0.0
@@ -54,11 +65,18 @@ class DayClassifier:
 
         if abs_move >= settings.TREND_MOVE_THRESHOLD and vwap_dist >= settings.VWAP_TREND_DISTANCE:
             day_type = "TRENDING_UP" if move_pct > 0 else "TRENDING_DOWN"
-            confidence = "HIGH" if abs_move > 0.02 else "MEDIUM"
+            confidence = "HIGH" if abs_move > settings.TREND_HIGH_CONFIDENCE else "MEDIUM"
         elif abs_move >= settings.TREND_MOVE_THRESHOLD:
             day_type, confidence = "RANGING", "MEDIUM"  # big move but near VWAP
         else:
             day_type, confidence = "RANGING", "HIGH"
+
+        if hasattr(self.md, "is_open_price_reliable") and not self.md.is_open_price_reliable(settings.NIFTY_SYMBOL):
+            confidence = "LOW"
+            logger.warning(
+                "Open price for %s was an LTP fallback — downgrading day classification confidence to LOW",
+                settings.NIFTY_SYMBOL,
+            )
 
         self._result = DayClassification(
             day_type=day_type,

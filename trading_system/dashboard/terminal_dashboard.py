@@ -13,9 +13,9 @@ import os
 import time
 from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
+from trading_system.config import settings
 
-DATA_DIR = "data"
+logger = logging.getLogger(__name__)
 
 
 class TerminalDashboard:
@@ -27,8 +27,8 @@ class TerminalDashboard:
     def __init__(self, pnl_engine: Any, trade_logger: Any) -> None:
         self.pnl = pnl_engine
         self.tl = trade_logger
-        self._summary_path = os.path.join(DATA_DIR, "paper_summary.json")
-        self._signals_path = os.path.join(DATA_DIR, "paper_signals.log")
+        self._summary_path = os.path.join(settings.DATA_DIR, "paper_summary.json")
+        self._signals_path = os.path.join(settings.DATA_DIR, "paper_signals.log")
 
     def _load_summary(self) -> dict:
         try:

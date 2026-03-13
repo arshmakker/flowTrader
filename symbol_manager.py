@@ -7,9 +7,8 @@ class SymbolManager:
     def __init__(self, api, symbols_directory='symbols'):
         self.api = api
         self.logger = logging.getLogger('SymbolManager')
-        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
         self.symbols_directory = symbols_directory
-        self.master_directory = os.path.join(self.data_directory, 'master_files')
+        self.refresh_for_current_day()
         self.ensure_directory()
         self.nse_cash = None
         self.nse_fo = None
@@ -66,6 +65,14 @@ class SymbolManager:
             'BSEBANKEX',    # BSE Bankex ETF
             'BSESENSEX'     # BSE Sensex ETF
         ]
+
+    def refresh_for_current_day(self):
+        previous = getattr(self, 'data_directory', None)
+        self.data_directory = f"market_data_{datetime.now().strftime('%Y%m%d')}"
+        self.master_directory = os.path.join(self.data_directory, 'master_files')
+        if previous is not None and previous != self.data_directory:
+            self.logger.info(f"Rotated symbol manager directory: {previous} -> {self.data_directory}")
+            self.ensure_directory()
         
     def ensure_directory(self):
         """Create master files directory if it doesn't exist"""

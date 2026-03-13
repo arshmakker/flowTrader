@@ -32,6 +32,13 @@ class FuturesPosition:
     lots: int = 1
     entry_time: str = ""
 
+    def to_dict(self) -> Dict:
+        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+
+    @classmethod
+    def from_dict(cls, d: Dict) -> "FuturesPosition":
+        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+
 
 class StrategyC:
     """Nifty Futures scalp — ultra-selective, only on CALM + full signal agreement."""
@@ -44,9 +51,23 @@ class StrategyC:
     def is_active(self) -> bool:
         return self._position is not None
 
-    @staticmethod
-    def is_expiry_day() -> bool:
-        return datetime.today().weekday() == 3  # Thursday
+    def save_state(self) -> Optional[Dict]:
+        return {"strategy": "C", "position": self._position.to_dict()} if self._position else None
+
+    def restore_state(self, state: Dict) -> None:
+        if state and state.get("position"):
+            self._position = FuturesPosition.from_dict(state["position"])
+            logger.info("StratC: restored position from disk")
+
+    def is_expiry_day(self) -> bool:
+        """Check if today is expiry by comparing with nearest expiry from market data."""
+        try:
+            nearest = self.md.get_nearest_expiry()
+            if nearest is not None:
+                return datetime.today().date() == nearest
+        except Exception:
+            pass
+        return datetime.today().weekday() == 3  # fallback
 
     def should_enter(
         self, regime: str, confidence: int, active_strategies: Dict[str, bool]
@@ -99,6 +120,9 @@ class StrategyC:
             return None
         pos = self._position
         ltp = self.md.get_ltp(pos.fut_symbol)
+        if ltp <= 0:
+            logger.warning("StratC monitor: LTP=0 for %s — skipping cycle", pos.fut_symbol)
+            return None
 
         if pos.direction == "BULL":
             pnl = (ltp - pos.entry_price) * pos.lots * settings.NIFTY_LOT_SIZE
@@ -118,7 +142,12 @@ class StrategyC:
         pos = self._position
         side = "SELL" if pos.direction == "BULL" else "BUY"
         qty = pos.lots * settings.NIFTY_LOT_SIZE
-        self.om.place_order(pos.fut_symbol, side, qty)
+        order = self.om.place_order(pos.fut_symbol, side, qty, track_position=False)
+        if order.get("status") != "COMPLETE":
+            logger.error("StratC EXIT [%s] failed; preserving position for retry", reason)
+            return None
+        if getattr(self.om, "tracker", None) is not None:
+            self.om.tracker.add_position(order)
         logger.info("StratC EXIT [%s]: pnl=%.2f", reason, pnl)
         result = {
             "strategy": "C",
@@ -137,6 +166,8 @@ class StrategyC:
             return None
         pos = self._position
         ltp = self.md.get_ltp(pos.fut_symbol)
+        if ltp <= 0:
+            logger.error("StratC force_exit: LTP=0 for %s — P&L may be inaccurate", pos.fut_symbol)
         if pos.direction == "BULL":
             pnl = (ltp - pos.entry_price) * pos.lots * settings.NIFTY_LOT_SIZE
         else:

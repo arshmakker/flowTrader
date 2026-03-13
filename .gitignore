@@ -24,14 +24,18 @@ logs/
 
 # Market Data (daily snapshots)
 market_data_*/
+market_data_iv/
+market_data_atr/
 option_snapshots/
 
 # Paper Trading Output (new system)
 data/
+ledger_summary.csv
 
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
@@ -44,6 +48,11 @@ htmlcov/
 
 # Symbols (downloaded at runtime)
 symbols/
+*_symbols.txt
+*_symbols.txt.zip
+
+# Local runtime metadata
+telemetry-id
 
 # Temporary
 *.tmp
