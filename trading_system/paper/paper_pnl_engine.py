@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 def _empty_strat_stats() -> Dict[str, Dict]:
     return {
         s: {"trades": 0, "total_pnl": 0.0, "wins": 0}
-        for s in ("A", "B", "C", "D", "E")
+        for s in ("NIFTY", "BANKNIFTY")
     }
 
 
@@ -65,24 +65,30 @@ class PaperPnLEngine:
         self.total_trades += 1
         if won:
             self.winning_trades += 1
-        ss = self._strategy_stats.get(strategy, {"trades": 0, "total_pnl": 0.0, "wins": 0})
+        
+        if strategy not in self._strategy_stats:
+            self._strategy_stats[strategy] = {"trades": 0, "total_pnl": 0.0, "wins": 0}
+            
+        ss = self._strategy_stats[strategy]
         ss["trades"] += 1
         ss["total_pnl"] += pnl
         if won:
             ss["wins"] += 1
-        self._strategy_stats[strategy] = ss
 
         # Daily
         self.daily_realised_pnl += pnl
         self.daily_trades += 1
         if won:
             self.daily_wins += 1
-        ds = self._daily_strategy_stats.get(strategy, {"trades": 0, "total_pnl": 0.0, "wins": 0})
+            
+        if strategy not in self._daily_strategy_stats:
+            self._daily_strategy_stats[strategy] = {"trades": 0, "total_pnl": 0.0, "wins": 0}
+            
+        ds = self._daily_strategy_stats[strategy]
         ds["trades"] += 1
         ds["total_pnl"] += pnl
         if won:
             ds["wins"] += 1
-        self._daily_strategy_stats[strategy] = ds
 
         # Drawdown tracking
         self._trade_pnls.append(pnl)

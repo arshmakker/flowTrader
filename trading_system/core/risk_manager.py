@@ -1,86 +1,95 @@
 """
-Risk manager (agent.md §13).
+Risk Manager — implements the 3x combined stop-loss and recovery protocol (agents.md).
 
-Tracks daily/monthly P&L and enforces loss limits.
-Halts trading when daily limit is breached.
-Halves position size when monthly drawdown limit is breached.
+- Hard Stop-Loss: 3x combined max profit of all spreads.
+- Recovery Protocol: Single-sided recovery if stop-loss hit before 1:00 PM and VIX stable/falling.
 """
 
-from __future__ import annotations
-
 import logging
-from typing import Any
+from datetime import datetime, time
+from typing import Dict, List, Any
 
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
 
-_MAX_LOTS = {
-    "A": settings.SA_MAX_LOTS,
-    "B": settings.SB_MAX_SPREADS,
-    "C": settings.SC_MAX_LOTS,
-    "D": settings.SD_MAX_LOTS,
-    "E": settings.SE_MAX_LOTS,
-}
-
-
 class RiskManager:
-    def __init__(self) -> None:
-        self.daily_pnl: float = 0.0
-        self.monthly_pnl: float = 0.0
-        self.trades_today: int = 0
-        self.halted: bool = False
-        self._daily_loss_limit: float = float(settings.LOSS_LIMIT_CALM)
-
-    def update_loss_limit(self, limit: float) -> None:
-        self._daily_loss_limit = limit
-
-    def update_pnl(self, pnl: float) -> None:
-        self.daily_pnl += pnl
-        self.monthly_pnl += pnl
-        self.trades_today += 1
-        if self.daily_pnl <= -self._daily_loss_limit:
-            self.halted = True
-            logger.critical(
-                "DAILY LOSS LIMIT ₹%s HIT (daily_pnl=₹%s) — HALTED",
-                f"{self._daily_loss_limit:,.0f}",
-                f"{self.daily_pnl:,.0f}",
-            )
-
-    def can_trade(self) -> bool:
-        return not self.halted
-
-    def allowed_lots(self, strategy: str, size_mult: float) -> int:
-        base = _MAX_LOTS.get(strategy, 1)
-        mult = size_mult
-        if self.monthly_pnl <= -settings.MONTHLY_DD_LIMIT:
-            mult *= settings.MONTHLY_DD_SIZE_CUT
-            logger.warning(
-                "Monthly DD limit hit (₹%s) — halving size multiplier",
-                f"{self.monthly_pnl:,.0f}",
-            )
-        return max(1, int(base * mult))
-
-    def per_trade_risk(self) -> float:
-        return settings.CAPITAL * settings.MAX_RISK_PCT_TRADE
-
-    def reset_daily(self) -> None:
+    def __init__(self):
         self.daily_pnl = 0.0
-        self.trades_today = 0
         self.halted = False
+        self.recovery_mode = False
+        self.recovery_side = None # 'BULL_PUT' | 'BEAR_CALL'
+        self.stop_hit_at = None
 
-    def save_state(self) -> dict:
-        return {
-            "daily_pnl": self.daily_pnl,
-            "monthly_pnl": self.monthly_pnl,
-            "trades_today": self.trades_today,
-            "halted": self.halted,
-            "daily_loss_limit": self._daily_loss_limit,
-        }
+    def update_pnl(self, pnl: float):
+        self.daily_pnl += pnl
 
-    def restore_state(self, state: dict, *, reset_daily: bool = False) -> None:
-        self.daily_pnl = 0.0 if reset_daily else float(state.get("daily_pnl", 0.0))
-        self.monthly_pnl = float(state.get("monthly_pnl", 0.0))
-        self.trades_today = 0 if reset_daily else int(state.get("trades_today", 0))
-        self.halted = False if reset_daily else bool(state.get("halted", False))
-        self._daily_loss_limit = float(state.get("daily_loss_limit", settings.LOSS_LIMIT_CALM))
+    def check_combined_stop_loss(self, active_strategies: List[Any]) -> bool:
+        """
+        Checks if the combined unrealized P&L of all active instruments 
+        hits the 3x combined max profit threshold.
+        """
+        if self.halted:
+            return True
+
+        total_unrealized = 0.0
+        total_max_profit = 0.0
+        
+        for s in active_strategies:
+            if s.is_active():
+                pos = s._position
+                # Calculate current unrealized P&L for this strategy
+                prices = {
+                    'sc': s.md.get_ltp(pos.sc_sym),
+                    'sp': s.md.get_ltp(pos.sp_sym),
+                    'lc': s.md.get_ltp(pos.lc_sym),
+                    'lp': s.md.get_ltp(pos.lp_sym)
+                }
+                if any(p <= 0 for p in prices.values()):
+                    continue
+
+                current_prem = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
+                lot_size = settings.NIFTY_LOT_SIZE if pos.instrument == 'NIFTY' else settings.BANKNIFTY_LOT_SIZE
+                total_unrealized += (pos.entry_credit - current_prem) * pos.lots * lot_size
+                total_max_profit += pos.max_profit
+
+        if total_max_profit > 0:
+            stop_limit = -total_max_profit * settings.IC_STOP_LOSS_MULT
+            if total_unrealized <= stop_limit:
+                logger.critical(f"HARD STOP HIT: Combined PnL {total_unrealized:.2f} <= Limit {stop_limit:.2f}")
+                self.halted = True
+                self.stop_hit_at = datetime.now()
+                return True
+        
+        return False
+
+    def can_enter_recovery(self, vix_stable: bool, vix_falling: bool) -> bool:
+        """
+        Recovery Exception: A single-sided credit spread re-entry is permitted 
+        after a stop ONLY if it occurs before 1:00 PM and VIX is stable/falling.
+        """
+        if not self.halted or self.recovery_mode:
+            return False
+        
+        if self.stop_hit_at is None:
+            return False
+
+        # 1. Check Time (Before 1:00 PM)
+        deadline = datetime.strptime(settings.RECOVERY_DEADLINE, "%H:%M").time()
+        if self.stop_hit_at.time() >= deadline:
+            logger.info(f"Recovery denied: Stop hit at {self.stop_hit_at.time()} (>= {deadline})")
+            return False
+
+        # 2. Check VIX Stability/Trend
+        if not (vix_stable or vix_falling):
+            logger.info("Recovery denied: VIX is not stable or falling")
+            return False
+
+        return True
+
+    def reset_daily(self):
+        self.daily_pnl = 0.0
+        self.halted = False
+        self.recovery_mode = False
+        self.recovery_side = None
+        self.stop_hit_at = None

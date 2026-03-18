@@ -1,270 +1,172 @@
 # RegimeTrader
 
-A Python-based multi-strategy trading system with regime detection for NIFTY derivatives using the Shoonya API. The system automatically detects market regimes and routes to appropriate strategies.
+A Python-based multi-strategy trading system for NIFTY derivatives using the Shoonya (Noren) API. It classifies the market day (ranging vs trending), uses VIX-based regime filtering, and routes to one of five strategies. Paper trading is the default; positions and P&L are persisted across restarts.
 
 ## Trading Strategies
 
-| Regime | Strategy | Conditions |
-|--------|----------|------------|
-| **INCOME** | Iron Condor | IV > 60%, ADX < 20, ATR% < 50% |
-| **CONVEX** | Call Backspread | IV < 40%, ATR% < 25%, Range compressed |
-| **TREND_CONTINUATION** | Trend Following Futures | ADX >= 30, ATR% >= 50%, EMA aligned |
-| **NEUTRAL_ACTIVE** | Calendar Spread | IV 40-60%, ADX 18-25 |
-| **NEUTRAL_PASSIVE** | No trade | Conditions don't match any strategy |
+Strategies are selected by **day type** (from open/VWAP at classification time) and **VIX regime** (CALM / NORMAL / ELEVATED / DANGER). Routing is in `trading_system/core/regime_filter.py`.
+
+| Day Type     | VIX Regime | Primary Strategy | Description |
+|-------------|------------|------------------|-------------|
+| RANGING     | CALM       | **A**            | Short Strangle |
+| TRENDING_UP/DOWN | CALM  | **B**            | Directional Spread |
+| RANGING     | NORMAL     | **A**            | Short Strangle |
+| TRENDING_UP/DOWN | NORMAL | **B**            | Directional Spread |
+| RANGING     | ELEVATED/DANGER | **D** | Wide Iron Condor |
+| TRENDING_UP/DOWN | ELEVATED/DANGER | **E** | Deep ITM Directional (fallback to D) |
+
+- **A** – Short Strangle (OTM CE/PE, target/stop by %).
+- **B** – Directional Spread (debit spread in trend direction).
+- **C** – Futures Scalp (single-leg NIFTY future; CALM only, secondary).
+- **D** – Wide Iron Condor (high VIX, ranging).
+- **E** – Deep ITM Directional (high VIX, trending; else D if conditions allow).
 
 ## Key Features
 
-- **Regime Detection**: Automatically identifies market conditions using IV percentile, ADX, ATR percentile, and EMA structure
-- **Multi-Strategy Routing**: Routes to appropriate strategy based on detected regime
-- **Contract Rollover Handling**: Adjusts for futures contract price discontinuities
-- **Position Management**: Tracks positions, trailing stops, and exit conditions
-- **Risk Management**: Per-trade risk limits, mutual exclusion between strategies
-- **Market Data Collection**: Real-time tick data for equities, futures, and options
+- **Day classification** – Once at 10:30 IST: RANGING vs TRENDING_UP/TRENDING_DOWN using open, spot, VWAP; confidence HIGH/LOW.
+- **VIX regime** – CALM (&lt;13), NORMAL (&lt;17), ELEVATED (&lt;20), DANGER (≥20). Drives routing, size multiplier, and daily loss limit.
+- **Paper trading by default** – Simulated orders, slippage, brokerage; P&L and positions in `data/` and `data/open_positions.json`.
+- **Position persistence** – Open positions and session state saved; restored on restart until flat or hard close.
+- **Trade window** – 10:00–14:15 IST; classification at 10:30; hard close of all positions at 14:15.
+- **Risk and target** – Daily loss limit by regime; daily target gate; mutual exclusion between strategies.
+- **Market data** – DataCollector (tick/stream), SymbolManager (NFO/NSE), MarketData (OHLCV, LTP, open) for signals and options.
 
 ## System Architecture
 
-### Core Components
+### Core components
 
-1. **Regime Detection** (`regime/regime_detector.py`)
-   - Detects market conditions using IV, ADX, ATR, EMA structure
-   - Implements regime persistence (anti-whipsaw)
-   - Handles contract rollover adjustment for accurate EMA calculation
+1. **`main.py`** – Entry point. Loads creds, inits API, SymbolManager, DataCollector, MarketData, strategies, RiskManager, DailyTarget, TradeLogger, position persistence; runs the main loop (classification, risk/target gates, monitor/entry, hard close at TRADE_END).
+2. **Day classification** – `trading_system/core/day_classifier.py`: classifies day type and confidence from MarketData and SignalEngine (open, spot, VWAP).
+3. **Regime and routing** – `trading_system/core/regime_filter.py`: VIX regime, `get_routing(day_type)` for primary/secondary/forbidden strategies and daily target.
+4. **Strategies** – `trading_system/core/strategy_*.py`: A (Short Strangle), B (Directional Spread), C (Futures Scalp), D (Wide Iron Condor), E (Deep ITM). Each has `enter`, `monitor`, `force_exit`, `is_active`.
+5. **Signals** – `trading_system/core/signal_engine.py`: RSI, VWAP, consensus, max pain; used by strategies and classifier.
+6. **Risk and target** – `trading_system/core/risk_manager.py`, `daily_target.py`: daily loss limit, target hit gate.
+7. **Paper layer** – `trading_system/paper/`: PaperOrderManager (fills, slippage, tick 0.05), PaperPositionTracker, PaperPnLEngine; GoLiveEvaluator for paper stats.
+8. **Persistence** – `trading_system/core/position_persistence.py`: save/load state to `data/open_positions.json`; cleared when flat after hard close.
+9. **Market data** – `trading_system/existing/market_data.py`: OHLCV, LTP, open price, reliability flag for classifier.
+10. **Data collection** – `data_collector.py` (root): DataCollector thread; symbols from `symbol_manager.py` (NSE index, NFO futures/options). Starts when market opens; stopped at hard close.
+11. **Dashboards** – `trading_system/dashboard/web_dashboard.py` (Flask, port 5050), `terminal_dashboard.py` (rich); started as daemon threads from `main.py`.
 
-2. **Strategy Runner** (`strategy_runner.py`)
-   - Routes to appropriate strategy based on detected regime
-   - Enforces mutual exclusion between strategies
-   - Logs all decisions for auditability
+### Configuration
 
-3. **Strategies** (`strategies/`)
-   - `iron_condor/` - Iron Condor for high IV, low movement markets
-   - `convex/` - Call Backspread for low IV, compressed range
-   - `trend/` - Trend Following Futures for trending markets
-   - `neutral/` - Calendar Spread for range-bound neutral markets
-
-4. **API Integration** (`api_helper.py`)
-   - Wrapper for Shoonya API
-   - Handles authentication and API communication
-   - Manages market data subscriptions
-
-5. **Symbol Management** (`symbol_manager.py`)
-   - Manages trading symbols and contracts
-   - Handles expiry calculations
-   - Maintains symbol mappings for NFO and NSE
-
-6. **Data Collection** (`data_collector.py`)
-   - Real-time market data collection
-   - Tick-by-tick data processing
-   - Data storage in structured format
-   - Automatic directory management
-
-7. **Position Tracking** (`strategies/iron_condor/position_tracker.py`)
-   - Tracks all open positions across strategies
-   - Monitors exit conditions (stop loss, trailing stop, regime change)
-   - Records performance by regime
+All tunables are in **`trading_system/config/settings.py`**: trade window (`TRADE_START`, `CLASSIFY_TIME`, `TRADE_END`), VIX thresholds, strategy params, paths (`DATA_DIR`, `LOG_DIR`), `PAPER_TRADE_MODE` (True = paper only).
 
 ## System Requirements
 
 - Python 3.8+
-- Required Python packages (install via pip):
+- Dependencies (see `requirements.txt`):
+
   ```bash
+  NorenRestApiPy>=0.0.22
+  websocket-client>=1.0.0
   pandas>=1.3.0
   numpy>=1.21.0
+  scipy>=1.7.0
   python-dateutil>=2.8.2
   pytz>=2021.1
   requests>=2.26.0
   PyYAML>=5.4.1
   psutil>=5.8.0
   colorama>=0.4.4
-  NorenRestApi-0.0.30
+  flask>=2.0.0
   ```
 
 ## Installation & Setup
 
-### Using a virtual environment (recommended)
+### Virtual environment (recommended)
 
-Use a venv so dependencies stay isolated from the system Python.
-
-1. Clone and enter the repo:
 ```bash
 git clone <repository-url>
 cd regimetrader
-```
-
-2. Create and activate a virtual environment:
-```bash
-# Create venv in project directory (ignored by git)
 python3 -m venv venv
-
-# Activate (macOS/Linux)
-source venv/bin/activate
-
-# Activate (Windows)
-# venv\Scripts\activate
-```
-
-3. Install dependencies inside the venv:
-```bash
+source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. When the venv is active, run the app:
+### Credentials
+
+1. Copy and edit credentials:
+   ```bash
+   cp cred.yml.template cred.yml
+   ```
+2. Edit `cred.yml` with your Shoonya details: `user`, `pwd`, `vc`, `apikey`, `imei`.
+3. 2FA: set env `TWOFA` to your one-time code for non-interactive runs, or enter when prompted.
+
+### Paper vs live
+
+- **Paper (default)** – `PAPER_TRADE_MODE = True` in `trading_system/config/settings.py`. No real orders; all fills and P&L are simulated; state in `data/`.
+- **Live** – Set `PAPER_TRADE_MODE = False` in settings. Real orders are not implemented in this repo; the app will exit with a message.
+
+Run the app:
+
 ```bash
 python main.py
 ```
 
-To leave the venv: `deactivate`.
+Logs go to `logs/trading_system_YYYYMMDD.log`. You’ll see STATE lines (e.g. WAITING_FOR_CLASSIFICATION, NO_ACTIVE_STRATEGIES, ACTIVE_STRATEGIES:D), day classification, and at 14:15 IST: `HARD CLOSE: trade window over at 14:15 IST — forcing all active strategies flat`, then END OF DAY summary and DataCollector stop.
 
----
+## Data Collection
 
-### Paper trading only (no real orders)
-
-By default the app runs in **paper trading only** mode: no real orders are sent to the broker (no margin used). Convex entries and exits are simulated and logged; positions are still tracked locally.
-
-- **Paper only (default):** `PAPER_TRADING_ONLY=1` or unset (default is on).
-- **Live trading:** set `PAPER_TRADING_ONLY=0` before starting, e.g.:
-  ```bash
-  PAPER_TRADING_ONLY=0 python main.py
-  ```
-
-Open positions are persisted in `data/open_positions.json` and are restored on restart until the system is verified flat. A normal end-of-day shutdown no longer deletes recoverable state unless all strategies and tracked positions are closed.
-
----
-
-### One-time setup (credentials)
-
-1. Create `cred.yml` from template:
-```bash
-cp cred.yml.template cred.yml
-```
-
-2. Edit `cred.yml` with your credentials:
-```yaml
-user: "YOUR_USER_ID"
-pwd: "YOUR_PASSWORD"
-factor2: "YOUR_2FA"
-vc: "YOUR_VENDOR_CODE"
-apikey: "YOUR_API_KEY"
-imei: "YOUR_IMEI"
-```
-
-## Data Collection Configuration
-
-### Symbols Being Collected
-
-**Cash/Equity Stocks:**
-- NIFTY 50: All 50 constituent stocks
-- BANKNIFTY: 12 banking stocks (HDFCBANK, ICICIBANK, KOTAKBANK, SBIN, AXISBANK, INDUSINDBK, BANKBARODA, PNB, FEDERALBNK, IDFCFIRSTB, BANDHANBNK, AUBANK)
-- FINNIFTY: 20 financial sector stocks (banks + NBFCs including BAJFINANCE, BAJAJFINSV, SBILIFE, HDFCLIFE, ICICIGI, etc.)
-
-**Index Derivatives:**
-- NIFTY, BANKNIFTY, FINNIFTY
-- Current month futures
-- ATM options (5 strikes above and below current price)
-
-### Data Storage Structure
-Data is stored in `market_data_YYYYMMDD/` directories:
-- `raw_data/cash/` - Equity tick data
-- `raw_data/futures/` - Futures tick data  
-- `raw_data/options/` - Options tick data (organized by underlying)
-
-## System Workflow
-
-1. **Initialization**
-   - System loads credentials and connects to Shoonya API
-   - Initializes logging system
-   - Sets up data directories
-   - Loads symbol information from master files
-
-2. **Data Collection**
-   - Creates date-specific directories for market data
-   - Collects real-time tick data every second
-   - Stores data in structured CSV format
-   - Maintains separate directories for different data types
-
-3. **Monitoring & Logging**
-   - Detailed logging of all system operations
-   - Regular system health checks
-   - Data collection statistics
+- **Symbols** – NIFTY spot (index), NFO index futures (NIFTY, BANKNIFTY, FINNIFTY), and index options; see `SymbolManager.get_data_collection_symbols()`.
+- **Storage** – Date-specific dirs (e.g. `market_data_YYYYMMDD/`), with `raw_data/` (and optionally `processed_data/`) for tick/derived data.
+- **Lifecycle** – Data collection starts when market opens and stops at hard close (or shutdown).
 
 ## Directory Structure
 
 ```
 regimetrader/
-├── main.py                 # Main entry point
-├── strategy_runner.py      # Strategy routing with regime detection
-├── api_helper.py           # Shoonya API wrapper
-├── symbol_manager.py       # Symbol management
-├── data_collector.py       # Market data collection
-├── technical_indicators.py # IV, ADX, ATR, EMA calculations
-├── regime/                 # Regime detection
-│   └── regime_detector.py  # Market regime detection logic
-├── strategies/             # Trading strategies
-│   ├── iron_condor/       # Iron Condor strategy
-│   ├── convex/            # Call Backspread strategy
-│   ├── trend/             # Trend Following Futures
-│   └── neutral/           # Calendar Spread strategy
-├── diagnostics/           # System diagnostics and validation
-├── tests/                 # Test suite
-├── market_data_YYYYMMDD/  # Daily market data
-│   └── raw_data/          # Raw tick data (cash, futures, options)
-├── market_data_iv/        # Historical IV data
-├── market_data_atr/       # ATR history
-├── logs/                  # System logs
-├── symbols/               # Symbol information (NFO.csv, NSE.csv)
-├── active_positions.json  # Current open positions
-├── strategy_decisions.json # Strategy decision log
-├── performance_by_regime.json # Performance tracking
-├── cred.yml               # API credentials (from template)
-└── requirements.txt       # Dependencies
+├── main.py                    # Entry point, main loop
+├── api_helper.py              # Shoonya/Noren API wrapper
+├── symbol_manager.py           # Symbols, NFO/NSE, data collection symbol list
+├── data_collector.py           # Real-time data collection thread
+├── strategy_runner.py          # Helpers: option chain, expiry, market hours
+├── technical_indicators.py     # Indicators used by signals/strategies
+├── cred.yml                    # Credentials (from cred.yml.template)
+├── requirements.txt
+├── trading_system/
+│   ├── config/
+│   │   └── settings.py         # All config (trade window, VIX, paths, etc.)
+│   ├── core/
+│   │   ├── strategy_a.py .. strategy_e.py
+│   │   ├── day_classifier.py
+│   │   ├── regime_filter.py
+│   │   ├── signal_engine.py
+│   │   ├── risk_manager.py
+│   │   ├── daily_target.py
+│   │   ├── position_persistence.py
+│   │   └── trade_logger.py
+│   ├── paper/
+│   │   ├── paper_order_manager.py
+│   │   ├── paper_position_tracker.py
+│   │   ├── paper_pnl_engine.py
+│   │   └── go_live_evaluator.py
+│   ├── existing/
+│   │   └── market_data.py
+│   └── dashboard/
+│       ├── web_dashboard.py   # Flask, port 5050
+│       └── terminal_dashboard.py
+├── data/                       # Persisted state, P&L snapshots, trade CSV
+│   └── open_positions.json    # Position/session state (when not flat)
+├── logs/
+│   └── trading_system_YYYYMMDD.log
+├── market_data_YYYYMMDD/       # Per-day market data dirs
+└── tests/
+```
 
-## Data Collection Features
+## Logging
 
-- **Real-time tick data collection** at 1-second intervals
-- **Comprehensive symbol coverage** for NIFTY 50, BANKNIFTY, and FINNIFTY constituents
-- **Structured data storage** organized by instrument type and date
-- **Automatic directory management** with daily folders
-- **Logging system** for monitoring and debugging
-
-## Logging System
-
-1. **System Logs** (`logs/trading_system_YYYYMMDD.log`)
-   - Detailed operation logging
-   - Error and warning messages
-   - System performance metrics
-   - API communication logs
-   - Data collection statistics
-
-2. **Market Data**
-   - Raw tick data stored in CSV format
-   - Automatic daily data organization
-   - Separate directories for cash, futures, and options
-
-## Development
-
-- Use the test suite for validating changes
-- Follow the example files for implementation references
-- Monitor logs for system behavior
-- Check data files for collection quality
+- **Main log** – `logs/trading_system_YYYYMMDD.log`: startup, day classification, STATE (why idle or which strategy active), monitoring, P&L CHECK, HARD CLOSE, END OF DAY, DataCollector start/stop.
+- **Trade log** – CSV and signals written by `TradeLogger` (see `trading_system/core/trade_logger.py`); consumed by web dashboard and GoLiveEvaluator.
 
 ## Web Dashboard
 
-A simple web dashboard to monitor your trading system from your mobile device.
+The Flask dashboard runs on **port 5050** as a daemon thread started from `main.py` (no separate `python web_dashboard.py`). When the app is running, open:
 
-### Quick Start
+`http://localhost:5050`  
+(or `http://<your-machine-ip>:5050` from another device)
 
-```bash
-# Install Flask (if not already installed)
-pip install flask
-
-# Run the dashboard
-python web_dashboard.py
-```
-
-Then access from your mobile browser at `http://YOUR_COMPUTER_IP:5000`
-
-See [`WEB_DASHBOARD_README.md`](WEB_DASHBOARD_README.md) for detailed instructions.
+See `WEB_DASHBOARD_README.md` if present for more detail.
 
 ## Note
 
-This is a data collection system designed for market analysis. The collected data can be used for backtesting, research, and strategy development. Always validate data quality before using for analysis.
-
+This system is designed for market analysis and paper trading. Use paper mode to validate behaviour. Real order execution is not implemented; do not set `PAPER_TRADE_MODE = False` for live trading without implementing and testing the live order path. Always validate data and logic before relying on results.
