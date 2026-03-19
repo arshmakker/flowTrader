@@ -10,8 +10,8 @@ PAPER_TRADE_MODE = True  # Flip to False to go live
 # ══ INSTRUMENTS ════════════════════════════════════════════════════
 NIFTY_SYMBOL = "NIFTY"
 BANKNIFTY_SYMBOL = "BANKNIFTY"
-NIFTY_LOT_SIZE = 25  # standard lot size for Nifty
-BANKNIFTY_LOT_SIZE = 15  # standard lot size for BankNifty
+NIFTY_LOT_SIZE = 65  # updated for 2026
+BANKNIFTY_LOT_SIZE = 30  # updated for 2026
 NIFTY_STRIKE_STEP = 50
 BANKNIFTY_STRIKE_STEP = 100
 

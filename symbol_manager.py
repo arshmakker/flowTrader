@@ -18,15 +18,15 @@ class SymbolManager:
         self.index_specs = {
             'NIFTY': {
                 'symbol_prefix': 'NIFTY',
-                'lot_size': 50
+                'lot_size': 65
             },
             'BANKNIFTY': {
                 'symbol_prefix': 'BANKNIFTY',
-                'lot_size': 15
+                'lot_size': 30
             },
             'FINNIFTY': {
                 'symbol_prefix': 'FINNIFTY',
-                'lot_size': 40
+                'lot_size': 60
             }
         }
         

@@ -49,7 +49,7 @@ class RiskManager:
                     continue
 
                 current_prem = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
-                lot_size = settings.NIFTY_LOT_SIZE if pos.instrument == 'NIFTY' else settings.BANKNIFTY_LOT_SIZE
+                lot_size = s.md.get_lot_size(pos.sc_sym)
                 total_unrealized += (pos.entry_credit - current_prem) * pos.lots * lot_size
                 total_max_profit += pos.max_profit
 

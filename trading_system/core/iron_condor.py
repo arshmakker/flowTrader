@@ -70,15 +70,14 @@ class IronCondorStrategy:
         sp = round((spot - otm_dist) / step) * step
         
         # Apply 20-day S/R Buffer (50 points)
-        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, 'CE')
-        sp = sr_manager.apply_buffer(sp, sr_low, sr_low, 'PE') # wait, sr_low should be sr_low
-        # Corrected:
-        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, 'CE')
-        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, 'PE')
+        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, 'CE', step=step)
+        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, 'PE', step=step)
 
         # Define Wings
-        lc = sc + width
-        lp = sp - width
+        # Ensure width is at least the strike step and a multiple of it
+        actual_width = max(round(width / step) * step, step)
+        lc = sc + actual_width
+        lp = sp - actual_width
         
         return sc, sp, lc, lp
 
@@ -115,7 +114,8 @@ class IronCondorStrategy:
             logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < 25% of Width {width})")
             return False
 
-        lot_size = settings.NIFTY_LOT_SIZE if self.instrument == 'NIFTY' else settings.BANKNIFTY_LOT_SIZE
+        # Get actual lot size from master via market data
+        lot_size = self.md.get_lot_size(sc_sym)
         qty = lots * lot_size
         max_profit = net_credit_unit * qty
 
@@ -132,7 +132,7 @@ class IronCondorStrategy:
             max_profit=max_profit, entry_credit=net_credit_unit,
             lots=lots, entry_time=datetime.now().strftime("%H:%M:%S")
         )
-        logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots}")
+        logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
         return True
 
     # ── Monitor ─────────────────────────────────────────────────────────
@@ -154,7 +154,9 @@ class IronCondorStrategy:
 
         current_premium = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
         pnl_unit = pos.entry_credit - current_premium
-        lot_size = settings.NIFTY_LOT_SIZE if self.instrument == 'NIFTY' else settings.BANKNIFTY_LOT_SIZE
+        
+        # Get actual lot size from master via market data
+        lot_size = self.md.get_lot_size(pos.sc_sym)
         total_pnl = pnl_unit * pos.lots * lot_size
 
         # 1. Update Peak P&L
@@ -169,14 +171,21 @@ class IronCondorStrategy:
             return self.exit("PROFIT_HARVEST", total_pnl)
 
         # 3. Adjustment Logic (Breach + Profit)
-        # TBD: Implementation of adjustment logic if needed by user
-        # For now, following harvest logic as primary.
+        # Roll tested side OTM and safe side closer if overall position in profit
+        if total_pnl > 0:
+            # Check for breach
+            spot = self.md.get_ltp(settings.NIFTY_SPOT_KEY if self.instrument == 'NIFTY' else "NSE|Nifty Bank")
+            breached = spot >= pos.sc_strike or spot <= pos.sp_strike
+            if breached:
+                logger.info(f"IC {self.instrument} ADJUSTING: Spot={spot} breached strike. Rolling to cost-neutral.")
+                return self.exit("ADJUSTMENT_REQUIRED", total_pnl) # Close to re-enter with adjusted strikes
 
         return None
 
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
-        lot_size = settings.NIFTY_LOT_SIZE if self.instrument == 'NIFTY' else settings.BANKNIFTY_LOT_SIZE
+        # Get actual lot size from master via market data
+        lot_size = self.md.get_lot_size(pos.sc_sym)
         qty = pos.lots * lot_size
 
         self.om.place_order(pos.sc_sym, "BUY", qty, track_position=False)

@@ -75,11 +75,12 @@ class SRManager:
         logger.info(f"{index_name}: 20-day S/R calculated over {days_found} days: High={sr_high:.2f}, Low={sr_low:.2f}")
         return sr_high, sr_low
 
-    def apply_buffer(self, strike: float, sr_high: float, sr_low: float, opt_type: str) -> float:
+    def apply_buffer(self, strike: float, sr_high: float, sr_low: float, opt_type: str, step: int = 50) -> float:
         """
         Adjusts strike to respect the IC_SR_BUFFER (50 points).
         - Short Call: must be at least sr_high + 50.
         - Short Put: must be at least sr_low - 50.
+        Rounding is based on the 'step' of the instrument.
         """
         if sr_high == 0.0 or sr_low == 0.0:
             return strike
@@ -90,15 +91,15 @@ class SRManager:
             # CE strike must be ABOVE sr_high + buffer
             min_allowed = sr_high + buffer
             if strike < min_allowed:
-                adjusted = (int(min_allowed / 50) + 1) * 50 # round up to next 50
-                logger.info(f"IC S/R Buffer: Adjusting CE strike {strike} -> {adjusted} (SR High: {sr_high})")
+                adjusted = (int(min_allowed / step) + 1) * step # round up to next step
+                logger.info(f"IC S/R Buffer: Adjusting CE strike {strike} -> {adjusted} (SR High: {sr_high}, step: {step})")
                 return float(adjusted)
         elif opt_type == 'PE':
             # PE strike must be BELOW sr_low - buffer
             max_allowed = sr_low - buffer
             if strike > max_allowed:
-                adjusted = (int(max_allowed / 50)) * 50 # round down to prev 50
-                logger.info(f"IC S/R Buffer: Adjusting PE strike {strike} -> {adjusted} (SR Low: {sr_low})")
+                adjusted = (int(max_allowed / step)) * step # round down to prev step
+                logger.info(f"IC S/R Buffer: Adjusting PE strike {strike} -> {adjusted} (SR Low: {sr_low}, step: {step})")
                 return float(adjusted)
         
         return strike

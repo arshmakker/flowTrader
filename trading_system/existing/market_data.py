@@ -230,6 +230,26 @@ class MarketData:
     def is_open_price_reliable(self, symbol: str) -> bool:
         return symbol not in self._open_price_fallback
 
+    def get_lot_size(self, symbol_key: str) -> int:
+        """Get lot size for a symbol."""
+        try:
+            parts = symbol_key.split("|", 1)
+            if len(parts) == 2:
+                exchange, tsym_or_name = parts
+                if self.sm is not None:
+                    info = self.sm.get_token_info(tsym_or_name, exchange=exchange)
+                    if info and "lotsize" in info:
+                        return int(info["lotsize"])
+        except Exception:
+            logger.debug("get_lot_size failed for %s", symbol_key)
+        
+        # Fallback to settings
+        if "NIFTY" in symbol_key:
+            return settings.NIFTY_LOT_SIZE
+        if "BANKNIFTY" in symbol_key:
+            return settings.BANKNIFTY_LOT_SIZE
+        return 1
+
     def reset_daily(self) -> None:
         """Call at start of each day."""
         self._open_prices.clear()
