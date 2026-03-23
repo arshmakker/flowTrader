@@ -7,6 +7,7 @@ import json
 import logging
 import urllib.parse
 import requests
+import hashlib
 
 logger = logging.getLogger(__name__)
 api = None
@@ -47,6 +48,52 @@ class ShoonyaApiPy(NorenApi):
         NorenApi.__init__(self, host='https://api.shoonya.com/NorenWClientTP/', websocket='wss://api.shoonya.com/NorenWSTP/')        
         global api
         api = self
+
+    def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
+        """Override login to prevent swallowing error messages (emsg) on failure."""
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        if not config:
+            logger.error("Login: no service config")
+            return None
+
+        url = f"{config['host']}{config['routes']['authorize']}"
+        pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        u_app_key = '{0}|{1}'.format(userid, api_secret)
+        app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
+
+        values = {
+            "source": "API",
+            "apkversion": "1.0.0",
+            "uid": userid,
+            "pwd": pwd,
+            "factor2": twoFA,
+            "vc": vendor_code,
+            "appkey": app_key,
+            "imei": imei
+        }
+
+        payload = 'jData=' + json.dumps(values)
+        try:
+            res = requests.post(url, data=payload, timeout=30)
+            res.raise_for_status()
+            res_dict = json.loads(res.text)
+            
+            if res_dict.get('stat') != 'Ok':
+                emsg = res_dict.get('emsg') or res_dict.get('rejreason', 'Unknown error')
+                logger.error("Shoonya login rejected: %s", emsg)
+                # Return the dict so caller in main.py can see emsg
+                return res_dict
+
+            # Set private attributes for NorenApi base class methods
+            self._NorenApi__username = userid
+            self._NorenApi__accountid = userid
+            self._NorenApi__password = password
+            self._NorenApi__susertoken = res_dict['susertoken']
+            
+            return res_dict
+        except Exception as e:
+            logger.exception("Shoonya login exception: %s", e)
+            return None
 
     def place_basket(self, orders):
 

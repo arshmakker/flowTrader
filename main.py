@@ -111,11 +111,11 @@ def initialize_api() -> ShoonyaApiPy:
               vendor_code=creds["vc"], api_secret=creds["apikey"], imei=creds["imei"])
     
     if not ok:
-        logging.error("Shoonya login response: %s", ok)
-        raise ValueError("Shoonya login failed — check credentials/2FA and try again")
+        logging.error("Shoonya login failed with no response.")
+        raise ValueError("Shoonya login failed — check network and try again")
     
     if isinstance(ok, dict) and ok.get("stat") != "Ok":
-        emsg = ok.get("emsg", ok.get("stat", "unknown error"))
+        emsg = ok.get("emsg") or ok.get("rejreason") or "Unknown error"
         logging.error("Shoonya login rejected: %s", emsg)
         raise ValueError(f"Shoonya login rejected: {emsg}")
         
