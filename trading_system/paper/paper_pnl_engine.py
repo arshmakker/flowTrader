@@ -151,7 +151,7 @@ class PaperPnLEngine:
             wr = (v["wins"] / v["trades"] * 100) if v["trades"] > 0 else 0.0
             out[k] = {
                 "trades": v["trades"],
-                "total_pnl": round(v["total_pnl"], 2),
+                "total_pnl": v["total_pnl"],
                 "win_rate": round(wr, 1),
             }
         return out
