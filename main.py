@@ -10,7 +10,52 @@ import logging
 import threading
 import time as _time
 import yaml
+import json
 from datetime import datetime, time as dtime
+
+def save_session_state(strats, pos_mgr, pnl_engine, risk, classifier):
+    state = {
+        "timestamp": datetime.now().isoformat(),
+        "nifty_ic": strats[0].save_state(),
+        "banknifty_ic": strats[1].save_state(),
+        "pos_mgr": pos_mgr.save_state() if pos_mgr else None,
+        "pnl_engine": pnl_engine.save_state() if pnl_engine else None,
+        "risk": risk.save_state(),
+        "classifier": classifier.save_state()
+    }
+    path = os.path.join(settings.DATA_DIR, "session_state.json")
+    try:
+        os.makedirs(settings.DATA_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception:
+        logging.getLogger("main").exception("Failed to save session state")
+
+def load_session_state(strats, pos_mgr, pnl_engine, risk, classifier):
+    path = os.path.join(settings.DATA_DIR, "session_state.json")
+    if not os.path.exists(path):
+        return False
+    
+    try:
+        with open(path, "r") as f:
+            state = json.load(f)
+        
+        # Check if state is from today
+        state_ts = datetime.fromisoformat(state["timestamp"])
+        if state_ts.date() != datetime.now().date():
+            logging.getLogger("main").info("Discarding stale session state from a previous day.")
+            return False
+
+        strats[0].restore_state(state.get("nifty_ic"))
+        strats[1].restore_state(state.get("banknifty_ic"))
+        if pos_mgr and state.get("pos_mgr"): pos_mgr.restore_state(state.get("pos_mgr"))
+        if pnl_engine and state.get("pnl_engine"): pnl_engine.restore_state(state.get("pnl_engine"))
+        if state.get("risk"): risk.restore_state(state.get("risk"))
+        if state.get("classifier"): classifier.restore_state(state.get("classifier"))
+        return True
+    except Exception:
+        logging.getLogger("main").exception("Failed to load session state")
+        return False
 
 from api_helper import ShoonyaApiPy
 from symbol_manager import SymbolManager
@@ -61,8 +106,20 @@ def initialize_api() -> ShoonyaApiPy:
     factor2 = os.environ.get("TWOFA", "").strip()
     if not factor2:
         factor2 = input("Enter 2FA code: ").strip()
-    api.login(userid=creds["user"], password=creds["pwd"], twoFA=factor2, 
+    
+    ok = api.login(userid=creds["user"], password=creds["pwd"], twoFA=factor2, 
               vendor_code=creds["vc"], api_secret=creds["apikey"], imei=creds["imei"])
+    
+    if not ok:
+        logging.error("Shoonya login response: %s", ok)
+        raise ValueError("Shoonya login failed — check credentials/2FA and try again")
+    
+    if isinstance(ok, dict) and ok.get("stat") != "Ok":
+        emsg = ok.get("emsg", ok.get("stat", "unknown error"))
+        logging.error("Shoonya login rejected: %s", emsg)
+        raise ValueError(f"Shoonya login rejected: {emsg}")
+        
+    logging.info("Logged in successfully")
     return api
 
 def run():
@@ -98,6 +155,11 @@ def run():
     strats = [nifty_ic, banknifty_ic]
 
     day_class = None
+    if load_session_state(strats, pos_mgr if settings.PAPER_TRADE_MODE else None, pnl_engine if settings.PAPER_TRADE_MODE else None, risk, classifier):
+        log.info("SESSION RESTORED from disk.")
+        if classifier._result:
+            day_class = classifier._result
+
     collection_started = False
     
     log.info("Entering main loop...")
@@ -119,7 +181,11 @@ def run():
             # 2. Hard Close & EOW Close
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 for s in strats:
-                    if s.is_active(): s.force_exit()
+                    if s.is_active():
+                        result = s.force_exit()
+                        if result:
+                            pnl_engine.record_trade(s.instrument, result['pnl'], result)
+                            risk.update_pnl(result['pnl'])
                 log.info("Daily session ended. Closed all positions.")
                 _time.sleep(3600)
                 continue
@@ -146,7 +212,11 @@ def run():
             # 5. Combined Stop Loss
             if risk.check_combined_stop_loss(strats):
                 for s in strats:
-                    if s.is_active(): s.force_exit()
+                    if s.is_active():
+                        result = s.force_exit()
+                        if result:
+                            pnl_engine.record_trade(s.instrument, result['pnl'], result)
+                            risk.update_pnl(result['pnl'])
                 log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
 
             # 6. Entry Logic (If Gates pass and not active)
@@ -161,6 +231,12 @@ def run():
                         
                         if spot > 0 and expiry:
                             s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
+
+            # Keep live P&L fresh for dashboards (realised + unrealised).
+            if settings.PAPER_TRADE_MODE and pnl_engine:
+                pnl_engine.write_snapshot()
+            
+            save_session_state(strats, pos_mgr if settings.PAPER_TRADE_MODE else None, pnl_engine if settings.PAPER_TRADE_MODE else None, risk, classifier)
 
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
 

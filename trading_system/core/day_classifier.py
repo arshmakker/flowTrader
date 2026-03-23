@@ -9,7 +9,7 @@ from VWAP. Classification is locked for the day — cannot be overridden.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime
 from typing import Any, Optional
 
@@ -92,3 +92,13 @@ class DayClassifier:
     def reset(self) -> None:
         """Call at start of each trading day."""
         self._result = None
+
+    def save_state(self) -> Optional[Dict]:
+        if self._result:
+            return asdict(self._result)
+        return None
+
+    def restore_state(self, state: Optional[Dict]) -> None:
+        if state:
+            self._result = DayClassification(**state)
+            logger.info(f"Restored Day Classification: {self._result.day_type}")

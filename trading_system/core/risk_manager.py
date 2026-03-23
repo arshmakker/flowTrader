@@ -93,3 +93,23 @@ class RiskManager:
         self.recovery_mode = False
         self.recovery_side = None
         self.stop_hit_at = None
+
+    def save_state(self) -> Dict:
+        return {
+            "daily_pnl": self.daily_pnl,
+            "halted": self.halted,
+            "recovery_mode": self.recovery_mode,
+            "recovery_side": self.recovery_side,
+            "stop_hit_at": self.stop_hit_at.isoformat() if self.stop_hit_at else None
+        }
+
+    def restore_state(self, state: Dict) -> None:
+        self.daily_pnl = state.get("daily_pnl", 0.0)
+        self.halted = state.get("halted", False)
+        self.recovery_mode = state.get("recovery_mode", False)
+        self.recovery_side = state.get("recovery_side", None)
+        stop_hit_str = state.get("stop_hit_at")
+        if stop_hit_str:
+            self.stop_hit_at = datetime.fromisoformat(stop_hit_str)
+        if self.halted:
+            logger.warning("Restored risk state: Trading HALTED.")

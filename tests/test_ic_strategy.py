@@ -14,6 +14,7 @@ def mock_md():
     md = MagicMock()
     # Default LTP
     md.get_ltp.return_value = 10.0
+    md.get_lot_size.return_value = settings.NIFTY_LOT_SIZE
     return md
 
 def test_ic_strategy_entry_success(mock_om, mock_md):
@@ -56,5 +57,28 @@ def test_ic_strategy_harvest(mock_om, mock_md):
     
     result = s.monitor()
     assert result is not None
-    assert result['reason'] == 'PROFIT_HARVEST'
+    assert result['exit_reason'] == 'PROFIT_HARVEST'
+    assert s.is_active() is False
+
+def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
+    s = IronCondorStrategy(mock_om, mock_md, 'NIFTY')
+    s._position = IC_Position(
+        instrument='NIFTY',
+        sc_sym='SC', sp_sym='SP', lc_sym='LC', lp_sym='LP',
+        sc_strike=22150, sp_strike=21850, lc_strike=22200, lp_strike=21800,
+        max_profit=1000, entry_credit=20.0, lots=2, entry_time='10:00:00'
+    )
+    
+    # Current premium: 25.0. PnL = (20.0 - 25.0) * 2 * 65 = -5.0 * 130 = -650.0
+    def ltp_side_effect(sym):
+        if sym in ('SC', 'SP'): return 15.0 # 30
+        if sym in ('LC', 'LP'): return 2.5  # 5
+        return 0.0                          # Net = 25
+    mock_md.get_ltp.side_effect = ltp_side_effect
+    
+    result = s.force_exit()
+    assert result is not None
+    assert result['exit_reason'] == 'FORCE_EXIT'
+    assert result['pnl'] == -650.0
+    assert result['net_pnl'] == -650.0
     assert s.is_active() is False

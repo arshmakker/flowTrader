@@ -182,6 +182,30 @@ class IronCondorStrategy:
 
         return None
 
+    def _calculate_current_pnl(self) -> float:
+        """Calculate current unrealised P&L for the active position."""
+        if not self._position:
+            return 0.0
+        
+        pos = self._position
+        prices = {
+            'sc': self.md.get_ltp(pos.sc_sym),
+            'sp': self.md.get_ltp(pos.sp_sym),
+            'lc': self.md.get_ltp(pos.lc_sym),
+            'lp': self.md.get_ltp(pos.lp_sym)
+        }
+
+        # If any LTP is missing/zero, we return 0.0 to avoid bad exits, 
+        # though in a force_exit we might want to be more aggressive.
+        if any(p <= 0 for p in prices.values()):
+            return 0.0
+
+        current_premium = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
+        pnl_unit = pos.entry_credit - current_premium
+        
+        lot_size = self.md.get_lot_size(pos.sc_sym)
+        return pnl_unit * pos.lots * lot_size
+
     def exit(self, reason: str, pnl: float = 0.0) -> Dict:
         pos = self._position
         # Get actual lot size from master via market data
@@ -194,13 +218,25 @@ class IronCondorStrategy:
         self.om.place_order(pos.lp_sym, "SELL", qty, track_position=False)
 
         logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={pnl:.2f}")
+        
+        # Align with TradeLogger.TRADE_COLUMNS
+        # Columns: trade_id, date, time_entry, time_exit, instrument, 
+        # sc_strike, sp_strike, lc_strike, lp_strike, entry_credit, exit_price, 
+        # gross_pnl, net_pnl, exit_reason, lots, peak_pnl, vix_entry, day_type, paper
         result = {
             "instrument": self.instrument,
-            "action": "EXIT",
-            "reason": reason,
-            "pnl": pnl,
+            "time_entry": pos.entry_time,
+            "time_exit": datetime.now().strftime("%H:%M:%S"),
+            "sc_strike": pos.sc_strike,
+            "sp_strike": pos.sp_strike,
+            "lc_strike": pos.lc_strike,
+            "lp_strike": pos.lp_strike,
+            "entry_credit": round(pos.entry_credit, 2),
+            "pnl": pnl,           # Used by PnLEngine
+            "net_pnl": pnl,       # Used by TradeLogger
+            "exit_reason": reason,
             "lots": pos.lots,
-            "entry_time": pos.entry_time
+            "peak_pnl": round(pos.peak_pnl, 2),
         }
         self._position = None
         return result
@@ -208,4 +244,17 @@ class IronCondorStrategy:
     def force_exit(self) -> Optional[Dict]:
         if not self.is_active():
             return None
-        return self.exit("FORCE_EXIT", 0.0) # PnL will be calculated by record_trade if needed
+        pnl = self._calculate_current_pnl()
+        return self.exit("FORCE_EXIT", pnl)
+
+    def save_state(self) -> Optional[Dict]:
+        if self._position:
+            return self._position.to_dict()
+        return None
+
+    def restore_state(self, state: Optional[Dict]) -> None:
+        if state:
+            self._position = IC_Position.from_dict(state)
+            logger.info(f"Restored {self.instrument} active position: {self._position.sc_sym} ...")
+        else:
+            self._position = None

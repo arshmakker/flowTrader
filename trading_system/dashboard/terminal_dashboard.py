@@ -27,7 +27,8 @@ class TerminalDashboard:
     def __init__(self, pnl_engine: Any, trade_logger: Any) -> None:
         self.pnl = pnl_engine
         self.tl = trade_logger
-        self._summary_path = os.path.join(settings.DATA_DIR, "paper_summary.json")
+        # Live P&L: read the continuously refreshed snapshot (realised + unrealised).
+        self._summary_path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
         self._signals_path = os.path.join(settings.DATA_DIR, "paper_signals.log")
 
     def _load_summary(self) -> dict:
@@ -103,8 +104,13 @@ class TerminalDashboard:
             strat_table.add_column("Trades", justify="right")
             strat_table.add_column("P&L", justify="right")
             strat_table.add_column("Win%", justify="right")
-            for k in ("A", "B", "C", "D", "E"):
-                ss = s.get("strategy_stats", {}).get(k, {})
+            strat_stats = s.get("strategy_stats", {}) or {}
+            preferred = ("A", "B", "C", "D", "E")
+            ordered_keys = [k for k in preferred if k in strat_stats]
+            if not ordered_keys:
+                ordered_keys = sorted(strat_stats.keys())
+            for k in ordered_keys:
+                ss = strat_stats.get(k, {}) or {}
                 pnl_val = ss.get("total_pnl", 0)
                 style = "green" if pnl_val >= 0 else "red"
                 strat_table.add_row(

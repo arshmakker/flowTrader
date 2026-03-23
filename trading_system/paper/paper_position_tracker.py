@@ -124,3 +124,15 @@ class PaperPositionTracker:
 
     def has_open_positions(self) -> bool:
         return len(self._positions) > 0
+
+    def save_state(self) -> Dict:
+        return {
+            "positions": self._positions,
+            "unmarked": self._unmarked
+        }
+
+    def restore_state(self, state: Dict) -> None:
+        self._positions = state.get("positions", {})
+        self._unmarked = state.get("unmarked", [])
+        if self._positions:
+            logger.info(f"Restored {len(self._positions)} positions from state.")

@@ -103,8 +103,13 @@ async function updateSummary() {
   $('#total-trades').textContent = s.total_trades || 0;
   const tb = $('#strat-table tbody');
   tb.innerHTML = '';
-  for (const k of ['A','B','C','D','E']) {
-    const ss = (s.strategy_stats||{})[k] || {};
+  const stratStats = (s.strategy_stats || {});
+  const keys = Object.keys(stratStats);
+  const preferred = ['A','B','C','D','E'];
+  let ordered = preferred.filter(k => keys.includes(k));
+  if (ordered.length === 0) ordered = keys;
+  for (const k of ordered) {
+    const ss = stratStats[k] || {};
     const tr = document.createElement('tr');
     const pnl = ss.total_pnl || 0;
     tr.innerHTML = `<td>${k}</td><td>${ss.trades||0}</td><td class="${pnlClass(pnl)}">₹${fmt(pnl)}</td><td>${(ss.win_rate||0).toFixed(0)}%</td>`;
@@ -207,7 +212,8 @@ class WebDashboard:
 
         @app.route("/api/summary")
         def api_summary():
-            path = os.path.join(settings.DATA_DIR, "paper_summary.json")
+            # Live P&L: read the continuously refreshed snapshot (realised + unrealised).
+            path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
             try:
                 if os.path.exists(path):
                     with open(path) as f:
