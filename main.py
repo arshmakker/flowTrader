@@ -191,9 +191,11 @@ def run():
                         if result:
                             pnl_engine.record_trade(s.instrument, result['pnl'], result)
                             risk.update_pnl(result['pnl'])
-                log.info("Daily session ended. Closed all positions.")
-                _time.sleep(3600)
-                continue
+                            _time.sleep(0.1) # Give PnLEngine a moment to aggregate before writing summary
+                        log.info("Daily session ended. Closed all positions.")
+                        _time.sleep(3600) # Sleeps for an hour
+                        continue
+
 
             # 3. Day Classification (10:30 AM)
             if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time() and day_class is None:
