@@ -154,7 +154,8 @@ class PaperPnLEngine:
                 "total_pnl": v["total_pnl"],
                 "win_rate": round(wr, 1),
             }
-        return out
+            return out
+
 
     def get_summary(self) -> Dict:
         unmarked = getattr(self.pt, "unmarked_symbols", [])
