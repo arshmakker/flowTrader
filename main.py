@@ -174,6 +174,11 @@ def run():
                 collector.start_collection()
                 collection_started = True
             
+            # 1.1 Final Shutdown at 15:15 IST (DataCollector stop)
+            if now_t >= dtime(15, 15):
+                log.info("Reached 15:15 IST. Final shutdown.")
+                break
+
             if is_market_closed_ist():
                 log.info("Market closed. Exiting loop.")
                 break
