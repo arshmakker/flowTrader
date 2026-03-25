@@ -107,11 +107,10 @@ class IronCondorStrategy:
         # For IC, max profit = (Collected Premium) * LotSize
         net_credit_unit = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
         
-        # Credit Rule: net_credit >= 25% of spread width
-        width = sc - lc # wait, lc is sc + width, so width = lc - sc
+        # Credit Rule: net_credit >= IC_MIN_CREDIT (minimum ₹25 per lot)
         width = abs(lc - sc)
-        if net_credit_unit < (width * settings.IC_CREDIT_WIDTH_PCT):
-            logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < 25% of Width {width})")
+        if net_credit_unit < settings.IC_MIN_CREDIT:
+            logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < Min {settings.IC_MIN_CREDIT})")
             return False
 
         # Get actual lot size from master via market data

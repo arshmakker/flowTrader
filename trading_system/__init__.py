@@ -1,2 +1,1 @@
-"""Trading system package (built per agent.md)."""
-
+# This file initializes the 'trading_system' package.

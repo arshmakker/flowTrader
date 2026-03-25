@@ -34,7 +34,7 @@ PNL_LOG_INTERVAL_SEC = 300  # periodic P&L summary every 5 minutes
 VIX_HISTORY_WINDOW_SEC = 3600  # keep last 60 min of VIX readings
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
-IC_LOT_SIZE = 2  # 2-3 lots per instrument
+IC_LOT_SIZE = 10  # 10 lots per instrument for greater absolute profit
 IC_VIX_MAX = 30.0
 IC_VIX_STABLE_MINS = 45
 IC_VIX_STABLE_BAND = 1.5
@@ -42,7 +42,8 @@ IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
 IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
 IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry
 IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
-IC_CREDIT_WIDTH_PCT = 0.25 # Min net credit ≥ 25% of spread width
+IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
+IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
 
 # ══ VIX TIERS & OTM DISTANCES ══════════════════════════════════════
 # VIX < 14: 150-200 OTM, 50 width

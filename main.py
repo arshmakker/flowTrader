@@ -174,16 +174,17 @@ def run():
                 collector.start_collection()
                 collection_started = True
             
-            # 1.1 Final Shutdown at 15:15 IST (DataCollector stop)
+            # Final Shutdown at 15:15 IST - exit regardless of positions
             if now_t >= dtime(15, 15):
                 log.info("Reached 15:15 IST. Final shutdown.")
                 break
-
+            
+            # Market closed check (3:30 PM)
             if is_market_closed_ist():
                 log.info("Market closed. Exiting loop.")
                 break
 
-            # 2. Hard Close & EOW Close
+            # Hard Close & EOW Close - close positions at 15:10
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 for s in strats:
                     if s.is_active():
@@ -191,10 +192,11 @@ def run():
                         if result:
                             pnl_engine.record_trade(s.instrument, result['pnl'], result)
                             risk.update_pnl(result['pnl'])
-                            _time.sleep(0.1) # Give PnLEngine a moment to aggregate before writing summary
+                            _time.sleep(0.1)
                         log.info("Daily session ended. Closed all positions.")
-                        _time.sleep(3600) # Sleeps for an hour
-                        continue
+                save_session_state(strats, pos_mgr if settings.PAPER_TRADE_MODE else None, pnl_engine if settings.PAPER_TRADE_MODE else None, risk, classifier)
+                _time.sleep(3600)
+                continue
 
 
             # 3. Day Classification (10:30 AM)
@@ -224,6 +226,7 @@ def run():
                         if result:
                             pnl_engine.record_trade(s.instrument, result['pnl'], result)
                             risk.update_pnl(result['pnl'])
+                save_session_state(strats, pos_mgr if settings.PAPER_TRADE_MODE else None, pnl_engine if settings.PAPER_TRADE_MODE else None, risk, classifier)
                 log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
 
             # 6. Entry Logic (If Gates pass and not active)

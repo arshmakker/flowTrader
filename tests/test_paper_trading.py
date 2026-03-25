@@ -1,11 +1,16 @@
 """Tests for PaperOrderManager + PaperPositionTracker."""
+import pytest
+from unittest.mock import MagicMock # Added import for MagicMock
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from trading_system.config import settings
 from trading_system.paper.paper_order_manager import PaperOrderManager
 from trading_system.paper.paper_position_tracker import PaperPositionTracker
-from trading_system.core.strategy_a import StrategyA, StranglePosition
+from trading_system.core.market_data import MarketData # Added import for MarketData
+from trading_system.core.strategy_a import StrategyA
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.core.iron_condor import StranglePosition # Assuming StranglePosition is here based on context
 
 
 class MockMD:
@@ -324,6 +329,52 @@ def test_tracker_unmarked_clears_when_ltp_available():
     trk.add_position({"symbol": "NFO|A", "quantity": 50, "fill_price": 100, "side": "BUY", "stt": 0, "brokerage": 5})
     trk.get_unrealised_pnl(md)
     assert trk.unmarked_symbols == []
+
+
+# ══════════════════════════════════════════════════════════════════════
+# PaperPnLEngine
+# ══════════════════════════════════════════════════════════════════════
+
+def test_pnl_engine_aggregation_with_forced_exit():
+    """Verify that PnLEngine correctly aggregates profits and losses, including from forced exits."""
+    # MockMD needs to be defined within the scope of the test function or globally if used by multiple tests.
+    class MockMD:
+        def __init__(self, ltp=100.0):
+            self._ltp = ltp
+
+        def get_ltp(self, sym):
+            return self._ltp
+
+    mock_md = MockMD(ltp=100.0)
+    mock_tl = MagicMock() # Mock TradeLogger to avoid file operations during test
+    trk = PaperPositionTracker()
+    # Instantiate PnLEngine with mock objects
+    pnl_engine = PaperPnLEngine(trk, mock_md, mock_tl)
+
+    # Simulate profitable trades
+    pnl_engine.record_trade("NIFTY", 500.0, {"instrument": "NIFTY", "pnl": 500.0, "exit_reason": "PROFIT_HARVEST"})
+    pnl_engine.record_trade("BANKNIFTY", 300.0, {"instrument": "BANKNIFTY", "pnl": 300.0, "exit_reason": "PROFIT_HARVEST"})
+
+    # Simulate a forced exit with a loss
+    # We directly call record_trade with a negative PnL to simulate the output of force_exit
+    pnl_engine.record_trade("NIFTY", -100.0, {"instrument": "NIFTY", "pnl": -100.0, "exit_reason": "FORCE_EXIT"})
+
+    summary = pnl_engine.get_summary()
+
+    # Expected realised PnL: 500 (NIFTY profit) + 300 (BANKNIFTY profit) - 100 (NIFTY loss) = 700.0
+    assert summary["realised_pnl"] == 700.0
+    assert summary["total_trades"] == 3
+    assert summary["winning_trades"] == 2
+    assert summary["win_rate_pct"] == pytest.approx(66.7)
+    
+    # Check strategy stats aggregation
+    assert summary["strategy_stats"]["NIFTY"]["trades"] == 2
+    assert summary["strategy_stats"]["NIFTY"]["total_pnl"] == pytest.approx(400.0) # 500 - 100
+    assert summary["strategy_stats"]["NIFTY"]["win_rate"] == pytest.approx(50.0) # 1 win, 1 loss
+
+    assert summary["strategy_stats"]["BANKNIFTY"]["trades"] == 1
+    assert summary["strategy_stats"]["BANKNIFTY"]["total_pnl"] == pytest.approx(300.0)
+    assert summary["strategy_stats"]["BANKNIFTY"]["win_rate"] == pytest.approx(100.0)
 
 
 if __name__ == "__main__":
