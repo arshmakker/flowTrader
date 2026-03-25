@@ -22,7 +22,7 @@ context: >
 enforcement:
   - "Schedule Rule: Trading days are Monday–Thursday ONLY. All positions must be hard-closed by Thursday 3:15 PM. Friday/Weekend exposure is strictly forbidden."
   - "Expiry Rule: If current weekly expiry has < 3 DTE, roll all new entries to the next week's expiry contract."
-  - "Lot Sizing: Maintain a constant 2–3 lots per instrument (Nifty + BankNifty) across all VIX regimes. No Martingale/Averaging."
+  - "Lot Sizing: Maintain a constant 5+ lots per instrument (Nifty + BankNifty) across all VIX regimes. No Martingale/Averaging."
   - "VIX-Based Selection: Set OTM distances and spread widths based on VIX tiers: <14 (150-200 OTM, 50 width), 14-20 (200-250 OTM, 100 width), >20 (300+ OTM, 150 width)."
   - "S/R Constraint: Short strikes must maintain a ≥ 50-point buffer from the 20-day high and 20-day low. Move strikes further OTM if buffer is violated."
   - "1% Profit Harvest: Close the entire condor immediately when unrealized profit reaches 1% of the maximum possible profit of the spread."

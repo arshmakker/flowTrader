@@ -7,11 +7,27 @@ import logging
 import time
 import os
 import json
+import socket
 from symbol_manager import SymbolManager
 
 # Seconds between full collection cycles (one get_quotes per symbol per cycle).
 # Increase to reduce broker load; see docs/BROKER_API_AUDIT.md.
 COLLECTION_CYCLE_INTERVAL_SECONDS = 5
+
+# DNS error retry delay
+DNS_ERROR_DELAY_SECONDS = 5
+
+
+def _is_dns_error(exception):
+    """Check if exception is a DNS resolution error"""
+    error_str = str(exception).lower()
+    dns_indicators = [
+        'name resolution',
+        'nodename nor servname',
+        'failed to resolve',
+        'getaddrinfo failed',
+    ]
+    return any(indicator in error_str for indicator in dns_indicators)
 
 
 class DataCollector:
@@ -203,6 +219,9 @@ class DataCollector:
                             
                     except Exception as e:
                         self.logger.error(f"Error collecting data for {symbol['symbol']}: {str(e)}")
+                        if _is_dns_error(e):
+                            self.logger.warning(f"DNS error detected. Waiting {DNS_ERROR_DELAY_SECONDS}s...")
+                            time.sleep(DNS_ERROR_DELAY_SECONDS)
                         continue
                 
                 # Log collection summary
@@ -213,6 +232,9 @@ class DataCollector:
                 
             except Exception as e:
                 self.logger.error(f"Error in data collection loop: {str(e)}")
+                if _is_dns_error(e):
+                    self.logger.warning(f"DNS error detected. Waiting {DNS_ERROR_DELAY_SECONDS}s...")
+                    time.sleep(DNS_ERROR_DELAY_SECONDS)
                 if self._stop_event.wait(5):
                     break  # Wait before retrying
 
