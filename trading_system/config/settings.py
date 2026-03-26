@@ -87,6 +87,8 @@ VIX_HIGH_WIDTH = 150
 # ══ DAY CLASSIFICATION ════════════════════════════════════════════════
 TREND_MOVE_THRESHOLD = 0.015  # 1.5% from open = trending
 VWAP_TREND_DISTANCE = 0.003  # 0.3% from VWAP = trending
+TREND_HIGH_CONFIDENCE = 0.02  # >2% move => HIGH confidence trending
+
 
 # ══ RISK MANAGEMENT ══════════════════════════════════════════════════
 CAPITAL = 1_000_000  # ₹10L base

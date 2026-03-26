@@ -32,4 +32,13 @@ Runtime gating for “market open” is handled in `strategy_runner.py` and `mai
 ## Operational utilities
 
 - `tools/purge_non_trading_day_data.py`: deletes `market_data_YYYYMMDD/` folders that correspond to weekends or configured holidays.
+- `tools/dry_run_holiday_impact.py`: offline dry-run to show how holiday/weekend gating evaluates for a given timestamp.
 
+
+## Testing
+
+- `tests/conftest.py` ignores legacy/manual/integration tests by default so `pytest` runs offline.
+
+## Dead weight cleanup
+
+- Removed legacy/unused modules not referenced by the current IC runtime (e.g. `trading_system/core/strategy_a.py`, `technical_indicators.py`, `temp_optimization.py`).

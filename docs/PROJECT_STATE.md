@@ -16,6 +16,17 @@
 
 - Added:
   - `tools/purge_non_trading_day_data.py`
+  - `tools/dry_run_holiday_impact.py`
+
+## Working tree summary (snapshot)
+
+- Modified: `tests/conftest.py`, `trading_system/paper/paper_pnl_engine.py`, `trading_system/config/settings.py`
+- Deleted: `tests/test_forgot_password.py`
+
+## Working tree summary (snapshot)
+
+- Modified: `tests/conftest.py`, `trading_system/paper/paper_pnl_engine.py`, `trading_system/config/settings.py`
+- Removed: `trading_system/core/strategy_a.py`, `technical_indicators.py`, `temp_optimization.py`, `tests/test_forgot_password.py`
 
 ## Latest product artifact added
 

@@ -154,7 +154,7 @@ class PaperPnLEngine:
                 "total_pnl": v["total_pnl"],
                 "win_rate": round(wr, 1),
             }
-            return out
+        return out
 
 
     def get_summary(self) -> Dict:
@@ -224,9 +224,10 @@ class PaperPnLEngine:
         self.total_trades = state.get("total_trades", 0)
         self.winning_trades = state.get("winning_trades", 0)
         saved_stats = state.get("strategy_stats", {})
-        for k in self._strategy_stats:
-            if k in saved_stats:
-                self._strategy_stats[k] = saved_stats[k]
+        if isinstance(saved_stats, dict):
+            # Preserve existing defaults, but allow arbitrary strategy keys from saved state.
+            self._strategy_stats = {**self._strategy_stats, **saved_stats}
+
         self._trade_pnls = state.get("trade_pnls", [])
         self._peak_pnl = state.get("peak_pnl", 0.0)
         self.max_drawdown = state.get("max_drawdown", 0.0)
@@ -234,7 +235,9 @@ class PaperPnLEngine:
             self.daily_realised_pnl = 0.0
             self.daily_trades = 0
             self.daily_wins = 0
-            self._daily_strategy_stats = _empty_strat_stats()
+            # Keep daily keys aligned with strategies seen so far
+            keys = set(self._strategy_stats.keys()) | set(self._daily_strategy_stats.keys())
+            self._daily_strategy_stats = {k: {"trades": 0, "total_pnl": 0.0, "wins": 0} for k in keys}
             self._daily_peak_pnl = 0.0
             self.daily_max_drawdown = 0.0
         else:
@@ -242,9 +245,8 @@ class PaperPnLEngine:
             self.daily_trades = state.get("daily_trades", 0)
             self.daily_wins = state.get("daily_wins", 0)
             saved_daily_stats = state.get("daily_strategy_stats", {})
-            for k in self._daily_strategy_stats:
-                if k in saved_daily_stats:
-                    self._daily_strategy_stats[k] = saved_daily_stats[k]
+            if isinstance(saved_daily_stats, dict):
+                self._daily_strategy_stats = {**self._daily_strategy_stats, **saved_daily_stats}
             self._daily_peak_pnl = state.get("daily_peak_pnl", 0.0)
             self.daily_max_drawdown = state.get("daily_max_drawdown", 0.0)
         logger.info(
@@ -263,6 +265,8 @@ class PaperPnLEngine:
         self.daily_realised_pnl = 0.0
         self.daily_trades = 0
         self.daily_wins = 0
-        self._daily_strategy_stats = _empty_strat_stats()
+        # Keep daily keys aligned with strategies seen so far
+        keys = set(self._strategy_stats.keys()) | set(self._daily_strategy_stats.keys())
+        self._daily_strategy_stats = {k: {"trades": 0, "total_pnl": 0.0, "wins": 0} for k in keys}
         self._daily_peak_pnl = 0.0
         self.daily_max_drawdown = 0.0
