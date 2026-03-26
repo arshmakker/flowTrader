@@ -5,9 +5,17 @@
 
 ## Working tree summary (snapshot)
 
-- Modified: `README.md`, `main.py`
-- Untracked/new docs: `docs/BUSINESS_OVERVIEW.md`, `docs/IRON_CONDOR_PRODUCT_REQUIREMENTS.md`, `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_STATE.md`
-- Untracked: `agents.md`, `skills.md`
+- Modified:
+  - `main.py`
+  - `strategy_runner.py` (market-hours gating now respects weekends + configured holidays)
+  - `trading_system/config/settings.py` (adds `TRADING_HOLIDAYS_IST` for 2026)
+  - `trading_system/core/sr_manager.py` (skips weekend/holiday `market_data_YYYYMMDD` dirs so S/R isn’t polluted by stale holiday quotes)
+  - `tests/test_strategy_runner.py` (adds deterministic holiday/weekend market-hours tests)
+  - `docs/PROJECT_CONTEXT.md`
+  - `docs/PROJECT_STATE.md`
+
+- Added:
+  - `tools/purge_non_trading_day_data.py`
 
 ## Latest product artifact added
 

@@ -29,6 +29,25 @@ try:
 except ImportError:
     INDIA_VIX_TOKEN_NSE = "26017"
 
+def _get_holiday_set_ist():
+    """Returns holiday ISO dates ('YYYY-MM-DD') from settings if available."""
+    try:
+        from trading_system.config import settings as _settings_local
+        holidays = getattr(_settings_local, 'TRADING_HOLIDAYS_IST', None)
+        return set(holidays) if holidays else set()
+    except Exception:
+        return set()
+
+
+def is_trading_day_ist(now: Optional[datetime] = None) -> bool:
+    """True if weekday and not in the configured IST holiday list."""
+    dt = get_now_ist() if now is None else now
+    d = dt.date()
+    if d.weekday() >= 5:
+        return False
+    return d.isoformat() not in _get_holiday_set_ist()
+
+
 
 def _get_date_object(date_or_datetime):
     if date_or_datetime is None:
@@ -237,17 +256,23 @@ def save_daily_metrics(metrics: Dict, date_str: Optional[str] = None) -> None:
         logger.debug("Could not save daily metrics: %s", e)
 
 
-def is_market_closed_ist():
-    """True if past 3:30 PM IST on a weekday."""
-    now = get_now_ist()
-    if now.weekday() >= 5:
+def is_market_closed_ist(now: Optional[datetime] = None) -> bool:
+    """
+    True if market is closed in IST.
+    - All day on weekends / configured holidays
+    - After 3:30 PM IST on trading days
+    """
+    dt = get_now_ist() if now is None else now
+    if not is_trading_day_ist(dt):
+        return True
+    return dt >= dt.replace(hour=15, minute=30, second=0, microsecond=0)
+
+
+def is_market_hours(now: Optional[datetime] = None) -> bool:
+    """True if 9:15 AM - 3:30 PM IST on a trading day."""
+    dt = get_now_ist() if now is None else now
+    if not is_trading_day_ist(dt):
         return False
-    return now >= now.replace(hour=15, minute=30, second=0, microsecond=0)
-
-
-def is_market_hours():
-    """True if 9:15 AM - 3:30 PM IST on a weekday."""
-    now = get_now_ist()
-    market_open = now.replace(hour=9, minute=15, second=0, microsecond=0)
-    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
-    return now.weekday() < 5 and market_open <= now <= market_close
+    market_open = dt.replace(hour=9, minute=15, second=0, microsecond=0)
+    market_close = dt.replace(hour=15, minute=30, second=0, microsecond=0)
+    return market_open <= dt <= market_close

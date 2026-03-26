@@ -19,6 +19,26 @@ class SRManager:
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)
 
+    @staticmethod
+    def _is_trading_day_dir(dir_name: str) -> bool:
+        """
+        market_data_YYYYMMDD directories are treated as trading days only if:
+        - weekday (Mon-Fri)
+        - not in settings.TRADING_HOLIDAYS_IST (ISO YYYY-MM-DD)
+        """
+        try:
+            if not dir_name.startswith('market_data_'):
+                return True
+            date_str = dir_name.split('_', 2)[-1]
+            dt = datetime.strptime(date_str, '%Y%m%d').date()
+            if dt.weekday() >= 5:
+                return False
+            holidays = getattr(settings, 'TRADING_HOLIDAYS_IST', set()) or set()
+            return dt.isoformat() not in set(holidays)
+        except Exception:
+            # If parsing fails, keep legacy behaviour (do not drop data).
+            return True
+
     def get_20day_high_low(self, index_name: str) -> Tuple[float, float]:
         """
         Returns (20_day_high, 20_day_low) for the given index.
@@ -39,6 +59,10 @@ class SRManager:
         for data_dir in data_dirs:
             if days_found >= 20:
                 break
+
+            # Skip weekends/holidays if a directory was created anyway
+            if not self._is_trading_day_dir(data_dir.name):
+                continue
             
             # Use futures as proxy for High/Low if spot OHLCV not available
             # Or use raw data if collected

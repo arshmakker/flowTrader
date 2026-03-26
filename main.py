@@ -60,7 +60,7 @@ def load_session_state(strats, pos_mgr, pnl_engine, risk, classifier):
 from api_helper import ShoonyaApiPy
 from symbol_manager import SymbolManager
 from data_collector import DataCollector
-from strategy_runner import is_market_hours, is_market_closed_ist
+from strategy_runner import is_market_hours, is_market_closed_ist, is_trading_day_ist
 
 from trading_system.config import settings
 from trading_system.core.regime_filter import RegimeFilter
@@ -126,6 +126,12 @@ def run():
     setup_logging()
     log = logging.getLogger("main")
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
+
+    # Hard gate: do not even login / create daily directories on holidays & weekends.
+    # This prevents stale/holiday quotes from being persisted as if they were trading-day data.
+    if not is_trading_day_ist():
+        log.info("Non-trading day (weekend/holiday). Skipping startup.")
+        return
 
     api = initialize_api()
     sm = SymbolManager(api)

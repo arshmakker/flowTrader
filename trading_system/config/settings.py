@@ -45,6 +45,30 @@ IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
 IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
 IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
 
+# ══ TRADING CALENDAR (IST) ═══════════════════════════════════════════
+# Used by strategy runner gates (data collection / strategy loop) and
+# by data-quality guards to avoid treating holiday data as a trading day.
+# Weekends are handled separately; list only non-weekend holidays here.
+TRADING_HOLIDAYS_IST = {
+    '2026-01-15',  # Municipal Corporation Election - Maharashtra
+    '2026-01-26',  # Republic Day
+    '2026-03-03',  # Holi
+    '2026-03-26',  # Shri Ram Navami
+    '2026-03-31',  # Shri Mahavir Jayanti
+    '2026-04-03',  # Good Friday
+    '2026-04-14',  # Dr. Baba Saheb Ambedkar Jayanti
+    '2026-05-01',  # Maharashtra Day
+    '2026-05-28',  # Bakri Id
+    '2026-06-26',  # Muharram
+    '2026-09-14',  # Ganesh Chaturthi
+    '2026-10-02',  # Mahatma Gandhi Jayanti
+    '2026-10-20',  # Dussehra
+    '2026-11-10',  # Diwali-Balipratipada
+    '2026-11-24',  # Prakash Gurpurb Sri Guru Nanak Dev
+    '2026-12-25',  # Christmas
+}
+
+
 # ══ VIX TIERS & OTM DISTANCES ══════════════════════════════════════
 # VIX < 14: 150-200 OTM, 50 width
 VIX_LOW_LIMIT = 14.0

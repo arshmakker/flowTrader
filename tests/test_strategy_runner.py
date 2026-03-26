@@ -61,9 +61,31 @@ def test_market_hours_returns_bool():
     assert isinstance(result, bool)
 
 
+def test_market_hours_false_on_configured_holiday():
+    # 2026-03-26 is a configured holiday in settings.TRADING_HOLIDAYS_IST
+    # Even within regular hours, is_market_hours should be False.
+    holiday_midday = datetime(2026, 3, 26, 11, 0)
+    assert is_market_hours(holiday_midday) is False
+
+
+def test_market_hours_true_on_normal_weekday_in_hours():
+    normal_midday = datetime(2026, 3, 25, 11, 0)  # Wednesday
+    assert is_market_hours(normal_midday) is True
+
+
 def test_market_closed_returns_bool():
     result = is_market_closed_ist()
     assert isinstance(result, bool)
+
+
+def test_market_closed_true_on_weekend():
+    saturday = datetime(2026, 3, 28, 11, 0)
+    assert is_market_closed_ist(saturday) is True
+
+
+def test_market_closed_true_after_close_on_weekday():
+    weekday_after_close = datetime(2026, 3, 25, 16, 0)
+    assert is_market_closed_ist(weekday_after_close) is True
 
 
 # ── save_daily_metrics ───────────────────────────────────────────────

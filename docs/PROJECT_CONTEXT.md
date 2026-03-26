@@ -15,8 +15,21 @@ The system is shifting to an **Iron Condor–only** product direction:
 - Paper-first validation and go-live gating.
 - Exit logic designed to **lock in profit** and maximize **exits with positive trailing stop (TSL)**.
 
+## Trading calendar & session gating
+
+Runtime gating for “market open” is handled in `strategy_runner.py` and `main.py`:
+
+- `is_market_hours()` / `is_market_closed_ist()` now treat **weekends and configured NSE holidays** as closed.
+- `main.py` exits early on non-trading days (before login/symbol load) to avoid creating `market_data_YYYYMMDD` folders on holidays/weekends.
+- Holiday dates are configured in `trading_system/config/settings.py` via `TRADING_HOLIDAYS_IST` (ISO `YYYY-MM-DD` strings).
+- `SRManager.get_20day_high_low()` skips `market_data_YYYYMMDD` directories that fall on weekends/holidays to avoid stale “holiday quotes” polluting the 20-day S/R window.
+
 ## Key documents
 
 - `docs/BUSINESS_OVERVIEW.md`: business & operating model overview.
 - `docs/IRON_CONDOR_PRODUCT_REQUIREMENTS.md`: product requirements for Iron Condor–only system (benchmarked defaults + TSL KPI).
+
+## Operational utilities
+
+- `tools/purge_non_trading_day_data.py`: deletes `market_data_YYYYMMDD/` folders that correspond to weekends or configured holidays.
 
