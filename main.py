@@ -11,6 +11,7 @@ import threading
 import time as _time
 import yaml
 import json
+import requests
 from datetime import datetime, time as dtime
 
 def save_session_state(strats, pos_mgr, pnl_engine, risk, classifier):
@@ -107,20 +108,32 @@ def initialize_api() -> ShoonyaApiPy:
     if not factor2:
         factor2 = input("Enter 2FA code: ").strip()
     
-    ok = api.login(userid=creds["user"], password=creds["pwd"], twoFA=factor2, 
-              vendor_code=creds["vc"], api_secret=creds["apikey"], imei=creds["imei"])
-    
-    if not ok:
-        logging.error("Shoonya login failed with no response.")
-        raise ValueError("Shoonya login failed — check network and try again")
-    
-    if isinstance(ok, dict) and ok.get("stat") != "Ok":
-        emsg = ok.get("emsg") or ok.get("rejreason") or "Unknown error"
-        logging.error("Shoonya login rejected: %s", emsg)
-        raise ValueError(f"Shoonya login rejected: {emsg}")
-        
-    logging.info("Logged in successfully")
-    return api
+    max_retries = 3
+    retry_delay = 5
+    for attempt in range(max_retries):
+        try:
+            ok = api.login(userid=creds["user"], password=creds["pwd"], twoFA=factor2, 
+                  vendor_code=creds["vc"], api_secret=creds["apikey"], imei=creds["imei"])
+            
+            if not ok:
+                logging.error("Shoonya login failed with no response.")
+                raise ValueError("Shoonya login failed — check network and try again")
+            
+            if isinstance(ok, dict) and ok.get("stat") != "Ok":
+                emsg = ok.get("emsg") or ok.get("rejreason") or "Unknown error"
+                logging.error("Shoonya login rejected: %s", emsg)
+                raise ValueError(f"Shoonya login rejected: {emsg}")
+            
+            logging.info("Logged in successfully")
+            return api
+            
+        except Exception as e:
+            if attempt < max_retries - 1:
+                logging.warning(f"Shoonya login attempt {attempt+1} failed: {e}. Retrying in {retry_delay}s...")
+                _time.sleep(retry_delay)
+            else:
+                logging.error(f"Shoonya login failed after {max_retries} attempts: {e}")
+                raise ValueError(f"Shoonya login failed — check network and try again")
 
 def run():
     setup_logging()
