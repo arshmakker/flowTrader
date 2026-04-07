@@ -1,5 +1,6 @@
 from NorenRestApiPy.NorenApi import NorenApi
-from threading import Timer
+from threading import Timer, Lock
+from collections import deque
 import pandas as pd
 import time
 import concurrent.futures
@@ -8,6 +9,7 @@ import logging
 import urllib.parse
 import requests
 import hashlib
+import os
 
 logger = logging.getLogger(__name__)
 api = None
@@ -49,6 +51,80 @@ class ShoonyaApiPy(NorenApi):
         global api
         api = self
         self._last_broker_error = None
+        self._quote_limiter_enabled = str(os.environ.get("SHOONYA_QUOTE_LIMIT_ENABLED", "1")).strip().lower() not in ("0", "false", "no")
+        self._quote_max_per_sec = self._safe_int_env("SHOONYA_QUOTE_MAX_PER_SEC", 8)
+        self._quote_max_per_min = self._safe_int_env("SHOONYA_QUOTE_MAX_PER_MIN", 170)
+        self._quote_low_max_per_sec = self._safe_int_env("SHOONYA_QUOTE_LOW_MAX_PER_SEC", 4)
+        self._quote_low_max_per_min = self._safe_int_env("SHOONYA_QUOTE_LOW_MAX_PER_MIN", 120)
+        self._quote_rate_lock = Lock()
+        self._quote_sec_hits = deque()
+        self._quote_min_hits = deque()
+        self._quote_low_sec_hits = deque()
+        self._quote_low_min_hits = deque()
+
+    @staticmethod
+    def _safe_int_env(name, default):
+        raw = str(os.environ.get(name, "")).strip()
+        if not raw:
+            return int(default)
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            return int(default)
+
+    @staticmethod
+    def _trim_hits(hits, cutoff):
+        while hits and hits[0] <= cutoff:
+            hits.popleft()
+
+    def _acquire_quote_slot(self, priority="high"):
+        """
+        Global quote limiter with reserved capacity for high-priority paths.
+        - high: strategy/risk/real-time paths
+        - low:  bulk/background polling (collector)
+        """
+        if not self._quote_limiter_enabled:
+            return
+        lane = "low" if str(priority or "").lower() == "low" else "high"
+        while True:
+            wait_for = 0.0
+            with self._quote_rate_lock:
+                now = time.monotonic()
+                self._trim_hits(self._quote_sec_hits, now - 1.0)
+                self._trim_hits(self._quote_min_hits, now - 60.0)
+                self._trim_hits(self._quote_low_sec_hits, now - 1.0)
+                self._trim_hits(self._quote_low_min_hits, now - 60.0)
+
+                global_sec_full = len(self._quote_sec_hits) >= self._quote_max_per_sec
+                global_min_full = len(self._quote_min_hits) >= self._quote_max_per_min
+                low_sec_full = len(self._quote_low_sec_hits) >= min(self._quote_low_max_per_sec, self._quote_max_per_sec)
+                low_min_full = len(self._quote_low_min_hits) >= min(self._quote_low_max_per_min, self._quote_max_per_min)
+
+                can_take = not global_sec_full and not global_min_full
+                if lane == "low":
+                    can_take = can_take and (not low_sec_full) and (not low_min_full)
+
+                if can_take:
+                    self._quote_sec_hits.append(now)
+                    self._quote_min_hits.append(now)
+                    if lane == "low":
+                        self._quote_low_sec_hits.append(now)
+                        self._quote_low_min_hits.append(now)
+                    return
+
+                waits = []
+                if global_sec_full and self._quote_sec_hits:
+                    waits.append(max(0.0, 1.0 - (now - self._quote_sec_hits[0])))
+                if global_min_full and self._quote_min_hits:
+                    waits.append(max(0.0, 60.0 - (now - self._quote_min_hits[0])))
+                if lane == "low":
+                    if low_sec_full and self._quote_low_sec_hits:
+                        waits.append(max(0.0, 1.0 - (now - self._quote_low_sec_hits[0])))
+                    if low_min_full and self._quote_low_min_hits:
+                        waits.append(max(0.0, 60.0 - (now - self._quote_low_min_hits[0])))
+                wait_for = min([w for w in waits if w > 0.0], default=0.01)
+
+            time.sleep(min(max(wait_for, 0.01), 1.0))
 
     def _set_last_broker_error(self, msg):
         self._last_broker_error = str(msg or "").strip()
@@ -222,7 +298,7 @@ class ShoonyaApiPy(NorenApi):
         except Exception as exc:
             return None, f"getquotes unexpected failure: {exc}"
 
-    def get_quotes_safe(self, exchange, token, retries=1, backoff_sec=0.2, context=None):
+    def get_quotes_safe(self, exchange, token, retries=1, backoff_sec=0.2, context=None, priority="high"):
         """
         Resilient quote fetcher with retry and explicit broker diagnostics.
         Returns quote dict on success, else None.
@@ -230,6 +306,7 @@ class ShoonyaApiPy(NorenApi):
         last_err = ""
         attempts = max(1, int(retries) + 1)
         for i in range(attempts):
+            self._acquire_quote_slot(priority=priority)
             quote, err = self._quote_request(exchange, token)
             if quote is not None:
                 self._clear_last_broker_error()
@@ -245,12 +322,19 @@ class ShoonyaApiPy(NorenApi):
             logger.error("Broker quote error: %s", last_err)
         return None
 
-    def get_quotes(self, exchange, token):
+    def get_quotes(self, exchange, token, priority="high", context=None):
         """
         Override SDK get_quotes to avoid hidden JSON parse errors.
         Keeps call signature compatible with existing code.
         """
-        return self.get_quotes_safe(exchange=exchange, token=token, retries=1, backoff_sec=0.2)
+        return self.get_quotes_safe(
+            exchange=exchange,
+            token=token,
+            retries=1,
+            backoff_sec=0.2,
+            priority=priority,
+            context=context,
+        )
 
     def get_oauth_url(self, oauth_url, client_id):
         """Build broker OAuth login URL."""

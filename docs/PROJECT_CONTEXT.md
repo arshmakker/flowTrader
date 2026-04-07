@@ -60,4 +60,9 @@ The system is shifting to an **Iron Condor–only** product direction:
 - Quote fetching has been hardened at wrapper level:
   - `ShoonyaApiPy.get_quotes()` is overridden to use resilient `get_quotes_safe()` with one retry.
   - Explicit broker diagnostics (HTTP code/body snippet/rejection reason/non-JSON) are logged instead of raw JSON parse stack traces.
+- Global quote throttling control has been added in `api_helper.py`:
+  - A thread-safe global limiter now gates all `get_quotes()` calls with default caps tuned below documented broker limits.
+  - Priority lanes are supported (`high` for strategy/risk paths, `low` for background polling), preserving headroom for trading decisions while still protecting broker request budgets.
+  - Runtime knobs are available via env (`SHOONYA_QUOTE_MAX_PER_SEC`, `SHOONYA_QUOTE_MAX_PER_MIN`, `SHOONYA_QUOTE_LOW_MAX_PER_SEC`, `SHOONYA_QUOTE_LOW_MAX_PER_MIN`, `SHOONYA_QUOTE_LIMIT_ENABLED`).
+- `data_collector.py` now tags quote fetches with low-priority context (`priority="low"`) so background collection respects reserved headroom for strategy/risk quote paths during high-load periods.
 

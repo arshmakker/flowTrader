@@ -51,4 +51,9 @@
 - Completed: local runtime `cred.yml` updated with `oauth_reauth_attempts: 2`.
 - Completed: `main.py` auth-code command runner switched to streamed subprocess output with timeout-aware polling to improve startup transparency and responsiveness.
 - Completed: `api_helper.py` quote path hardened via `get_quotes_safe()` retry + explicit broker diagnostics; `get_quotes()` now routes through this safer path.
+- Completed: `api_helper.py` now includes a thread-safe global quote limiter with priority lanes:
+  - Global caps (default below broker ceilings) throttle all `get_quotes()` requests.
+  - Low-priority quotas reserve capacity so strategy/risk quote calls are not starved by background collectors.
+  - Quote limiter behavior is configurable via env (`SHOONYA_QUOTE_*`, `SHOONYA_QUOTE_LIMIT_ENABLED`).
+- Completed: `data_collector.py` now routes quote polling through the low-priority lane (`priority="low"` with collector context tags) so bulk background fetching yields to real-time strategy/risk quote demand.
 

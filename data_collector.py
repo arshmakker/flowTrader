@@ -170,7 +170,9 @@ class DataCollector:
                     try:
                         quote = self.api.get_quotes(
                             exchange=symbol['exchange'],
-                            token=symbol['token']
+                            token=symbol['token'],
+                            priority="low",
+                            context="collector-cycle",
                         )
                         
                         if quote:
@@ -291,10 +293,15 @@ class DataCollector:
     def get_last_price(self, exchange, token):
         """Get the last traded price for a symbol"""
         try:
-            quote = self.api.get_quotes(exchange=exchange, token=token)
+            quote = self.api.get_quotes(
+                exchange=exchange,
+                token=token,
+                priority="low",
+                context="collector-last-price",
+            )
             if quote:
                 return float(quote.get('lp', 0))
             return None
         except Exception as e:
             self.logger.error(f"Error getting last price for {exchange}:{token}: {str(e)}")
-            return None 
+            return None
