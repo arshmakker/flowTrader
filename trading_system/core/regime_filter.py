@@ -11,8 +11,9 @@ from trading_system.config import settings
 logger = logging.getLogger(__name__)
 
 class RegimeFilter:
-    def __init__(self, api: Any):
+    def __init__(self, api: Any, quote_stream: Any = None):
         self.api = api
+        self.quote_stream = quote_stream
         self._vix_cache: Optional[Tuple[float, float]] = None
         self._vix_history: List[Tuple[float, float]] = [] # (timestamp, vix_value)
 
@@ -24,7 +25,17 @@ class RegimeFilter:
                 return v
 
         try:
-            q = self.api.get_quotes(settings.NIFTY_SPOT_EXCHANGE, settings.INDIA_VIX_TOKEN)
+            q = None
+            if self.quote_stream is not None:
+                q = self.quote_stream.get_quote(
+                    exchange=settings.NIFTY_SPOT_EXCHANGE,
+                    token=settings.INDIA_VIX_TOKEN,
+                    max_age_sec=settings.WS_VIX_MAX_AGE_SEC,
+                )
+                if q is None and settings.WS_STRICT_MODE:
+                    return 0.0
+            if q is None:
+                q = self.api.get_quotes(settings.NIFTY_SPOT_EXCHANGE, settings.INDIA_VIX_TOKEN)
             v = float((q or {}).get("lp") or 0.0)
         except Exception as e:
             logger.error(f"Error fetching VIX: {e}")

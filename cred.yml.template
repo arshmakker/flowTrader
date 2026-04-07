@@ -1,8 +1,34 @@
 # Shoonya API Credentials Template
-# Rename this file to cred.yml and fill in your credentials
+# Rename this file to cred.yml and fill in one of the modes below.
+# Keep cred.yml local-only (already gitignored).
 
-user: "YOUR_USER_ID"        # Your Shoonya trading account ID
-pwd: "YOUR_PASSWORD"        # Your trading password
-vc: "YOUR_VENDOR_CODE"      # Your vendor code from Shoonya
-apikey: "YOUR_API_KEY"      # Your API key from Shoonya
-imei: "YOUR_IMEI"          # Any unique identifier 
+# -------------------------------------------------------------------
+# MODE 1: Legacy login (userid/password/2FA/vendor/api_secret/imei)
+# -------------------------------------------------------------------
+# user: "YOUR_USER_ID"
+# pwd: "YOUR_PASSWORD"
+# vc: "YOUR_VENDOR_CODE"
+# apikey: "YOUR_API_SECRET"
+# imei: "YOUR_IMEI_OR_DEVICE_ID"
+
+# -------------------------------------------------------------------
+# MODE 2: OAuth login (recommended for token reuse across restarts)
+# -------------------------------------------------------------------
+UID: "YOUR_USER_ID"
+client_id: "YOUR_CLIENT_ID_U"
+oauth_url: "https://trade.shoonya.com/NorenWeb/authorize/oauth"
+Secret_Code: "YOUR_SECRET_CODE"
+token_url: "https://api.shoonya.com/NorenWClientAPI//GenAcsTok"
+oauth_api_host: "https://api.shoonya.com/NorenWClientAPI/"
+oauth_ws_endpoint: "wss://api.shoonya.com/NorenWS/"
+oauth_reauth_attempts: 2
+
+# Runtime-managed token cache fields (do not prefill manually):
+Access_token: ""
+Account_ID: ""
+
+# Optional: auto-fetch auth code by running an external command/script.
+# If set, app will execute this command before prompting manual auth code.
+# Example:
+# auth_code_cmd: "python3 /Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
+# auth_code_timeout: 180

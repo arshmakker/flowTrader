@@ -48,19 +48,32 @@ class ShoonyaApiPy(NorenApi):
         NorenApi.__init__(self, host='https://api.shoonya.com/NorenWClientTP/', websocket='wss://api.shoonya.com/NorenWSTP/')        
         global api
         api = self
+        self._last_broker_error = None
+
+    def _set_last_broker_error(self, msg):
+        self._last_broker_error = str(msg or "").strip()
+
+    def get_last_broker_error(self):
+        return self._last_broker_error or ""
+
+    def _clear_last_broker_error(self):
+        self._last_broker_error = None
 
     def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
-        """Override login to prevent swallowing error messages (emsg) on failure."""
+        """Legacy QuickAuth login with full broker error visibility."""
         config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
         if not config:
-            logger.error("Login: no service config")
+            msg = "Login failed: no service config"
+            self._set_last_broker_error(msg)
+            logger.error(msg)
             return None
+        host = (config.get("host") or "").rstrip("/")
+        routes = config.get("routes") or {}
+        path = (routes.get("authorize") or "").lstrip("/")
+        url = f"{host}/{path}" if path else host
 
-        url = f"{config['host']}{config['routes']['authorize']}"
-        pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
-        u_app_key = '{0}|{1}'.format(userid, api_secret)
-        app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
-
+        pwd = hashlib.sha256(str(password).encode("utf-8")).hexdigest()
+        app_key = hashlib.sha256(f"{userid}|{api_secret}".encode("utf-8")).hexdigest()
         values = {
             "source": "API",
             "apkversion": "1.0.0",
@@ -69,31 +82,310 @@ class ShoonyaApiPy(NorenApi):
             "factor2": twoFA,
             "vc": vendor_code,
             "appkey": app_key,
-            "imei": imei
+            "imei": imei,
         }
-
-        payload = 'jData=' + json.dumps(values)
+        payload = "jData=" + json.dumps(values)
         try:
             res = requests.post(url, data=payload, timeout=30)
-            res.raise_for_status()
-            res_dict = json.loads(res.text)
-            
-            if res_dict.get('stat') != 'Ok':
-                emsg = res_dict.get('emsg') or res_dict.get('rejreason', 'Unknown error')
-                logger.error("Shoonya login rejected: %s", emsg)
-                # Return the dict so caller in main.py can see emsg
+            text = (res.text or "").strip()
+            if not res.ok:
+                msg = f"QuickAuth HTTP {res.status_code}: {text[:500] or 'empty body'}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+            if not text:
+                msg = "QuickAuth returned empty body"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+            try:
+                res_dict = json.loads(text)
+            except json.JSONDecodeError:
+                msg = f"QuickAuth returned non-JSON body: {text[:500]}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+
+            if str(res_dict.get("stat", "")).lower() != "ok":
+                emsg = res_dict.get("emsg") or res_dict.get("rejreason") or str(res_dict)
+                msg = f"QuickAuth rejected: {emsg}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
                 return res_dict
 
-            # Set private attributes for NorenApi base class methods
             self._NorenApi__username = userid
             self._NorenApi__accountid = userid
             self._NorenApi__password = password
-            self._NorenApi__susertoken = res_dict['susertoken']
-            
+            self._NorenApi__susertoken = res_dict.get("susertoken")
+            self._clear_last_broker_error()
             return res_dict
-        except Exception as e:
-            logger.exception("Shoonya login exception: %s", e)
+        except requests.RequestException as exc:
+            body = ""
+            if getattr(exc, "response", None) is not None:
+                body = (exc.response.text or "")[:500]
+            msg = f"QuickAuth request failed: {exc}" + (f" | body={body}" if body else "")
+            self._set_last_broker_error(msg)
+            logger.error(msg)
             return None
+        except Exception as exc:
+            msg = f"QuickAuth unexpected failure: {exc}"
+            self._set_last_broker_error(msg)
+            logger.error(msg, exc_info=True)
+            return None
+
+    def _oauth_post_json(self, route_key, values):
+        """
+        Perform OAuth-authenticated POST and return (ok, data, error_msg).
+        Keeps broker/body errors visible instead of surfacing JSON decode only.
+        """
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        if not config:
+            return False, None, "OAuth call failed: no service config"
+        host = (config.get("host") or "").rstrip("/")
+        routes = config.get("routes") or {}
+        path = (routes.get(route_key) or "").lstrip("/")
+        if not path:
+            return False, None, f"OAuth call failed: missing route '{route_key}'"
+        url = f"{host}/{path}"
+        payload = "jData=" + json.dumps(values or {})
+        headers = getattr(self, "_NorenApi__OAuthHeaders", None)
+        if not headers:
+            return False, None, "OAuth call failed: missing OAuth headers"
+        try:
+            res = requests.post(url, data=payload, headers=headers, timeout=30)
+            text = (res.text or "").strip()
+            if not res.ok:
+                return False, None, f"{route_key} HTTP {res.status_code}: {text[:500] or 'empty body'}"
+            if not text:
+                return False, None, f"{route_key} returned empty body"
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                return False, None, f"{route_key} returned non-JSON body: {text[:500]}"
+            if isinstance(data, dict) and str(data.get("stat", "")).lower() == "ok":
+                return True, data, ""
+            emsg = data.get("emsg") if isinstance(data, dict) else str(data)
+            return False, data, f"{route_key} rejected: {emsg or data}"
+        except requests.RequestException as exc:
+            body = ""
+            if getattr(exc, "response", None) is not None:
+                body = (exc.response.text or "")[:500]
+            return False, None, f"{route_key} request failed: {exc}" + (f" | body={body}" if body else "")
+        except Exception as exc:
+            return False, None, f"{route_key} unexpected failure: {exc}"
+
+    def _quote_request(self, exchange, token):
+        """Low-level quote request with explicit parse/HTTP diagnostics."""
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        if not config:
+            return None, "getquotes failed: no service config"
+        host = (config.get("host") or "").rstrip("/")
+        routes = config.get("routes") or {}
+        path = (routes.get("getquotes") or "").lstrip("/")
+        if not path:
+            return None, "getquotes failed: missing route 'getquotes'"
+        url = f"{host}/{path}"
+
+        uid = getattr(self, "_NorenApi__username", None)
+        values = {"uid": uid, "exch": exchange, "token": token}
+
+        oauth_headers = getattr(self, "_NorenApi__OAuthHeaders", None)
+        session_key = getattr(self, "_NorenApi__susertoken", None)
+        headers = oauth_headers or None
+        if headers:
+            payload = "jData=" + json.dumps(values)
+        else:
+            if not session_key:
+                return None, "getquotes failed: missing session key"
+            payload = "jData=" + json.dumps(values) + "&jKey=" + str(session_key)
+
+        try:
+            res = requests.post(url, data=payload, headers=headers, timeout=15)
+            text = (res.text or "").strip()
+            if not res.ok:
+                return None, f"getquotes HTTP {res.status_code}: {text[:500] or 'empty body'}"
+            if not text:
+                return None, "getquotes returned empty body"
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                return None, f"getquotes returned non-JSON body: {text[:500]}"
+            if str(data.get("stat", "")).lower() != "ok":
+                emsg = data.get("emsg") or data.get("rejreason") or str(data)
+                return None, f"getquotes rejected: {emsg}"
+            return data, ""
+        except requests.RequestException as exc:
+            body = ""
+            if getattr(exc, "response", None) is not None:
+                body = (exc.response.text or "")[:500]
+            return None, f"getquotes request failed: {exc}" + (f" | body={body}" if body else "")
+        except Exception as exc:
+            return None, f"getquotes unexpected failure: {exc}"
+
+    def get_quotes_safe(self, exchange, token, retries=1, backoff_sec=0.2, context=None):
+        """
+        Resilient quote fetcher with retry and explicit broker diagnostics.
+        Returns quote dict on success, else None.
+        """
+        last_err = ""
+        attempts = max(1, int(retries) + 1)
+        for i in range(attempts):
+            quote, err = self._quote_request(exchange, token)
+            if quote is not None:
+                self._clear_last_broker_error()
+                return quote
+            last_err = err or "unknown getquotes error"
+            if i < attempts - 1:
+                time.sleep(max(0.0, float(backoff_sec)))
+
+        self._set_last_broker_error(last_err)
+        if context:
+            logger.error("Broker quote error (%s): %s", context, last_err)
+        else:
+            logger.error("Broker quote error: %s", last_err)
+        return None
+
+    def get_quotes(self, exchange, token):
+        """
+        Override SDK get_quotes to avoid hidden JSON parse errors.
+        Keeps call signature compatible with existing code.
+        """
+        return self.get_quotes_safe(exchange=exchange, token=token, retries=1, backoff_sec=0.2)
+
+    def get_oauth_url(self, oauth_url, client_id):
+        """Build broker OAuth login URL."""
+        try:
+            url = super().getOAuthURL(oauth_url, client_id)
+            self._clear_last_broker_error()
+            return url
+        except Exception as exc:
+            msg = f"OAuth URL build failed: {exc}"
+            self._set_last_broker_error(msg)
+            logger.error(msg, exc_info=True)
+            return None
+
+    def configure_oauth_service_host(self, host=None, websocket_endpoint=None):
+        """
+        Switch SDK service host to OAuth-friendly API endpoints.
+        Noren OAuth methods (watchlist/limits/etc.) read class-level service config.
+        """
+        try:
+            cfg = getattr(NorenApi, "_NorenApi__service_config", None)
+            if not isinstance(cfg, dict):
+                msg = "OAuth host switch skipped: service config unavailable"
+                self._set_last_broker_error(msg)
+                logger.warning(msg)
+                return False
+            cfg["host"] = host or "https://api.shoonya.com/NorenWClientAPI/"
+            cfg["websocket_endpoint"] = websocket_endpoint or "wss://api.shoonya.com/NorenWS/"
+            self._clear_last_broker_error()
+            return True
+        except Exception as exc:
+            msg = f"OAuth host switch failed: {exc}"
+            self._set_last_broker_error(msg)
+            logger.error(msg, exc_info=True)
+            return False
+
+    def exchange_auth_code(self, auth_code, secret_code, client_id, uid, token_url=None):
+        """Exchange auth code for (access_token, user_id, refresh_token, account_id)."""
+        try:
+            config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+            host = (config.get("host") or "").rstrip("/") if config else ""
+            routes = config.get("routes") or {} if config else {}
+            path = (routes.get("gen_acs_tok") or "").lstrip("/")
+            route_url = f"{host}/{path}" if (host and path) else ""
+            # OAuth token exchange is served on NorenWClientAPI; TP host often returns non-JSON.
+            default_token_url = "https://api.shoonya.com/NorenWClientAPI//GenAcsTok"
+            url = str(token_url or "").strip() or route_url.replace("NorenWClientTP", "NorenWClientAPI") or default_token_url
+
+            checksum_src = f"{client_id}{secret_code}{auth_code}".encode("utf-8")
+            checksum = hashlib.sha256(checksum_src).hexdigest()
+            values = {"code": auth_code, "checksum": checksum, "uid": uid}
+            payload = "jData=" + json.dumps(values)
+
+            res = requests.post(url, data=payload, timeout=30)
+            text = (res.text or "").strip()
+            if not res.ok:
+                msg = f"OAuth token exchange HTTP {res.status_code}: {text[:500] or 'empty body'}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+            if not text:
+                msg = "OAuth token exchange returned empty body"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+
+            try:
+                res_dict = json.loads(text)
+            except json.JSONDecodeError:
+                msg = f"OAuth token exchange returned non-JSON body: {text[:500]}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+
+            if "access_token" not in res_dict:
+                emsg = res_dict.get("emsg") or res_dict.get("message") or str(res_dict)
+                msg = f"OAuth token exchange rejected: {emsg}"
+                self._set_last_broker_error(msg)
+                logger.error(msg)
+                return None
+
+            access_token = res_dict.get("access_token")
+            user_id = res_dict.get("USERID") or uid
+            refresh_token = res_dict.get("refresh_token")
+            account_id = res_dict.get("actid") or uid
+            session_token = res_dict.get("susertoken")
+
+            # Keep SDK internals aligned so downstream broker methods work.
+            if session_token:
+                self._NorenApi__susertoken = session_token
+            self._NorenApi__username = user_id
+            self._NorenApi__accountid = account_id
+            self._NorenApi__access_token = access_token
+
+            self.inject_oauth_header(access_token, user_id, account_id)
+            self._clear_last_broker_error()
+            return access_token, user_id, refresh_token, account_id
+        except Exception as exc:
+            msg = f"OAuth token exchange failed: {exc}"
+            self._set_last_broker_error(msg)
+            logger.error(msg, exc_info=True)
+            return None
+
+    def inject_oauth_header(self, access_token, uid, account_id):
+        """Inject bearer token into API headers and SDK session fields."""
+        try:
+            headers = super().injectOAuthHeader(access_token, uid, account_id)
+            self._clear_last_broker_error()
+            return headers
+        except Exception as exc:
+            msg = f"Inject OAuth header failed: {exc}"
+            self._set_last_broker_error(msg)
+            logger.error(msg, exc_info=True)
+            return None
+
+    def validate_oauth_session(self):
+        """Check whether current OAuth token can access account APIs."""
+        checks = [
+            ("watchlist_names", {"ordersource": "API", "uid": getattr(self, "_NorenApi__username", None)}),
+            ("limits", {"uid": getattr(self, "_NorenApi__username", None), "actid": getattr(self, "_NorenApi__accountid", None)}),
+        ]
+        last_error = ""
+        for route_key, values in checks:
+            ok, _data, err = self._oauth_post_json(route_key, values)
+            if ok:
+                self._clear_last_broker_error()
+                return True
+            last_error = err
+            logger.warning("OAuth session validation via %s failed: %s", route_key, err)
+        if last_error:
+            self._set_last_broker_error(last_error)
+        else:
+            msg = "OAuth session validation failed: no successful stat=Ok response"
+            self._set_last_broker_error(msg)
+            logger.warning(msg)
+        return False
 
     def place_basket(self, orders):
 

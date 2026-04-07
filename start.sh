@@ -22,18 +22,30 @@ source venv/bin/activate
 pip install -q -r requirements.txt
 pip install -q flask rich 2>/dev/null || true
 
-# ── 2FA code ────────────────────────────────────────────
-if [ -n "${1:-}" ]; then
-    export TWOFA="$1"
-elif [ -z "${TWOFA:-}" ]; then
-    read -rp "Enter your 2FA code: " TWOFA
-    export TWOFA
-fi
-
 # ── Pre-flight checks ──────────────────────────────────
 if [ ! -f "cred.yml" ]; then
     echo "ERROR: cred.yml not found. Copy from cred.yml.template and fill in your credentials."
     exit 1
+fi
+
+# Detect auth mode from cred.yml.
+AUTH_MODE="$(python3 - <<'PY'
+import yaml
+from pathlib import Path
+creds = yaml.safe_load(Path("cred.yml").read_text()) or {}
+is_oauth = all(str(creds.get(k, "")).strip() for k in ("oauth_url", "client_id", "Secret_Code", "UID"))
+print("oauth" if is_oauth else "legacy")
+PY
+)"
+
+# ── 2FA code (legacy mode only) ─────────────────────────
+if [ "${AUTH_MODE}" = "legacy" ]; then
+    if [ -n "${1:-}" ]; then
+        export TWOFA="$1"
+    elif [ -z "${TWOFA:-}" ]; then
+        read -rp "Enter your 2FA code: " TWOFA
+        export TWOFA
+    fi
 fi
 
 echo "────────────────────────────────────────"

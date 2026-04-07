@@ -89,8 +89,18 @@ pip install -r requirements.txt
    ```bash
    cp cred.yml.template cred.yml
    ```
-2. Edit `cred.yml` with your Shoonya details: `user`, `pwd`, `vc`, `apikey`, `imei`.
-3. 2FA: set env `TWOFA` to your one-time code for non-interactive runs, or enter when prompted.
+2. Choose one auth mode in `cred.yml`:
+   - **Legacy:** `user`, `pwd`, `vc`, `apikey`, `imei` (uses 2FA code).
+   - **OAuth:** `UID`, `client_id`, `oauth_url`, `Secret_Code`, `token_url`, `oauth_api_host`, `oauth_ws_endpoint` (reuses cached `Access_token` when valid).
+3. Legacy 2FA mode: set env `TWOFA` for non-interactive runs, or enter when prompted.
+4. OAuth mode:
+   - On first run (or expired token), app prints OAuth login URL and asks for auth code.
+   - After successful exchange, `Access_token` and `Account_ID` are saved in `cred.yml` for reuse.
+   - Optional automation: set `auth_code_cmd` in `cred.yml` (or env `SHOONYA_AUTH_CODE_CMD`) to run an external auth-code script (for example from `/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py`).
+   - Optional timeout for command-based capture: `auth_code_timeout` in `cred.yml` or env `SHOONYA_AUTH_CODE_TIMEOUT` (seconds).
+   - Optional token exchange endpoint override: `token_url` in `cred.yml` or env `SHOONYA_TOKEN_URL` (default should match `https://api.shoonya.com/NorenWClientAPI//GenAcsTok`).
+   - Optional OAuth service host overrides: `oauth_api_host` / `oauth_ws_endpoint` in `cred.yml` or env `SHOONYA_OAUTH_API_HOST` / `SHOONYA_OAUTH_WS`.
+   - On OAuth validation/exchange failures, app re-attempts command-based auth-code capture automatically (`oauth_reauth_attempts`, env `SHOONYA_OAUTH_REAUTH_ATTEMPTS`) before manual fallback.
 
 ### Paper vs live
 
@@ -103,7 +113,7 @@ Run the app:
 python main.py
 ```
 
-Logs go to `logs/trading_system_YYYYMMDD.log`. You’ll see STATE lines (e.g. WAITING_FOR_CLASSIFICATION, NO_ACTIVE_STRATEGIES, ACTIVE_STRATEGIES:D), day classification, and at 14:15 IST: `HARD CLOSE: trade window over at 14:15 IST — forcing all active strategies flat`, then END OF DAY summary and DataCollector stop.
+Logs go to `logs/ic_system_YYYYMMDD.log`. You’ll see strategy classification, entry/exit actions, and hard-close/end-of-day behavior.
 
 ## Data Collection
 
