@@ -5,7 +5,7 @@
 
 ## Working tree summary (snapshot)
 
-- Modified: `api_helper.py`, `README.md`, `main.py`, `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_STATE.md`
+- Modified: `README.md`, `api_helper.py`, `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_STATE.md`
 - Untracked/new docs: `docs/BUSINESS_OVERVIEW.md`, `docs/IRON_CONDOR_PRODUCT_REQUIREMENTS.md`, `docs/PROJECT_CONTEXT.md`, `docs/PROJECT_STATE.md`
 - Untracked: `agents.md`, `skills.md`
 
@@ -56,4 +56,13 @@
   - Low-priority quotas reserve capacity so strategy/risk quote calls are not starved by background collectors.
   - Quote limiter behavior is configurable via env (`SHOONYA_QUOTE_*`, `SHOONYA_QUOTE_LIMIT_ENABLED`).
 - Completed: `data_collector.py` now routes quote polling through the low-priority lane (`priority="low"` with collector context tags) so bulk background fetching yields to real-time strategy/risk quote demand.
+- Completed: websocket runtime path removed from this branch per broker-token compatibility decision.
+- Completed: `main.py` now runs pure REST quote flow (no websocket startup, subscriptions, staleness gate, or shutdown hooks).
+- Completed: websocket-only config knobs removed from `trading_system/config/settings.py`.
+- Completed: `MarketData`, `RegimeFilter`, and `DataCollector` now use API quote paths only (stream-cache branches removed).
+- Completed: websocket runtime path disabled in orchestrator/data flow; sample websocket test scripts may still exist but are not part of active runtime.
+- Completed: quote throttling now enforces a hard maximum of `10` quote calls per second in `api_helper.py` by clamping `SHOONYA_QUOTE_MAX_PER_SEC`.
+- Completed (auth reliability patch): `api_helper.py` OAuth validation calls now include `jKey` retry fallback when broker responds with `401 Invalid Session Key` under OAuth-header path.
+- Completed (auth usability patch): `main.py` auth-code capture/parser now handles broader code formats, avoids blocking `readline()` hangs via `select` polling, and skips duplicate captured auth codes across OAuth retries.
+- Completed (quote auth patch): `api_helper.py` `getquotes` path now retries once with `jKey` when OAuth-header quote calls return `401 Invalid Session Key`, addressing post-login quote failures observed at runtime.
 

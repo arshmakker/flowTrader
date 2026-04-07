@@ -13,6 +13,27 @@ import os
 
 logger = logging.getLogger(__name__)
 api = None
+DEBUG_LOG_PATH = "/Users/arshdeep/git/regimetrader/.cursor/debug-84bb37.log"
+DEBUG_SESSION_ID = "84bb37"
+
+
+def _agent_debug_log(hypothesis_id, location, message, data=None, run_id=None):
+    payload = {
+        "sessionId": DEBUG_SESSION_ID,
+        "runId": run_id or os.environ.get("AGENT_DEBUG_RUN_ID", "run1"),
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data or {},
+        "timestamp": int(time.time() * 1000),
+    }
+    try:
+        with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    except Exception:
+        pass
+
+
 class Order:
      def __init__(self, buy_or_sell:str = None, product_type:str = None,
                  exchange: str = None, tradingsymbol:str =None, 
@@ -52,7 +73,9 @@ class ShoonyaApiPy(NorenApi):
         api = self
         self._last_broker_error = None
         self._quote_limiter_enabled = str(os.environ.get("SHOONYA_QUOTE_LIMIT_ENABLED", "1")).strip().lower() not in ("0", "false", "no")
-        self._quote_max_per_sec = self._safe_int_env("SHOONYA_QUOTE_MAX_PER_SEC", 8)
+        # Hard safety cap requested: never exceed 10 quote calls per second.
+        self._quote_hard_max_per_sec = 10
+        self._quote_max_per_sec = min(self._safe_int_env("SHOONYA_QUOTE_MAX_PER_SEC", 10), self._quote_hard_max_per_sec)
         self._quote_max_per_min = self._safe_int_env("SHOONYA_QUOTE_MAX_PER_MIN", 170)
         self._quote_low_max_per_sec = self._safe_int_env("SHOONYA_QUOTE_LOW_MAX_PER_SEC", 4)
         self._quote_low_max_per_min = self._safe_int_env("SHOONYA_QUOTE_LOW_MAX_PER_MIN", 120)
@@ -230,6 +253,35 @@ class ShoonyaApiPy(NorenApi):
         try:
             res = requests.post(url, data=payload, headers=headers, timeout=30)
             text = (res.text or "").strip()
+            # region agent log
+            _agent_debug_log(
+                "H3",
+                "api_helper.py:_oauth_post_json:response",
+                "oauth_route_response",
+                {
+                    "route_key": route_key,
+                    "http_status": res.status_code,
+                    "host": host,
+                    "has_invalid_session_key": ("Invalid Session Key" in text),
+                    "using_oauth_headers": bool(headers),
+                },
+            )
+            # endregion
+            if res.status_code == 401 and "Invalid Session Key" in text:
+                # Some broker routes may reject OAuth-header auth intermittently.
+                ok2, data2, err2 = self._oauth_post_with_jkey(url, values, route_key)
+                # region agent log
+                _agent_debug_log(
+                    "H3",
+                    "api_helper.py:_oauth_post_json:jkey_retry",
+                    "oauth_route_jkey_retry_result",
+                    {"route_key": route_key, "retry_ok": bool(ok2), "retry_err_present": bool(err2)},
+                )
+                # endregion
+                if ok2:
+                    return True, data2, ""
+                if err2:
+                    return False, data2, err2
             if not res.ok:
                 return False, None, f"{route_key} HTTP {res.status_code}: {text[:500] or 'empty body'}"
             if not text:
@@ -249,6 +301,42 @@ class ShoonyaApiPy(NorenApi):
             return False, None, f"{route_key} request failed: {exc}" + (f" | body={body}" if body else "")
         except Exception as exc:
             return False, None, f"{route_key} unexpected failure: {exc}"
+
+    def _oauth_post_with_jkey(self, url, values, route_key):
+        session_key = getattr(self, "_NorenApi__susertoken", None)
+        if not session_key:
+            return False, None, ""
+        payload = "jData=" + json.dumps(values or {}) + "&jKey=" + str(session_key)
+        try:
+            res = requests.post(url, data=payload, timeout=30)
+            text = (res.text or "").strip()
+            # region agent log
+            _agent_debug_log(
+                "H3",
+                "api_helper.py:_oauth_post_with_jkey:response",
+                "oauth_route_jkey_response",
+                {"route_key": route_key, "http_status": res.status_code, "has_body": bool(text)},
+            )
+            # endregion
+            if not res.ok:
+                return False, None, f"{route_key} (jKey retry) HTTP {res.status_code}: {text[:500] or 'empty body'}"
+            if not text:
+                return False, None, f"{route_key} (jKey retry) returned empty body"
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                return False, None, f"{route_key} (jKey retry) returned non-JSON body: {text[:500]}"
+            if isinstance(data, dict) and str(data.get("stat", "")).lower() == "ok":
+                return True, data, ""
+            emsg = data.get("emsg") if isinstance(data, dict) else str(data)
+            return False, data, f"{route_key} (jKey retry) rejected: {emsg or data}"
+        except requests.RequestException as exc:
+            body = ""
+            if getattr(exc, "response", None) is not None:
+                body = (exc.response.text or "")[:500]
+            return False, None, f"{route_key} (jKey retry) request failed: {exc}" + (f" | body={body}" if body else "")
+        except Exception as exc:
+            return False, None, f"{route_key} (jKey retry) unexpected failure: {exc}"
 
     def _quote_request(self, exchange, token):
         """Low-level quote request with explicit parse/HTTP diagnostics."""
@@ -278,6 +366,27 @@ class ShoonyaApiPy(NorenApi):
         try:
             res = requests.post(url, data=payload, headers=headers, timeout=15)
             text = (res.text or "").strip()
+            if (
+                headers
+                and res.status_code == 401
+                and "Invalid Session Key" in text
+                and session_key
+            ):
+                # Broker may reject OAuth-header auth for getquotes even when
+                # OAuth validation routes succeed; retry once with jKey.
+                retry_payload = "jData=" + json.dumps(values) + "&jKey=" + str(session_key)
+                retry_res = requests.post(url, data=retry_payload, timeout=15)
+                retry_text = (retry_res.text or "").strip()
+                if retry_res.ok and retry_text:
+                    try:
+                        retry_data = json.loads(retry_text)
+                    except json.JSONDecodeError:
+                        return None, f"getquotes jKey retry returned non-JSON body: {retry_text[:500]}"
+                    if str(retry_data.get("stat", "")).lower() == "ok":
+                        return retry_data, ""
+                    retry_emsg = retry_data.get("emsg") or retry_data.get("rejreason") or str(retry_data)
+                    return None, f"getquotes jKey retry rejected: {retry_emsg}"
+                return None, f"getquotes jKey retry HTTP {retry_res.status_code}: {retry_text[:500] or 'empty body'}"
             if not res.ok:
                 return None, f"getquotes HTTP {res.status_code}: {text[:500] or 'empty body'}"
             if not text:
@@ -420,6 +529,20 @@ class ShoonyaApiPy(NorenApi):
             refresh_token = res_dict.get("refresh_token")
             account_id = res_dict.get("actid") or uid
             session_token = res_dict.get("susertoken")
+            # region agent log
+            _agent_debug_log(
+                "H2",
+                "api_helper.py:exchange_auth_code:parsed",
+                "oauth_exchange_parsed",
+                {
+                    "http_status": res.status_code,
+                    "has_access_token": bool(access_token),
+                    "has_session_token": bool(session_token),
+                    "has_user_id": bool(user_id),
+                    "has_account_id": bool(account_id),
+                },
+            )
+            # endregion
 
             # Keep SDK internals aligned so downstream broker methods work.
             if session_token:
@@ -458,6 +581,14 @@ class ShoonyaApiPy(NorenApi):
         last_error = ""
         for route_key, values in checks:
             ok, _data, err = self._oauth_post_json(route_key, values)
+            # region agent log
+            _agent_debug_log(
+                "H5",
+                "api_helper.py:validate_oauth_session:route_result",
+                "oauth_validate_route_result",
+                {"route_key": route_key, "ok": bool(ok), "error_sample": (err or "")[:160]},
+            )
+            # endregion
             if ok:
                 self._clear_last_broker_error()
                 return True

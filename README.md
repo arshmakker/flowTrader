@@ -29,7 +29,7 @@ Strategies are selected by **day type** (from open/VWAP at classification time) 
 - **Position persistence** – Open positions and session state saved; restored on restart until flat or hard close.
 - **Trade window** – 10:00–14:15 IST; classification at 10:30; hard close of all positions at 14:15.
 - **Risk and target** – Daily loss limit by regime; daily target gate; mutual exclusion between strategies.
-- **Market data** – DataCollector (tick/stream), SymbolManager (NFO/NSE), MarketData (OHLCV, LTP, open) for signals and options.
+- **Market data** – DataCollector (REST quote polling), SymbolManager (NFO/NSE), MarketData (OHLCV, LTP, open) for signals and options.
 
 ## System Architecture
 
@@ -120,6 +120,7 @@ Logs go to `logs/ic_system_YYYYMMDD.log`. You’ll see strategy classification, 
 - **Symbols** – NIFTY spot (index), NFO index futures (NIFTY, BANKNIFTY, FINNIFTY), and index options; see `SymbolManager.get_data_collection_symbols()`.
 - **Storage** – Date-specific dirs (e.g. `market_data_YYYYMMDD/`), with `raw_data/` (and optionally `processed_data/`) for tick/derived data.
 - **Lifecycle** – Data collection starts when market opens and stops at hard close (or shutdown).
+- **Source** – Collector reads per-symbol quotes through the API wrapper, which applies global throttling and retries.
 
 ## Directory Structure
 
@@ -151,7 +152,7 @@ regimetrader/
 │   │   ├── paper_pnl_engine.py
 │   │   └── go_live_evaluator.py
 │   ├── existing/
-│   │   └── market_data.py
+│   │   ├── market_data.py
 │   └── dashboard/
 │       ├── web_dashboard.py   # Flask, port 5050
 │       └── terminal_dashboard.py

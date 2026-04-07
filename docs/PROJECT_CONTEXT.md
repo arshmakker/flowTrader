@@ -65,4 +65,20 @@ The system is shifting to an **Iron Condor–only** product direction:
   - Priority lanes are supported (`high` for strategy/risk paths, `low` for background polling), preserving headroom for trading decisions while still protecting broker request budgets.
   - Runtime knobs are available via env (`SHOONYA_QUOTE_MAX_PER_SEC`, `SHOONYA_QUOTE_MAX_PER_MIN`, `SHOONYA_QUOTE_LOW_MAX_PER_SEC`, `SHOONYA_QUOTE_LOW_MAX_PER_MIN`, `SHOONYA_QUOTE_LIMIT_ENABLED`).
 - `data_collector.py` now tags quote fetches with low-priority context (`priority="low"`) so background collection respects reserved headroom for strategy/risk quote paths during high-load periods.
+- Websocket quote ingestion has been removed from runtime flow for now:
+  - `main.py` no longer starts/manages websocket sessions and runs fully on REST quote pulls.
+  - `MarketData`, `RegimeFilter`, and `DataCollector` now use API quote paths only (no stream-cache branches).
+  - websocket runtime dependencies are intentionally disabled in active execution paths to avoid partial/unsupported auth assumptions.
+- Global quote throttling is now pinned to a hard ceiling of **10 quote calls/second** in `api_helper.py`:
+  - `SHOONYA_QUOTE_MAX_PER_SEC` is still accepted but clamped to `10`.
+  - This guarantees runtime never exceeds the requested per-second quote rate.
+- OAuth session validation hardened further in `api_helper.py`:
+  - when OAuth-header validation calls return `401 Invalid Session Key`, the wrapper now retries the same route once using `jKey` session-token auth (if available) before failing.
+- `api_helper.py` quote path now includes endpoint-specific auth fallback:
+  - when `getquotes` returns `401 Invalid Session Key` on OAuth-header auth, it retries once with `jKey` (`susertoken`) before returning an error.
+  - this targets observed runtime behavior where OAuth login/validation succeeds but quote requests are rejected by broker with session-key errors.
+- Auth-code command handling in `main.py` improved:
+  - `_extract_auth_code` now decodes broader auth-code formats safely (including URL-encoded values and quoted output tokens).
+  - `_fetch_auth_code_from_command` now uses non-blocking stdout polling (`select`) to avoid long blocking reads and improve interrupt/timeout responsiveness.
+  - OAuth re-auth loop now ignores duplicate command-captured auth codes across attempts to reduce repeated stale-code retries.
 
