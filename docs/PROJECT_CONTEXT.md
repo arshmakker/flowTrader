@@ -65,6 +65,7 @@ The system is shifting to an **Iron Condor–only** product direction:
   - Priority lanes are supported (`high` for strategy/risk paths, `low` for background polling), preserving headroom for trading decisions while still protecting broker request budgets.
   - Runtime knobs are available via env (`SHOONYA_QUOTE_MAX_PER_SEC`, `SHOONYA_QUOTE_MAX_PER_MIN`, `SHOONYA_QUOTE_LOW_MAX_PER_SEC`, `SHOONYA_QUOTE_LOW_MAX_PER_MIN`, `SHOONYA_QUOTE_LIMIT_ENABLED`).
 - `data_collector.py` now tags quote fetches with low-priority context (`priority="low"`) so background collection respects reserved headroom for strategy/risk quote paths during high-load periods.
+- `main.py` now stops `DataCollector` immediately at `TRADE_END` before the post-session sleep, preventing quote polling from continuing after daily strategy shutdown.
 - Websocket quote ingestion has been removed from runtime flow for now:
   - `main.py` no longer starts/manages websocket sessions and runs fully on REST quote pulls.
   - `MarketData`, `RegimeFilter`, and `DataCollector` now use API quote paths only (no stream-cache branches).
@@ -81,4 +82,22 @@ The system is shifting to an **Iron Condor–only** product direction:
   - `_extract_auth_code` now decodes broader auth-code formats safely (including URL-encoded values and quoted output tokens).
   - `_fetch_auth_code_from_command` now uses non-blocking stdout polling (`select`) to avoid long blocking reads and improve interrupt/timeout responsiveness.
   - OAuth re-auth loop now ignores duplicate command-captured auth codes across attempts to reduce repeated stale-code retries.
+- Paper execution quote sanity guard added:
+  - `trading_system/config/settings.py` now defines `PAPER_OPTION_LTP_MIN` and `PAPER_OPTION_LTP_MAX`.
+  - Goal: reject obviously invalid option LTPs in paper fills (e.g., underlying-like 55k prints on option contracts) to protect PnL integrity.
+  - `trading_system/paper/paper_order_manager.py` now enforces the guard inside `place_order()` and rejects orders with reason `suspicious_option_ltp` when option LTP is out of bounds.
+- 2026-04-08 data correction applied after manual cross-check:
+  - Today paper trades `20260408_0076` and `20260408_0077` are marked `INVALID_DATA` in `data/paper_trades.csv`.
+  - `data/pnl_snapshot.json` and `data/paper_summary.json` are overridden for the day with zeroed PnL metrics and an `invalid_trades` list for auditability.
+- Iron condor entry safety has been strengthened:
+  - `trading_system/core/iron_condor.py` now treats entry as atomic in paper mode: all 4 leg orders must return `COMPLETE`.
+  - If any leg is rejected (for example due to `suspicious_option_ltp`), entry is aborted and any already-filled legs are rolled back immediately.
+  - This prevents partial-leg state from being logged as a valid condor entry and blocks inflated PnL from rejected-leg contamination.
+- 2026-04-09 post-audit correction applied:
+  - Trade `20260409_0081` (NIFTY) is marked `INVALID_DATA` in `data/paper_trades.csv` after leg rejection/credit contamination review.
+  - Day summary artifacts (`data/pnl_snapshot.json`, `data/paper_summary.json`) are sanitized to realised/total PnL `8160.0` with `invalid_trades` including `20260409_0081`.
+- Runtime anti-corruption safeguards expanded:
+  - `trading_system/existing/market_data.py` now validates option LTP centrally for all callers (`get_ltp`) using configured min/max bounds, with fallback to last valid option price for the same symbol.
+  - `trading_system/core/risk_manager.py` now skips hard-stop decisions on invalid quote snapshots and requires consecutive breach confirmation (`IC_HARD_STOP_CONFIRM_TICKS`) before halting.
+  - `trading_system/config/settings.py` now includes `IC_HARD_STOP_CONFIRM_TICKS`.
 

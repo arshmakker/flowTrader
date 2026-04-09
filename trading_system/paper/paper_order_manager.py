@@ -34,6 +34,11 @@ class PaperOrderManager:
         return f"PAPER_{next(self._id_counter)}"
 
     @staticmethod
+    def _is_option_symbol(tradingsymbol: str) -> bool:
+        core = tradingsymbol.split("|")[-1]
+        return ("C" in core[-6:]) or ("P" in core[-6:])
+
+    @staticmethod
     def build_option_symbol(
         symbol: str, expiry: str, strike: float, opt_type: str
     ) -> str:
@@ -74,6 +79,7 @@ class PaperOrderManager:
         track_position: bool = True,
     ) -> Dict:
         ltp = self.md.get_ltp(tradingsymbol)
+        is_option = self._is_option_symbol(tradingsymbol)
         if ltp <= 0:
             if price > 0:
                 ltp = price
@@ -94,7 +100,29 @@ class PaperOrderManager:
                     "reason": "missing_ltp",
                 }
 
-        is_option = "C" in tradingsymbol.split("|")[-1][-6:] or "P" in tradingsymbol.split("|")[-1][-6:]
+        if is_option and (ltp < settings.PAPER_OPTION_LTP_MIN or ltp > settings.PAPER_OPTION_LTP_MAX):
+            logger.error(
+                "Paper order rejected for %s: suspicious option LTP %.2f outside [%.2f, %.2f]",
+                tradingsymbol,
+                ltp,
+                settings.PAPER_OPTION_LTP_MIN,
+                settings.PAPER_OPTION_LTP_MAX,
+            )
+            return {
+                "order_id": self._next_id(),
+                "symbol": tradingsymbol,
+                "side": buy_or_sell,
+                "quantity": quantity,
+                "fill_price": 0.0,
+                "stt": 0.0,
+                "brokerage": 0.0,
+                "status": "REJECTED",
+                "timestamp": datetime.now().isoformat(),
+                "paper": True,
+                "reason": "suspicious_option_ltp",
+                "ltp": ltp,
+            }
+
         if is_option and ltp < settings.SLIPPAGE_OTM_THRESHOLD:
             slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
         else:

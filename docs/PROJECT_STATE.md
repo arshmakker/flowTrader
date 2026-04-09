@@ -58,6 +58,7 @@
 - Completed: `data_collector.py` now routes quote polling through the low-priority lane (`priority="low"` with collector context tags) so bulk background fetching yields to real-time strategy/risk quote demand.
 - Completed: websocket runtime path removed from this branch per broker-token compatibility decision.
 - Completed: `main.py` now runs pure REST quote flow (no websocket startup, subscriptions, staleness gate, or shutdown hooks).
+- Completed: `main.py` now stops `DataCollector` at `TRADE_END` before entering post-session sleep so collection does not continue after daily strategy shutdown.
 - Completed: websocket-only config knobs removed from `trading_system/config/settings.py`.
 - Completed: `MarketData`, `RegimeFilter`, and `DataCollector` now use API quote paths only (stream-cache branches removed).
 - Completed: websocket runtime path disabled in orchestrator/data flow; sample websocket test scripts may still exist but are not part of active runtime.
@@ -65,4 +66,16 @@
 - Completed (auth reliability patch): `api_helper.py` OAuth validation calls now include `jKey` retry fallback when broker responds with `401 Invalid Session Key` under OAuth-header path.
 - Completed (auth usability patch): `main.py` auth-code capture/parser now handles broader code formats, avoids blocking `readline()` hangs via `select` polling, and skips duplicate captured auth codes across OAuth retries.
 - Completed (quote auth patch): `api_helper.py` `getquotes` path now retries once with `jKey` when OAuth-header quote calls return `401 Invalid Session Key`, addressing post-login quote failures observed at runtime.
+- Completed (paper price-integrity patch): `trading_system/config/settings.py` now includes `PAPER_OPTION_LTP_MIN` / `PAPER_OPTION_LTP_MAX` thresholds to support rejecting invalid option quote magnitudes during paper fills.
+- Completed (paper execution guard): `trading_system/paper/paper_order_manager.py` now validates option LTP bounds before fill simulation and rejects abnormal quotes with explicit reason `suspicious_option_ltp`.
+- Completed (8 Apr data rectification): invalid quote contamination on 2026-04-08 was handled by:
+  - marking `20260408_0076` and `20260408_0077` as `INVALID_DATA` with zero PnL in `data/paper_trades.csv`.
+  - zeroing day-level PnL aggregates in `data/pnl_snapshot.json` and `data/paper_summary.json`.
+  - recording invalid trade IDs under `invalid_trades` in both JSON summary artifacts.
+- Completed (entry atomicity fix): `trading_system/core/iron_condor.py` now requires all 4 entry legs to be `COMPLETE`; if any leg is rejected, the strategy aborts entry and rolls back already-placed legs to avoid partial-entry ghost positions and invalid high-credit/PnL artifacts.
+- Completed (9 Apr data rectification): `20260409_0081` marked as `INVALID_DATA` with zero PnL in `data/paper_trades.csv`; summary snapshots updated to sanitized day PnL (`8160.0`) and invalid-trade audit list extended.
+- Completed (quote/risk hardening pack):
+  - `trading_system/existing/market_data.py`: centralized option quote validation with suspicious-LTP rejection and last-valid-price fallback.
+  - `trading_system/core/risk_manager.py`: hard-stop now ignores invalid quote snapshots and requires configurable consecutive breach confirmation before triggering halt.
+  - `trading_system/config/settings.py`: added `IC_HARD_STOP_CONFIRM_TICKS` (default `2`).
 

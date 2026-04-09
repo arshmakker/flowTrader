@@ -50,6 +50,32 @@ class IronCondorStrategy:
     def is_active(self) -> bool:
         return self._position is not None
 
+    @staticmethod
+    def _opposite_side(side: str) -> str:
+        return "BUY" if side == "SELL" else "SELL"
+
+    def _rollback_partial_entry(self, placed_orders: List[Dict], qty: int) -> None:
+        """Flatten any successfully placed entry legs if entry orchestration fails."""
+        for order in reversed(placed_orders):
+            if order.get("status") != "COMPLETE":
+                continue
+            symbol = order.get("symbol")
+            side = order.get("side")
+            if not symbol or side not in ("BUY", "SELL"):
+                continue
+            rollback_side = self._opposite_side(side)
+            rollback = self.om.place_order(symbol, rollback_side, qty, track_position=False)
+            if rollback.get("status") != "COMPLETE":
+                logger.error(
+                    "IC %s rollback failed for %s %s %s (status=%s, reason=%s)",
+                    self.instrument,
+                    rollback_side,
+                    symbol,
+                    qty,
+                    rollback.get("status"),
+                    rollback.get("reason", ""),
+                )
+
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def get_vix_tier_params(self, vix: float) -> Tuple[int, int]:
@@ -118,11 +144,29 @@ class IronCondorStrategy:
         qty = lots * lot_size
         max_profit = net_credit_unit * qty
 
-        # Place Orders
-        self.om.place_order(sc_sym, "SELL", qty)
-        self.om.place_order(sp_sym, "SELL", qty)
-        self.om.place_order(lc_sym, "BUY", qty)
-        self.om.place_order(lp_sym, "BUY", qty)
+        # Place all 4 legs and require COMPLETE status for each.
+        orders_to_place = [
+            (sc_sym, "SELL"),
+            (sp_sym, "SELL"),
+            (lc_sym, "BUY"),
+            (lp_sym, "BUY"),
+        ]
+        placed_orders: List[Dict] = []
+        for symbol, side in orders_to_place:
+            order = self.om.place_order(symbol, side, qty)
+            placed_orders.append(order)
+            if order.get("status") != "COMPLETE":
+                logger.error(
+                    "IC %s entry aborted: leg %s %s rejected (status=%s, reason=%s, ltp=%s)",
+                    self.instrument,
+                    side,
+                    symbol,
+                    order.get("status"),
+                    order.get("reason", ""),
+                    order.get("ltp", ""),
+                )
+                self._rollback_partial_entry(placed_orders, qty)
+                return False
 
         self._position = IC_Position(
             instrument=self.instrument,

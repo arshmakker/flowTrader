@@ -347,6 +347,9 @@ def run():
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 for s in strats:
                     if s.is_active(): s.force_exit()
+                if collection_started:
+                    collector.stop_collection()
+                    collection_started = False
                 log.info("Daily session ended. Closed all positions.")
                 _time.sleep(3600)
                 continue

@@ -8,6 +8,7 @@ OHLCV bar accumulator for VWAP / RSI computations.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, date
 from typing import Any, Dict, Optional
@@ -42,12 +43,23 @@ class MarketData:
         self.api = api
         self.sm = symbol_manager
         self._ltp_cache: Dict[str, tuple[float, float]] = {}  # symbol → (ltp, mono_ts)
+        self._last_valid_option_ltp: Dict[str, float] = {}
         self._open_prices: Dict[str, float] = {}
         self._open_price_fallback: set[str] = set()
         self._ohlcv_bars: list[Dict] = []
         self._bars_cache: Optional[tuple[pd.DataFrame, float]] = None  # (df, mono_ts)
 
     # ── LTP ─────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_option_symbol_key(symbol_key: str) -> bool:
+        core = str(symbol_key or "").split("|", 1)[-1]
+        # Matches common option tradingsymbol forms like NIFTY13APR26C24850 / BANKNIFTY28APR26P51000.
+        return bool(re.search(r"[CP]\d+$", core))
+
+    @staticmethod
+    def _is_valid_option_ltp(ltp: float) -> bool:
+        return settings.PAPER_OPTION_LTP_MIN <= ltp <= settings.PAPER_OPTION_LTP_MAX
 
     def get_ltp(self, symbol_key: str) -> float:
         """
@@ -74,6 +86,22 @@ class MarketData:
 
             if quote and "lp" in quote:
                 ltp = float(quote["lp"])
+                if self._is_option_symbol_key(symbol_key):
+                    if not self._is_valid_option_ltp(ltp):
+                        fallback = self._last_valid_option_ltp.get(symbol_key, 0.0)
+                        if fallback > 0:
+                            logger.warning(
+                                "get_ltp: suspicious option LTP %.2f for %s; using last valid %.2f",
+                                ltp, symbol_key, fallback
+                            )
+                            self._ltp_cache[symbol_key] = (fallback, now)
+                            return fallback
+                        logger.error(
+                            "get_ltp: suspicious option LTP %.2f for %s; no valid fallback available",
+                            ltp, symbol_key
+                        )
+                        return 0.0
+                    self._last_valid_option_ltp[symbol_key] = ltp
                 self._ltp_cache[symbol_key] = (ltp, now)
                 return ltp
             else:
@@ -256,4 +284,5 @@ class MarketData:
         self._open_price_fallback.clear()
         self._ohlcv_bars.clear()
         self._ltp_cache.clear()
+        self._last_valid_option_ltp.clear()
         self._bars_cache = None

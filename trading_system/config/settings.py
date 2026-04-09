@@ -42,6 +42,7 @@ IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
 IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
 IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry
 IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
+IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
 IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
 
@@ -99,6 +100,9 @@ PRICE_TICK = 0.05
 SLIPPAGE_PCT = 0.0005
 SLIPPAGE_MIN_ABS = 0.25
 SLIPPAGE_OTM_THRESHOLD = 50.0
+# Quote sanity guard to avoid corrupt option fills from bad ticks/token mixups.
+PAPER_OPTION_LTP_MIN = 0.05
+PAPER_OPTION_LTP_MAX = 5000.0
 STT_OPTIONS_SELL = 0.0005
 STT_FUTURES = 0.0001
 BROKERAGE_PER_ORDER = 5.0
