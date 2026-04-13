@@ -76,6 +76,55 @@ class IronCondorStrategy:
                     rollback.get("reason", ""),
                 )
 
+    def _log_credit_rejection(
+        self,
+        expiry: str,
+        spot: float,
+        vix: float,
+        strikes: Tuple[float, float, float, float],
+        symbols: Tuple[str, str, str, str],
+        prices: Dict[str, float],
+        net_credit_unit: float,
+        min_credit: float,
+        lots: int,
+        lot_size: int,
+    ) -> None:
+        """Emit detailed machine-friendly and human-readable credit rejection logs."""
+        sc, sp, lc, lp = strikes
+        sc_sym, sp_sym, lc_sym, lp_sym = symbols
+        width = abs(lc - sc)
+        credit_gap = min_credit - net_credit_unit
+        logger.info(
+            "IC_REJECT reason=CREDIT_BELOW_MIN instrument=%s expiry=%s spot=%.2f vix=%.2f "
+            "sc=%.2f sp=%.2f lc=%.2f lp=%.2f width=%.2f "
+            "credit=%.2f min_credit=%.2f gap=%.2f lots=%s lot_size=%s qty=%s "
+            "sc_ltp=%.2f sp_ltp=%.2f lc_ltp=%.2f lp_ltp=%.2f "
+            "sc_sym=%s sp_sym=%s lc_sym=%s lp_sym=%s",
+            self.instrument,
+            expiry,
+            spot,
+            vix,
+            sc,
+            sp,
+            lc,
+            lp,
+            width,
+            net_credit_unit,
+            min_credit,
+            credit_gap,
+            lots,
+            lot_size,
+            lots * lot_size,
+            prices["sc"],
+            prices["sp"],
+            prices["lc"],
+            prices["lp"],
+            sc_sym,
+            sp_sym,
+            lc_sym,
+            lp_sym,
+        )
+
     # ── Helpers ─────────────────────────────────────────────────────────
 
     def get_vix_tier_params(self, vix: float) -> Tuple[int, int]:
@@ -133,9 +182,22 @@ class IronCondorStrategy:
         # For IC, max profit = (Collected Premium) * LotSize
         net_credit_unit = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
         
-        # Credit Rule: net_credit >= IC_MIN_CREDIT (minimum ₹25 per lot)
+        # Credit Rule: net_credit >= IC_MIN_CREDIT
         width = abs(lc - sc)
         if net_credit_unit < settings.IC_MIN_CREDIT:
+            lot_size = self.md.get_lot_size(sc_sym)
+            self._log_credit_rejection(
+                expiry=expiry,
+                spot=spot,
+                vix=vix,
+                strikes=(sc, sp, lc, lp),
+                symbols=(sc_sym, sp_sym, lc_sym, lp_sym),
+                prices=prices,
+                net_credit_unit=net_credit_unit,
+                min_credit=settings.IC_MIN_CREDIT,
+                lots=lots,
+                lot_size=lot_size,
+            )
             logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < Min {settings.IC_MIN_CREDIT})")
             return False
 

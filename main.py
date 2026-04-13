@@ -18,7 +18,7 @@ from datetime import datetime, time as dtime
 from api_helper import ShoonyaApiPy
 from symbol_manager import SymbolManager
 from data_collector import DataCollector
-from strategy_runner import is_market_hours, is_market_closed_ist
+from strategy_runner import is_market_hours, is_market_closed_ist, is_trading_day_ist
 
 from trading_system.config import settings
 from trading_system.core.regime_filter import RegimeFilter
@@ -343,14 +343,21 @@ def run():
                 log.info("Market closed. Exiting loop.")
                 break
 
-            # 2. Hard Close & EOW Close
+            # 2. End-of-day: force-exit only if next day is not a trading day
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
-                for s in strats:
-                    if s.is_active(): s.force_exit()
+                from datetime import timedelta
+                tomorrow = datetime.now() + timedelta(days=1)
+                next_day_is_trading = is_trading_day_ist(tomorrow)
+                if not next_day_is_trading:
+                    for s in strats:
+                        if s.is_active(): s.force_exit()
+                    log.info("Pre-holiday/weekend close: force-exited all positions.")
+                if settings.PAPER_TRADE_MODE and pnl_engine:
+                    pnl_engine.write_snapshot()
                 if collection_started:
                     collector.stop_collection()
                     collection_started = False
-                log.info("Daily session ended. Closed all positions.")
+                log.info("Daily session ended.%s", " All positions closed." if not next_day_is_trading else " Positions carried overnight.")
                 _time.sleep(3600)
                 continue
 

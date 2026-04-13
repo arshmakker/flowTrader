@@ -100,4 +100,8 @@ The system is shifting to an **Iron Condor–only** product direction:
   - `trading_system/existing/market_data.py` now validates option LTP centrally for all callers (`get_ltp`) using configured min/max bounds, with fallback to last valid option price for the same symbol.
   - `trading_system/core/risk_manager.py` now skips hard-stop decisions on invalid quote snapshots and requires consecutive breach confirmation (`IC_HARD_STOP_CONFIRM_TICKS`) before halting.
   - `trading_system/config/settings.py` now includes `IC_HARD_STOP_CONFIRM_TICKS`.
+- Credit-rule observability improved for tuning:
+  - `trading_system/core/iron_condor.py` now emits a structured `IC_REJECT` log event when entry is rejected on minimum credit.
+  - The event includes instrument/expiry, strikes and symbols, per-leg LTPs, spot/VIX context, lot sizing, proposed credit, required min credit, and credit gap (`min_credit - credit`).
+  - Existing human-readable `FAILED Credit Rule` log is preserved for quick console scanning.
 

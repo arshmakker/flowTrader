@@ -78,4 +78,8 @@
   - `trading_system/existing/market_data.py`: centralized option quote validation with suspicious-LTP rejection and last-valid-price fallback.
   - `trading_system/core/risk_manager.py`: hard-stop now ignores invalid quote snapshots and requires configurable consecutive breach confirmation before triggering halt.
   - `trading_system/config/settings.py`: added `IC_HARD_STOP_CONFIRM_TICKS` (default `2`).
+- Completed (credit reject diagnostics):
+  - `trading_system/core/iron_condor.py` now logs a structured `IC_REJECT` event whenever the minimum-credit rule blocks entry.
+  - Payload includes expiry, spot, vix, all strikes/symbols, per-leg LTPs, lot sizing (`lots`, `lot_size`, `qty`), proposed credit, threshold, and credit gap.
+  - Existing readable `FAILED Credit Rule` message remains unchanged for operators.
 
