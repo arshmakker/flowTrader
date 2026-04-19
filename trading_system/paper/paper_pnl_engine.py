@@ -11,7 +11,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from trading_system.config import settings
 
@@ -31,10 +31,12 @@ class PaperPnLEngine:
         position_tracker: Any,
         market_data: Any,
         trade_logger: Any,
+        data_dir: Optional[str] = None,
     ) -> None:
         self.pt = position_tracker
         self.md = market_data
         self.tl = trade_logger
+        self._data_dir = data_dir if data_dir is not None else settings.DATA_DIR
 
         # Cumulative (survives reset_daily, persisted across restarts)
         self.realised_pnl: float = 0.0
@@ -55,7 +57,7 @@ class PaperPnLEngine:
         self._daily_peak_pnl: float = 0.0
         self.daily_max_drawdown: float = 0.0
 
-        os.makedirs(settings.DATA_DIR, exist_ok=True)
+        os.makedirs(self._data_dir, exist_ok=True)
 
     def record_trade(self, strategy: str, pnl: float, trade_data: Dict) -> None:
         won = pnl > 0
@@ -185,7 +187,7 @@ class PaperPnLEngine:
 
     def write_snapshot(self) -> None:
         """Write current P&L snapshot to disk — called every cycle."""
-        path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
+        path = os.path.join(self._data_dir, "pnl_snapshot.json")
         try:
             with open(path, "w") as f:
                 json.dump(self.get_summary(), f, indent=2)
@@ -193,7 +195,7 @@ class PaperPnLEngine:
             logger.exception("Failed to write P&L snapshot")
 
     def _write_summary(self) -> None:
-        path = os.path.join(settings.DATA_DIR, "paper_summary.json")
+        path = os.path.join(self._data_dir, "paper_summary.json")
         try:
             with open(path, "w") as f:
                 json.dump(self.get_summary(), f, indent=2)

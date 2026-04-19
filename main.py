@@ -29,6 +29,7 @@ from trading_system.core.risk_manager import RiskManager
 from trading_system.core.expiry_manager import ExpiryManager
 from trading_system.core.sr_manager import SRManager
 from trading_system.core.trade_logger import TradeLogger
+from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
 from trading_system.paper.go_live_evaluator import GoLiveEvaluator
 
@@ -323,10 +324,22 @@ def run():
     nifty_ic = IronCondorStrategy(order_mgr, md, 'NIFTY')
     banknifty_ic = IronCondorStrategy(order_mgr, md, 'BANKNIFTY')
     strats = [nifty_ic, banknifty_ic]
+    strats_map = {'NIFTY': nifty_ic, 'BANKNIFTY': banknifty_ic}
+
+    # Restore any carried-overnight positions + P&L state.
+    meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk)
+    if meta.get("restored_strategies") or meta.get("tracker_positions"):
+        log.info(
+            "Restored carried state: %d strategies, %d tracker positions (saved_at=%s, trading_date=%s)",
+            meta.get("restored_strategies", 0),
+            meta.get("tracker_positions", 0),
+            meta.get("saved_at"),
+            meta.get("trading_date"),
+        )
 
     day_class = None
     collection_started = False
-    
+
     log.info("Entering main loop...")
     
     try:
@@ -357,6 +370,16 @@ def run():
                 if collection_started:
                     collector.stop_collection()
                     collection_started = False
+                flat_now = position_persistence.is_flat(strats_map, pos_mgr)
+                position_persistence.save(
+                    strats_map, pos_mgr, pnl_engine, risk,
+                    session_status=(
+                        position_persistence.SESSION_FLAT if flat_now
+                        else position_persistence.SESSION_ACTIVE
+                    ),
+                    shutdown_reason="eod",
+                    flat_verified_at=datetime.now().isoformat() if flat_now else None,
+                )
                 log.info("Daily session ended.%s", " All positions closed." if not next_day_is_trading else " Positions carried overnight.")
                 _time.sleep(3600)
                 continue
@@ -368,11 +391,7 @@ def run():
                 day_class = classifier.classify()
                 log.info(f"Day Classified: {day_class.day_type} ({day_class.confidence})")
 
-            if day_class is None:
-                _time.sleep(30)
-                continue
-
-            # 4. Monitoring & Harvest Cycle
+            # 4. Monitoring & Harvest Cycle (runs pre-classification so carried positions are watched).
             for s in strats:
                 if s.is_active():
                     result = s.monitor()
@@ -386,8 +405,8 @@ def run():
                     if s.is_active(): s.force_exit()
                 log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
 
-            # 6. Entry Logic (If Gates pass and not active)
-            if not risk.halted and regime.get_regime_gate(day_class.day_type):
+            # 6. Entry Logic (requires classification — stays blocked pre-10:30)
+            if day_class is not None and not risk.halted and regime.get_regime_gate(day_class.day_type):
                 for s in strats:
                     if not s.is_active():
                         # Fetch context for entry
@@ -403,6 +422,12 @@ def run():
             if settings.PAPER_TRADE_MODE and pnl_engine:
                 pnl_engine.write_snapshot()
 
+            # Persist position + P&L state so a crash/restart can resume cleanly.
+            position_persistence.save(
+                strats_map, pos_mgr, pnl_engine, risk,
+                session_status=position_persistence.SESSION_ACTIVE,
+            )
+
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
 
     except KeyboardInterrupt:
@@ -410,6 +435,19 @@ def run():
     finally:
         if collection_started:
             collector.stop_collection()
+        try:
+            flat_now = position_persistence.is_flat(strats_map, pos_mgr)
+            position_persistence.save(
+                strats_map, pos_mgr, pnl_engine, risk,
+                session_status=(
+                    position_persistence.SESSION_FLAT if flat_now
+                    else position_persistence.SESSION_ACTIVE
+                ),
+                shutdown_reason="shutdown",
+                flat_verified_at=datetime.now().isoformat() if flat_now else None,
+            )
+        except Exception:
+            log.exception("Failed to persist state on shutdown")
 
 if __name__ == "__main__":
     run()

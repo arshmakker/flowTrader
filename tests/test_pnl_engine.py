@@ -17,7 +17,7 @@ def _make():
     trk = PaperPositionTracker()
     md = MockMD()
     tl = TradeLogger(data_dir="/tmp/test_pnl_eng")
-    return PaperPnLEngine(trk, md, tl)
+    return PaperPnLEngine(trk, md, tl, data_dir="/tmp/test_pnl_eng")
 
 
 def test_initial_state():
@@ -182,7 +182,7 @@ def test_write_snapshot():
     pnl = _make()
     pnl.record_trade("A", 1500, {})
     pnl.write_snapshot()
-    snap_path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
+    snap_path = os.path.join(pnl._data_dir, "pnl_snapshot.json")
     assert os.path.exists(snap_path)
     with open(snap_path) as f:
         snap = json.load(f)

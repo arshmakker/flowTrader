@@ -127,7 +127,10 @@ class RiskManager:
             "stop_breach_streak": self._stop_breach_streak,
         }
 
-    def restore_state(self, state: Dict) -> None:
+    def restore_state(self, state: Dict, *, reset_daily: bool = False) -> None:
+        if reset_daily:
+            self.reset_daily()
+            return
         self.daily_pnl = state.get("daily_pnl", 0.0)
         self.halted = state.get("halted", False)
         self.recovery_mode = state.get("recovery_mode", False)

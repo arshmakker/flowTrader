@@ -349,7 +349,7 @@ def test_pnl_engine_aggregation_with_forced_exit():
     mock_tl = MagicMock() # Mock TradeLogger to avoid file operations during test
     trk = PaperPositionTracker()
     # Instantiate PnLEngine with mock objects
-    pnl_engine = PaperPnLEngine(trk, mock_md, mock_tl)
+    pnl_engine = PaperPnLEngine(trk, mock_md, mock_tl, data_dir="/tmp/test_paper_pnl")
 
     # Simulate profitable trades
     pnl_engine.record_trade("NIFTY", 500.0, {"instrument": "NIFTY", "pnl": 500.0, "exit_reason": "PROFIT_HARVEST"})

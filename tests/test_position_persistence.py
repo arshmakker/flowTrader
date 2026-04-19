@@ -460,7 +460,7 @@ def test_load_restores_risk_target_and_daily_pnl_state():
         strats = make_strats()
         tracker = PaperPositionTracker()
         trade_logger = TradeLogger(data_dir="/tmp/test_runtime_state_logs")
-        pnl = PaperPnLEngine(tracker, FakeMarketData(), trade_logger)
+        pnl = PaperPnLEngine(tracker, FakeMarketData(), trade_logger, data_dir="/tmp/test_runtime_state_logs")
         risk = RiskManager()
         target = DailyTarget()
 
@@ -476,7 +476,7 @@ def test_load_restores_risk_target_and_daily_pnl_state():
         fresh = make_strats()
         fresh_tracker = PaperPositionTracker()
         fresh_trade_logger = TradeLogger(data_dir="/tmp/test_runtime_state_logs_2")
-        fresh_pnl = PaperPnLEngine(fresh_tracker, FakeMarketData(), fresh_trade_logger)
+        fresh_pnl = PaperPnLEngine(fresh_tracker, FakeMarketData(), fresh_trade_logger, data_dir="/tmp/test_runtime_state_logs_2")
         fresh_risk = RiskManager()
         fresh_target = DailyTarget()
 
@@ -518,7 +518,7 @@ def test_load_stale_trading_day_resets_daily_runtime_state():
             "NFO|SC": {"symbol": "NFO|SC", "qty": -50, "avg_price": 95.0, "side": "SELL", "costs": 12.5},
         }
         trade_logger = TradeLogger(data_dir="/tmp/test_stale_runtime_state_logs")
-        pnl = PaperPnLEngine(tracker, FakeMarketData(), trade_logger)
+        pnl = PaperPnLEngine(tracker, FakeMarketData(), trade_logger, data_dir="/tmp/test_stale_runtime_state_logs")
         risk = RiskManager()
         target = DailyTarget()
 
@@ -541,7 +541,7 @@ def test_load_stale_trading_day_resets_daily_runtime_state():
         fresh = make_strats()
         fresh_tracker = PaperPositionTracker()
         fresh_trade_logger = TradeLogger(data_dir="/tmp/test_stale_runtime_state_logs_2")
-        fresh_pnl = PaperPnLEngine(fresh_tracker, FakeMarketData(), fresh_trade_logger)
+        fresh_pnl = PaperPnLEngine(fresh_tracker, FakeMarketData(), fresh_trade_logger, data_dir="/tmp/test_stale_runtime_state_logs_2")
         fresh_risk = RiskManager()
         fresh_target = DailyTarget()
 

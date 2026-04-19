@@ -30,7 +30,7 @@ def _setup():
     trk = PaperPositionTracker()
     om = PaperOrderManager(md, trk)
     tl = TradeLogger(data_dir="/tmp/test_integ")
-    pnl = PaperPnLEngine(trk, md, tl)
+    pnl = PaperPnLEngine(trk, md, tl, data_dir="/tmp/test_integ")
     risk = RiskManager()
     target = DailyTarget()
     target.set(8000)
@@ -145,7 +145,7 @@ def test_persistence_with_pnl():
         fresh_trk = PaperPositionTracker()
         fresh_om = PaperOrderManager(fresh_md, fresh_trk)
         fresh_tl = TradeLogger(data_dir="/tmp/test_integ2")
-        fresh_pnl = PaperPnLEngine(fresh_trk, fresh_md, fresh_tl)
+        fresh_pnl = PaperPnLEngine(fresh_trk, fresh_md, fresh_tl, data_dir="/tmp/test_integ2")
         fresh_strats = {
             "A": StrategyA(fresh_om, fresh_md),
             "D": StrategyD(fresh_om, fresh_md),
@@ -175,7 +175,7 @@ def test_strategy_d_end_to_end():
     trk = PaperPositionTracker()
     om = PaperOrderManager(md, trk)
     tl = TradeLogger(data_dir="/tmp/test_integ_d")
-    pnl_eng = PaperPnLEngine(trk, md, tl)
+    pnl_eng = PaperPnLEngine(trk, md, tl, data_dir="/tmp/test_integ_d")
     risk = RiskManager()
 
     strat = StrategyD(om, md)
