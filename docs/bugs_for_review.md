@@ -2,13 +2,13 @@
 
 ## Progress
 
-**19 of 21 fixed.** All P0 done. Remaining: BUG-07 (complex, needs auth-detection plumbing) and BUG-21 (touches active tests).
+**20 of 21 fixed.** All P0 done. Only BUG-07 (mid-session OAuth recovery) remains — complex, needs auth-detection plumbing.
 
 | Priority | Fixed | Open |
 |---|---|---|
 | P0 | BUG-01, 02, 03, 04, 05, 19 | — |
 | P1 | BUG-06, 08, 09, 10, 11, 18, 20 | BUG-07 |
-| P2 | BUG-12, 13, 14, 15, 16, 17 | BUG-21 |
+| P2 | BUG-12, 13, 14, 15, 16, 17, 21 | — |
 
 Merged from `bugs_for_review1.md` (repo root) and `docs/bugs_for_review2.md`. Scope is intentionally tight:
 - **Current practical defects** — things that are wrong in the runtime you are actually using today.
@@ -295,7 +295,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Cache the result per `(instrument, date)` key. Invalidate only when `mtime` of the latest `market_data_*/raw_data/futures/` directory changes. Typical cycle cost drops from hundreds of ms to near-zero.
 
 ## BUG-21 · Dual realised-P&L accounting paths
-- **Status:** 🟡 Deferred — removal requires updating active tests in `test_risk_manager.py` and `test_main_helpers.py` that currently assert on `risk.daily_pnl`.
+- **Status:** ✅ Fixed — `RiskManager.daily_pnl` and `update_pnl` removed. `main.py` monitor path and `_force_exit_all` no longer call `risk.update_pnl`. `test_main_helpers.py` updated to assert `pnl.daily_realised_pnl`. Dead `tests/test_risk_manager.py` (tested an older multi-strategy RiskManager that no longer exists) deleted and removed from conftest.
 - **Severity:** Low
 - **Severity reason:** Axiom 5 requires a single sanctioned accounting path. Two counters exist for realised P&L — the decision-relevant one is in `PaperPnLEngine`; the second in `RiskManager` is write-only and not consulted for any decision. The duplication is latent risk for future edits.
 - **Priority:** P2

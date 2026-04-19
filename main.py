@@ -46,15 +46,16 @@ DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAu
 
 
 def _force_exit_all(strats, pnl_engine, risk):
-    """Flatten all active strategies and route each exit through the P&L engine
-    and the risk manager. Used by the EOD pre-holiday flatten and the
-    combined-hard-stop paths. Axiom 5: single sanctioned accounting path."""
+    """Flatten all active strategies and route each exit through the P&L engine.
+    Used by the EOD pre-holiday flatten and the combined-hard-stop paths.
+    Axiom 5: realised P&L has exactly one home — `pnl_engine.record_trade`.
+    The `risk` parameter is kept in the signature for future risk decisions
+    that may hook off exits."""
     for s in strats:
         if s.is_active():
             result = s.force_exit()
             if result:
                 pnl_engine.record_trade(s.instrument, result['pnl'], result)
-                risk.update_pnl(result['pnl'])
 
 
 def _drain_rollback_failures(strats, risk):
@@ -458,7 +459,6 @@ def run():
                     result = s.monitor()
                     if result:
                         pnl_engine.record_trade(s.instrument, result['pnl'], result)
-                        risk.update_pnl(result['pnl'])
 
             # 5. Combined Stop Loss
             if risk.check_combined_stop_loss(strats):

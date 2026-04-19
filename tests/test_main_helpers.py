@@ -36,14 +36,15 @@ def _build_pnl(tmpdir):
     return PaperPnLEngine(tracker, FakeMD(), tl, data_dir=tmpdir), tracker
 
 
-def test_force_exit_all_records_trades_and_updates_risk():
-    """BUG-02: force_exit results must flow through pnl_engine.record_trade and risk.update_pnl."""
+def test_force_exit_all_records_trades():
+    """BUG-02 / BUG-21: force_exit results must flow through pnl_engine.record_trade.
+    Daily realised P&L is read off the engine, not off the risk manager."""
     pnl, _ = _build_pnl("/tmp/test_bug02_a")
     risk = RiskManager()
     strats = [FakeStrategy("NIFTY", 500.0), FakeStrategy("BANKNIFTY", -200.0)]
     main._force_exit_all(strats, pnl, risk)
     assert pnl.realised_pnl == 300.0
-    assert risk.daily_pnl == 300.0
+    assert pnl.daily_realised_pnl == 300.0
     assert pnl.total_trades == 2
     assert all(not s.is_active() for s in strats)
 
@@ -55,7 +56,7 @@ def test_force_exit_all_skips_inactive():
     inactive._active = False
     main._force_exit_all([inactive], pnl, risk)
     assert pnl.total_trades == 0
-    assert risk.daily_pnl == 0.0
+    assert pnl.daily_realised_pnl == 0.0
 
 
 def test_force_exit_all_handles_mix_of_active_and_inactive():
@@ -66,7 +67,7 @@ def test_force_exit_all_handles_mix_of_active_and_inactive():
     s_inactive._active = False
     main._force_exit_all([s_active, s_inactive], pnl, risk)
     assert pnl.realised_pnl == 400.0
-    assert risk.daily_pnl == 400.0
+    assert pnl.daily_realised_pnl == 400.0
     assert pnl.total_trades == 1
 
 

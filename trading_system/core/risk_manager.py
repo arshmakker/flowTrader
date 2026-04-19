@@ -15,14 +15,10 @@ logger = logging.getLogger(__name__)
 
 class RiskManager:
     def __init__(self):
-        self.daily_pnl = 0.0
         self.halted = False
         self.stop_hit_at = None
         self._stop_breach_streak = 0
         self._rollback_failures: List[Dict] = []
-
-    def update_pnl(self, pnl: float):
-        self.daily_pnl += pnl
 
     def check_combined_stop_loss(self, active_strategies: List[Any]) -> bool:
         """
@@ -103,16 +99,12 @@ class RiskManager:
         )
 
     def reset_daily(self):
-        self.daily_pnl = 0.0
         self.halted = False
-        self.recovery_mode = False
-        self.recovery_side = None
         self.stop_hit_at = None
         self._stop_breach_streak = 0
 
     def save_state(self) -> Dict:
         return {
-            "daily_pnl": self.daily_pnl,
             "halted": self.halted,
             "stop_hit_at": self.stop_hit_at.isoformat() if self.stop_hit_at else None,
             "stop_breach_streak": self._stop_breach_streak,
@@ -123,7 +115,6 @@ class RiskManager:
         if reset_daily:
             self.reset_daily()
             return
-        self.daily_pnl = state.get("daily_pnl", 0.0)
         self.halted = state.get("halted", False)
         self._stop_breach_streak = state.get("stop_breach_streak", 0)
         self._rollback_failures = state.get("rollback_failures", [])
