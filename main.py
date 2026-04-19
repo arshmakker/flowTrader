@@ -31,7 +31,6 @@ from trading_system.core.sr_manager import SRManager
 from trading_system.core.trade_logger import TradeLogger
 from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
-from trading_system.paper.go_live_evaluator import GoLiveEvaluator
 
 if settings.PAPER_TRADE_MODE:
     from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
@@ -44,6 +43,54 @@ else:
     PnLEngine = None
 
 DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
+
+
+def _force_exit_all(strats, pnl_engine, risk):
+    """Flatten all active strategies and route each exit through the P&L engine
+    and the risk manager. Used by the EOD pre-holiday flatten and the
+    combined-hard-stop paths. Axiom 5: single sanctioned accounting path."""
+    for s in strats:
+        if s.is_active():
+            result = s.force_exit()
+            if result:
+                pnl_engine.record_trade(s.instrument, result['pnl'], result)
+                risk.update_pnl(result['pnl'])
+
+
+def _drain_rollback_failures(strats, risk):
+    """BUG-05: after each entry attempt, check whether rollback left stuck legs.
+    Escalate to a hard halt through the risk manager and clear the flag."""
+    for s in strats:
+        stuck = getattr(s, "_last_rollback_stuck_legs", None)
+        if stuck:
+            risk.escalate_rollback_failure(s.instrument, stuck)
+            s._last_rollback_stuck_legs = []
+
+
+def _halt_on_exception(exc, risk, log):
+    """BUG-19 / Axiom 3: convert an unhandled main-loop exception into a
+    controlled halt rather than a process crash. Caller is responsible for
+    persisting state and continuing the loop."""
+    risk.halted = True
+    log.critical(
+        "Unhandled exception in main loop — halting trading: %s",
+        exc,
+        exc_info=True,
+    )
+
+
+def _find_expiring_today(strats, today_iso):
+    """BUG-18 / Axiom 2: return active strategies whose IC expires today. The
+    EOD branch uses this to force-flatten expiring positions regardless of
+    whether tomorrow is a trading day."""
+    out = []
+    for s in strats:
+        if not s.is_active():
+            continue
+        pos = getattr(s, "_position", None)
+        if pos is not None and getattr(pos, "expiry_date", "") == today_iso:
+            out.append(s)
+    return out
 
 def setup_logging() -> None:
     from logging.handlers import RotatingFileHandler
@@ -308,7 +355,12 @@ def run():
     # Core Components
     regime = RegimeFilter(api)
     signals = SignalEngine()
-    classifier = DayClassifier(md, signals)
+    # BUG-08: one classifier per instrument — BANKNIFTY regime should not be
+    # gated on NIFTY's day type.
+    classifiers = {
+        'NIFTY': DayClassifier(md, signals, settings.NIFTY_SYMBOL, settings.NIFTY_SPOT_KEY),
+        'BANKNIFTY': DayClassifier(md, signals, settings.BANKNIFTY_SYMBOL, settings.BANKNIFTY_SPOT_KEY),
+    }
     risk = RiskManager()
     expiry_mgr = ExpiryManager(sm)
     sr_mgr = SRManager()
@@ -318,7 +370,6 @@ def run():
         pos_mgr = PosMgr()
         order_mgr = OrderMgr(md, pos_mgr)
         pnl_engine = PnLEngine(pos_mgr, md, trade_logger)
-        evaluator = GoLiveEvaluator()
     
     # Strategies
     nifty_ic = IronCondorStrategy(order_mgr, md, 'NIFTY')
@@ -337,33 +388,40 @@ def run():
             meta.get("trading_date"),
         )
 
-    day_class = None
+    day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False
 
     log.info("Entering main loop...")
     
     try:
         while True:
+          try:
             now = datetime.now()
             now_t = now.time()
-            
+
             # 1. Market Hours & Data Collection
             if not collection_started and is_market_hours():
                 collector.start_collection()
                 collection_started = True
-            
+
             if is_market_closed_ist():
                 log.info("Market closed. Exiting loop.")
                 break
 
-            # 2. End-of-day: force-exit only if next day is not a trading day
+            # 2. End-of-day: force-exit expiring positions; also flatten if
+            #    next day is not a trading day.
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 from datetime import timedelta
+                today_iso = datetime.now().date().isoformat()
                 tomorrow = datetime.now() + timedelta(days=1)
                 next_day_is_trading = is_trading_day_ist(tomorrow)
+                # BUG-18: close any IC whose own expiry is today, regardless of tomorrow.
+                expiring = _find_expiring_today(strats, today_iso)
+                if expiring:
+                    _force_exit_all(expiring, pnl_engine, risk)
+                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring))
                 if not next_day_is_trading:
-                    for s in strats:
-                        if s.is_active(): s.force_exit()
+                    _force_exit_all(strats, pnl_engine, risk)
                     log.info("Pre-holiday/weekend close: force-exited all positions.")
                 if settings.PAPER_TRADE_MODE and pnl_engine:
                     pnl_engine.write_snapshot()
@@ -384,12 +442,15 @@ def run():
                 _time.sleep(3600)
                 continue
 
-            # 3. Day Classification (10:30 AM)
-            if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time() and day_class is None:
-                ohlcv = md.get_ohlcv_df()
-                signals.compute_vwap_value(ohlcv)
-                day_class = classifier.classify()
-                log.info(f"Day Classified: {day_class.day_type} ({day_class.confidence})")
+            # 3. Day Classification (10:30 AM) — per instrument (BUG-08).
+            if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time():
+                for inst, clf in classifiers.items():
+                    if day_classes[inst] is None:
+                        day_classes[inst] = clf.classify()
+                        log.info(
+                            "Day Classified %s: %s (%s)",
+                            inst, day_classes[inst].day_type, day_classes[inst].confidence,
+                        )
 
             # 4. Monitoring & Harvest Cycle (runs pre-classification so carried positions are watched).
             for s in strats:
@@ -401,22 +462,31 @@ def run():
 
             # 5. Combined Stop Loss
             if risk.check_combined_stop_loss(strats):
-                for s in strats:
-                    if s.is_active(): s.force_exit()
+                _force_exit_all(strats, pnl_engine, risk)
                 log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
 
-            # 6. Entry Logic (requires classification — stays blocked pre-10:30)
-            if day_class is not None and not risk.halted and regime.get_regime_gate(day_class.day_type):
+            # 6. Entry Logic (requires per-instrument classification).
+            if not risk.halted:
                 for s in strats:
-                    if not s.is_active():
-                        # Fetch context for entry
-                        spot = md.get_ltp(settings.NIFTY_SPOT_KEY if s.instrument == 'NIFTY' else "NSE|Nifty Bank")
-                        vix = regime.get_vix()
-                        sr_high, sr_low = sr_mgr.get_20day_high_low(s.instrument)
-                        expiry = expiry_mgr.get_expiry(s.instrument)
-                        
-                        if spot > 0 and expiry:
-                            s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
+                    dc = day_classes.get(s.instrument)
+                    if dc is None:
+                        continue  # pre-classify time for this instrument
+                    if s.is_active():
+                        continue
+                    if not regime.get_regime_gate(dc.day_type):
+                        continue
+                    # Fetch context for entry
+                    spot_key = settings.NIFTY_SPOT_KEY if s.instrument == 'NIFTY' else settings.BANKNIFTY_SPOT_KEY
+                    spot = md.get_ltp(spot_key)
+                    vix = regime.get_vix()
+                    sr_high, sr_low = sr_mgr.get_20day_high_low(s.instrument)
+                    expiry = expiry_mgr.get_expiry(s.instrument)
+
+                    if spot > 0 and expiry:
+                        s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
+
+            # BUG-05: escalate any stuck-rollback events from this cycle's entries.
+            _drain_rollback_failures(strats, risk)
 
             # Keep live P&L fresh for dashboards (realised + unrealised).
             if settings.PAPER_TRADE_MODE and pnl_engine:
@@ -428,6 +498,18 @@ def run():
                 session_status=position_persistence.SESSION_ACTIVE,
             )
 
+            _time.sleep(settings.SIGNAL_RECHECK_SEC)
+          except Exception as exc:
+            # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
+            _halt_on_exception(exc, risk, log)
+            try:
+                position_persistence.save(
+                    strats_map, pos_mgr, pnl_engine, risk,
+                    session_status=position_persistence.SESSION_ACTIVE,
+                    shutdown_reason="exception-halt",
+                )
+            except Exception:
+                log.exception("Failed to persist state after halt")
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
 
     except KeyboardInterrupt:

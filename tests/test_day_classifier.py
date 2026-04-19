@@ -17,6 +17,9 @@ class MockMD:
     def get_ltp(self, sym):
         return self._current
 
+    def get_ohlcv_df(self):
+        return None  # MockSE ignores this arg; see compute_vwap_value below
+
 
 class MockSE:
     def __init__(self, vwap_value):
@@ -133,6 +136,64 @@ def test_reset_unlocks():
 def test_move_pct_in_result():
     r = _classify(24000, 24360, 24100)
     assert abs(r.move_pct - 1.5) < 0.1  # ~1.5% move
+
+
+def test_classifier_uses_per_instrument_symbol_and_spot_key():
+    """BUG-08: DayClassifier must honor the symbol and spot_key passed to __init__
+    so BANKNIFTY classification uses BANKNIFTY data, not NIFTY."""
+    seen = {"open_sym": None, "ltp_key": None}
+
+    class RecordingMD:
+        def get_open_price(self, sym):
+            seen["open_sym"] = sym
+            return 45000.0
+        def get_ltp(self, key):
+            seen["ltp_key"] = key
+            return 45200.0
+        def get_ohlcv_df(self):
+            return None
+
+    se = MockSE(45100.0)
+    dc = DayClassifier(RecordingMD(), se, symbol="BANKNIFTY", spot_key="NSE|Nifty Bank")
+    dc.classify()
+    assert seen["open_sym"] == "BANKNIFTY"
+    assert seen["ltp_key"] == "NSE|Nifty Bank"
+
+
+def test_classifier_defaults_to_nifty_when_symbol_not_passed():
+    """Backward compat: existing callers that omit symbol/spot_key keep NIFTY behaviour."""
+    dc = DayClassifier(MockMD(24000, 24100), MockSE(24050))
+    assert dc.symbol == settings.NIFTY_SYMBOL
+    assert dc.spot_key == settings.NIFTY_SPOT_KEY
+
+
+def test_ohlcv_is_forwarded_to_vwap_engine():
+    """Regression for the bug where classify() called compute_vwap_value() with
+    no argument, so the trending branch could never fire. This asserts the df
+    returned by MarketData.get_ohlcv_df() is the exact object passed to
+    SignalEngine.compute_vwap_value()."""
+    sentinel = object()
+
+    class SpyMD(MockMD):
+        def get_ohlcv_df(self):
+            return sentinel
+
+    class SpySE:
+        def __init__(self):
+            self.seen = []
+
+        def compute_vwap_value(self, ohlcv_df=None):
+            self.seen.append(ohlcv_df)
+            return 24050.0
+
+    md = SpyMD(24000, 24100)
+    se = SpySE()
+    dc = DayClassifier(md, se)
+    dc.classify()
+    assert se.seen == [sentinel], (
+        f"classify() must forward md.get_ohlcv_df() to compute_vwap_value(); "
+        f"got {se.seen}"
+    )
 
 
 def test_classification_dataclass_fields():

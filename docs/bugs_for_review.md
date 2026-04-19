@@ -1,5 +1,15 @@
 # Bugs for Review — Merged
 
+## Progress
+
+**16 of 21 fixed.** All P0 done. Remaining items are either complex (BUG-07) or cleanup work that touches active/ignored tests (BUG-14, 15, 16, 21).
+
+| Priority | Fixed | Open |
+|---|---|---|
+| P0 | BUG-01, 02, 03, 04, 05, 19 | — |
+| P1 | BUG-06, 08, 09, 10, 11, 18, 20 | BUG-07 |
+| P2 | BUG-12, 13, 17 | BUG-14, 15, 16, 21 |
+
 Merged from `bugs_for_review1.md` (repo root) and `docs/bugs_for_review2.md`. Scope is intentionally tight:
 - **Current practical defects** — things that are wrong in the runtime you are actually using today.
 - **Test infrastructure defects** — things that block trustworthy verification.
@@ -20,6 +30,7 @@ Priority scale:
 ---
 
 ## BUG-01 · VWAP classification is effectively dead
+- **Status:** ✅ Fixed — `day_classifier.py:62` now forwards `md.get_ohlcv_df()`; regression test `test_ohlcv_is_forwarded_to_vwap_engine`.
 - **Severity:** High
 - **Severity reason:** The system's primary day-type classifier is functionally broken, so an intended top-level regime filter is not operating at all.
 - **Priority:** P0
@@ -32,6 +43,7 @@ Priority scale:
 - **Suggested fix:** Either pass the OHLCV dataframe into `classify()` and forward it to `compute_vwap_value(ohlcv)`, or cache the last VWAP value on `SignalEngine` so `main.py`'s pre-compute is usable. Add a test asserting a synthesized trending-day classification returns `TRENDING_*`.
 
 ## BUG-02 · `force_exit()` returns are discarded — exits not logged
+- **Status:** ✅ Fixed — `_force_exit_all` helper in `main.py` routes force-exits through `pnl_engine.record_trade`; tests in `tests/test_main_helpers.py`.
 - **Severity:** High
 - **Severity reason:** Stop-loss and EOD exits disappear from trade history and realised P&L, which breaks reconciliation and misstates system results.
 - **Priority:** P0
@@ -45,6 +57,7 @@ Priority scale:
 - **Suggested fix:** In both `main.py` sites, capture the return: `result = s.force_exit(); if result: pnl_engine.record_trade(s.instrument, result['pnl'], result); risk.update_pnl(result['pnl'])`. Mirror the pattern already used for `monitor()` returns.
 
 ## BUG-03 · `PaperPositionTracker` never unwound on exit (stale leg accumulation)
+- **Status:** ✅ Fixed — `IronCondorStrategy.exit()` now calls `tracker.close_position` per leg; tests in `tests/test_ic_lifecycle.py`.
 - **Severity:** High
 - **Severity reason:** Closed positions continue to look open in tracker-derived state and P&L, corrupting dashboards and persistence.
 - **Priority:** P0
@@ -59,6 +72,7 @@ Priority scale:
 - **Suggested fix:** Have `IronCondorStrategy.exit()` call `self.om.tracker.close_position(sym, fill_price)` explicitly per leg, or submit closing legs with `track_position=True` so `add_position` nets to zero (see `paper_position_tracker.py:45-47`). Prefer `close_position` — it already handles exit-side cost accounting (`paper_position_tracker.py:67-84`).
 
 ## BUG-04 · Rollback does not unwind tracker either
+- **Status:** ✅ Fixed — `_rollback_partial_entry` now calls `tracker.close_position` for each reversed leg; test `test_tracker_unwinds_after_rollback`.
 - **Severity:** High (same class as BUG-03, distinct code path)
 - **Severity reason:** Failed atomic entries leave ghost legs in state, so one of the system's core safety paths produces incorrect position accounting.
 - **Priority:** P0
@@ -70,6 +84,7 @@ Priority scale:
 - **Suggested fix:** Same as BUG-03 — use `tracker.close_position(sym, fill)` in `_rollback_partial_entry`, or flip rollback orders to `track_position=True`. Apply the chosen fix consistently to all reverse-order paths.
 
 ## BUG-05 · Rollback failure is logged, not escalated
+- **Status:** ✅ Fixed — `_rollback_partial_entry` records stuck legs; `main._drain_rollback_failures` + `RiskManager.escalate_rollback_failure` halt trading; tests in `tests/test_main_helpers.py`.
 - **Severity:** High
 - **Severity reason:** A partial condor can remain open with no halt or alert, creating uncontrolled exposure in the most safety-critical failure mode.
 - **Priority:** P0
@@ -81,6 +96,7 @@ Priority scale:
 - **Suggested fix:** On rollback failure, set `risk.halted = True`, record `stop_hit_at`, emit a loud alert (see `GO_LIVE_CHECKLIST.md` item 9), and persist a "stuck legs" record in `open_positions.json` listing which symbols could not be reversed and at what qty/side. Next startup should refuse to trade until those are manually resolved or reconciled against broker positions.
 
 ## BUG-06 · `get_open_price()` silent `lp` substitution bypasses LOW-confidence downgrade
+- **Status:** ✅ Fixed — `market_data.py:140` now accepts only `q["o"]` as real open; falls through to LTP path otherwise; tests in `tests/test_market_data.py`.
 - **Severity:** Medium
 - **Severity reason:** It does not always break classification, but it silently weakens confidence signalling and biases day-type interpretation.
 - **Priority:** P1
@@ -93,6 +109,7 @@ Priority scale:
 - **Suggested fix:** In `get_open_price()`, only accept `q["o"]` as a real open; if missing, fall through to the LTP path (which already flags `_open_price_fallback`). If the substitution is ever kept intentionally, add the symbol to `_open_price_fallback` in that branch and log.
 
 ## BUG-07 · Mid-session OAuth recovery is not implemented
+- **Status:** 🟡 Deferred — needs auth-failure detection plumbing in the main loop before the helper can be extracted.
 - **Severity:** Medium
 - **Severity reason:** It creates a real runtime fragility, but only when auth expires mid-session rather than on every normal run.
 - **Priority:** P1
@@ -104,6 +121,7 @@ Priority scale:
 - **Suggested fix:** Extract the re-auth loop into a callable helper and invoke it from within the main loop's exception handling when `_last_broker_error` indicates auth failure. Emit a structured alert on each re-auth attempt so silent token refreshes are observable.
 
 ## BUG-08 · Cross-instrument regime coupling: BANKNIFTY entries are gated by NIFTY classification
+- **Status:** ✅ Fixed — `DayClassifier` now accepts `symbol` + `spot_key`; `main.py` instantiates one per instrument; tests in `tests/test_day_classifier.py`.
 - **Severity:** Medium
 - **Severity reason:** It produces wrong-instrument decision-making, but the system still runs; the defect is in decision ownership rather than process integrity.
 - **Priority:** P1
@@ -116,6 +134,7 @@ Priority scale:
 - **Suggested fix:** Classify per instrument — either instantiate two `DayClassifier` objects (one per symbol) or parameterize `classify(symbol)`. Update `main.py` to compute `day_class_nifty` / `day_class_banknifty` and pass each to its own strategy's entry gate.
 
 ## BUG-09 · Test packaging — targeted pytest invocations fail
+- **Status:** ✅ Fixed — `pyproject.toml` added with `pythonpath = ["."]`; targeted invocation now works without `PYTHONPATH=.`.
 - **Severity:** Medium (infrastructure)
 - **Severity reason:** It does not affect runtime trading directly, but it materially weakens verification and makes targeted testing unreliable.
 - **Priority:** P1
@@ -129,6 +148,7 @@ Priority scale:
 - **Suggested fix:** Add a minimal `pyproject.toml` with `[tool.pytest.ini_options] pythonpath = ["."]`, or a `pytest.ini` with the same. Then delete the per-file `sys.path.insert` hacks.
 
 ## BUG-10 · Dead-module imports in ignored test files
+- **Status:** ✅ Fixed — `test_paper_trading.py`, `test_integration.py`, `test_position_persistence.py` deleted; `collect_ignore` cleaned.
 - **Severity:** Medium (masked by `conftest.py`, rotting)
 - **Severity reason:** This is hidden technical debt in the test suite rather than a direct runtime fault, but it leaves useful coverage dead and misleadingly silent.
 - **Priority:** P1
@@ -142,6 +162,7 @@ Priority scale:
 - **Suggested fix:** Decide per file — restore the missing modules if the tests contain useful coverage, or delete the tests and remove them from `collect_ignore`. Don't leave them ignored indefinitely.
 
 ## BUG-11 · `test_ic_strategy::test_ic_strategy_entry_success` MagicMock return shape
+- **Status:** ✅ Fixed — `mock_om` fixture now returns `{"status": "COMPLETE", ...}` dict.
 - **Severity:** Medium
 - **Severity reason:** The broken test does not change production behavior, but it defeats a supposedly important happy-path check.
 - **Priority:** P1
@@ -156,6 +177,7 @@ Priority scale:
 - **Suggested fix:** Configure `mock_om.place_order.return_value = {"status": "COMPLETE", "fill_price": ..., ...}` so `order.get("status")` resolves to the expected string.
 
 ## BUG-18 · Expiry-day close not enforced (Axiom 2 violation)
+- **Status:** ✅ Fixed — `IC_Position.expiry_date` set at entry; `_find_expiring_today` helper drives EOD force-exit; tests in `tests/test_ic_lifecycle.py` + `tests/test_main_helpers.py`.
 - **Severity:** Medium
 - **Severity reason:** Under Axiom 2, positions must be flat by the IC's expiry-day close. Current EOD logic has no expiry check, so an expired IC can persist into the next trading day. Does not crash, but leaves expired legs in strategy and tracker state.
 - **Priority:** P1
@@ -167,6 +189,32 @@ Priority scale:
 - **Impact:** If an IC reaches its expiry day still open (not harvested, not stopped) and the next calendar day is a trading day, current code carries it overnight. In paper mode, the tracker marks expired legs against stale or zero LTPs, distorting unrealised P&L and leaving phantom entries in `open_positions.json`. In live, the broker auto-settles with fees the engine does not capture, and reconciliation becomes impossible. Either way, an expired position persists across a day boundary — direct contradiction of Axiom 2.
 - **Suggested fix:** Add an `expiry_date` (date type, not the symbol-embedded string) to `IC_Position` at entry. In the main loop's EOD block, force-exit any active strategy whose `expiry_date == today`, independent of the next-day-is-trading check. Add a test: construct an IC with `expiry_date = today`, advance clock to TRADE_END with a non-holiday next day, assert `force_exit` is called and `_position is None` afterward.
 
+## BUG-19 · No exception boundary around main-loop body
+- **Status:** ✅ Fixed — inner loop body wrapped in try/except; `_halt_on_exception` helper sets `risk.halted = True` and logs; tests in `tests/test_main_helpers.py`.
+- **Severity:** High
+- **Severity reason:** Any unhandled exception in classification, monitor, combined-stop check, entry, quote fetch, or persistence crashes the process. Axiom 3 requires uncertain state to halt cleanly, not terminate.
+- **Priority:** P0
+- **Priority reason:** Live-readiness blocker — a crash during market hours leaves positions unattended with no operator alert. Must ship before any real-money use.
+- **Evidence:**
+  - `main.py:345-433` — the outer `try` catches only `KeyboardInterrupt`. All other exceptions propagate through, hit the `finally` cleanup block, then terminate the process.
+  - `main.py:387-419` — per-cycle work (classification, monitor, combined stop, entry) has no inner exception handling. A malformed quote, API timeout beyond the retry budget, or dataframe edge case tips the whole loop.
+  - `docs/axioms.md` Axiom 3: "uncertain state halts new entries until trustworthy."
+- **Impact:** During live trading, any exception in the inner loop crashes the Python process. Operator receives no alert (no alerting wired — see `GO_LIVE_CHECKLIST.md` items 9 and 16). Open positions are left in whatever state they were, with the session unreachable until someone notices and manually restarts. In paper the damage is bounded; in live this can leave a 10-lot IC unmonitored through a market event.
+- **Suggested fix:** Wrap the inner loop body (everything between `while True:` and `_time.sleep(...)`) in `try/except Exception`. On exception: set `risk.halted = True`, log the traceback at CRITICAL, persist the current state via `position_persistence.save`, emit an alert (placeholder for now — wired alongside `GO_LIVE_CHECKLIST.md` item 9), then sleep one cycle. The loop continues but trading is halted until operator intervention. Keep `KeyboardInterrupt` as a separate outer handler for clean shutdown.
+
+## BUG-20 · Non-atomic snapshot file writes
+- **Status:** ✅ Fixed — `_atomic_write_json` helper uses tmp+`os.replace`; tests confirm no tmp leaks.
+- **Severity:** Medium
+- **Severity reason:** `paper_summary.json` and `pnl_snapshot.json` writes can be left truncated or partially written on a crash mid-write, producing corrupt JSON that dashboards and reconciliation tools consume silently.
+- **Priority:** P1
+- **Priority reason:** Low-probability event on a solo laptop, but trivial to fix and the correct pattern is already in use elsewhere in the codebase.
+- **Evidence:**
+  - `trading_system/paper/paper_pnl_engine.py:186-201` — both `write_snapshot()` and `_write_summary()` call `json.dump(self.get_summary(), f, indent=2)` directly on the final file path.
+  - `trading_system/core/position_persistence.py:105-109` — shows the correct pattern (`tmp + os.replace`) used for `open_positions.json`.
+  - `docs/axioms.md` Axiom 5: "All position-state and realised-P&L changes flow through a single sanctioned interface." Corrupt JSON on disk represents a state change visible to dashboard and reconciliation consumers outside that interface.
+- **Impact:** A process crash (OOM, SIGKILL, power loss) during `json.dump` leaves partial JSON. Next reader (dashboard, reconciliation, persistence load path) hits a parse error and either crashes or shows empty state. In paper this is nuisance; during a live end-of-day reconciliation window it can block the nightly check.
+- **Suggested fix:** Apply the `position_persistence` pattern to both writes: write to `path + ".tmp"`, then `os.replace(tmp, path)`. Wrap in try/except and log on failure; do not raise (consumer reads will tolerate a stale-but-valid previous snapshot better than a corrupt current one).
+
 ---
 
 ## Secondary Cleanup / Latent Risks
@@ -174,6 +222,7 @@ Priority scale:
 These items are real, but they are not current execution blockers for the runtime you are actually using today.
 
 ## BUG-12 · `EOW_EXIT_TIME` is dead config
+- **Status:** ✅ Fixed — constant removed from `settings.py`.
 - **Severity:** Low
 - **Severity reason:** It is misleading but does not currently cause incorrect runtime behavior by itself.
 - **Priority:** P2
@@ -185,6 +234,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Delete the constant. If the "flat every Thursday" rule is actually wanted, wire it into `main.py`; otherwise remove the dead setting.
 
 ## BUG-13 · `GoLiveEvaluator` instantiated but unused
+- **Status:** ✅ Fixed — import and instantiation removed from `main.py`.
 - **Severity:** Low
 - **Severity reason:** Dead wiring causes confusion but not incorrect trading behavior.
 - **Priority:** P2
@@ -196,6 +246,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Remove the import and instantiation until a real caller exists. Or wire it to evaluate `paper_summary.json` thresholds at end of each session.
 
 ## BUG-14 · `paper_signals.log` writer supported but never called in runtime
+- **Status:** 🟡 Deferred — decision needed: wire `log_signal` into gate decisions, or remove the writer and dashboard readers.
 - **Severity:** Low
 - **Severity reason:** This leaves an empty observability feature, but does not compromise trade execution or P&L correctness.
 - **Priority:** P2
@@ -208,6 +259,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Wire `log_signal()` into the regime/classification/gate decision points in `main.py` and `RegimeFilter` (call on each blocked/allowed decision with a structured message). Alternatively, remove the writer and dashboard readers if the signal log is not actually useful.
 
 ## BUG-15 · `RiskManager.can_enter_recovery()` never called
+- **Status:** 🟡 Deferred — removal touches the ignored `test_risk_manager_ic.py`; needs decision on whether to wire recovery mode or delete fully.
 - **Severity:** Low (unfinished feature)
 - **Severity reason:** Unused recovery logic is misleading, but since no recovery flow is advertised as active behavior, this is feature incompleteness more than a live bug.
 - **Priority:** P2
@@ -219,6 +271,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Either wire the recovery-trade flow in `main.py` after a hard stop (and add a `RiskManager.enter_recovery()` execution path), or delete `can_enter_recovery`, `recovery_mode`, `recovery_side`, and related state to reflect what's actually implemented.
 
 ## BUG-16 · Unused `SignalEngine` methods
+- **Status:** 🟡 Deferred — deletion touches the ignored `test_signal_engine.py`; under IC-only scope (Axiom 1) the right path is to delete RSI/PCR/Max Pain/consensus methods.
 - **Severity:** Low
 - **Severity reason:** Extra unused methods add cognitive overhead but do not break the active trading path.
 - **Priority:** P2
@@ -230,6 +283,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Either integrate them (e.g. use PCR/Max Pain to tighten the regime gate, with a proper backtest) or delete them.
 
 ## BUG-17 · `SRManager.get_20day_high_low()` re-scans disk on every entry attempt
+- **Status:** ✅ Fixed — per-instrument cache invalidated on `market_data_*` directory fingerprint change; tests in `tests/test_sr_manager_cache.py`.
 - **Severity:** Low (efficiency, not correctness)
 - **Severity reason:** Wasteful I/O hurts efficiency, but outputs remain correct.
 - **Priority:** P2
@@ -240,6 +294,20 @@ These items are real, but they are not current execution blockers for the runtim
 - **Impact:** Each entry attempt pays disk I/O for up to 20 daily CSVs. No correctness issue, but wasteful on tight cycles.
 - **Suggested fix:** Cache the result per `(instrument, date)` key. Invalidate only when `mtime` of the latest `market_data_*/raw_data/futures/` directory changes. Typical cycle cost drops from hundreds of ms to near-zero.
 
+## BUG-21 · Dual realised-P&L accounting paths
+- **Status:** 🟡 Deferred — removal requires updating active tests in `test_risk_manager.py` and `test_main_helpers.py` that currently assert on `risk.daily_pnl`.
+- **Severity:** Low
+- **Severity reason:** Axiom 5 requires a single sanctioned accounting path. Two counters exist for realised P&L — the decision-relevant one is in `PaperPnLEngine`; the second in `RiskManager` is write-only and not consulted for any decision. The duplication is latent risk for future edits.
+- **Priority:** P2
+- **Priority reason:** Pure cleanup. The unused counter doesn't change any behavior today; it exists mainly as a future trap.
+- **Evidence:**
+  - `trading_system/paper/paper_pnl_engine.py:62-91` — `PaperPnLEngine.record_trade` is the canonical realised-P&L update.
+  - `trading_system/core/risk_manager.py:18, 25-26, 112-113, 121-122, 134` — `RiskManager.daily_pnl` is written by `update_pnl`, reset by `reset_daily`, persisted via `save_state`, restored via `restore_state`. Grep shows no internal read for a decision — it is never consulted by `check_combined_stop_loss`, `can_enter_recovery`, or any other gate.
+  - `main.py:399-400` — the two counters are updated together by convention. BUG-02 already shows the convention can silently fail (force_exit bypasses both).
+  - `docs/axioms.md` Axiom 5: "a single sanctioned interface. No direct mutation elsewhere."
+- **Impact:** Today the duplication is invisible because nothing reads the duplicate counter for a decision. Future risk: someone adds a per-day rupee loss cap (see `GO_LIVE_CHECKLIST.md` item 6) and reads `risk.daily_pnl` — which may drift from `pnl_engine.daily_realised_pnl` due to BUG-02-class violations, producing subtly wrong cap decisions.
+- **Suggested fix:** Remove `RiskManager.daily_pnl`, `update_pnl`, the reset clause, and the save/restore fields for this counter. If a future caller needs daily realised P&L, it should read `pnl_engine.daily_realised_pnl` directly. Update `main.py:400` to drop the `risk.update_pnl(result['pnl'])` call.
+
 ---
 
 ## Suggested fix order
@@ -249,11 +317,11 @@ Prioritized for pre-go-live safety, not by bug ID:
 1. **BUG-01** (VWAP) — unblocks any claim about regime classification being operational.
 2. **BUG-02** (force_exit logging) — unblocks reconciliation during stop-loss and EOD flatten days.
 3. **BUG-03 + BUG-04** (tracker unwind on exit and rollback) — together, the paper tracker becomes trustworthy for the first time. Fixes downstream distortion in `open_positions.json` and `pnl_snapshot.json`.
-4. **BUG-05** (rollback escalation) — safety blocker before live.
+4. **BUG-05 + BUG-19** — safety net: rollback-failure escalation and main-loop exception boundary. Both convert crash-class events into controlled halts. Required before any real-money use.
 5. **BUG-06** (open-price substitution) — small, easy, unblocks reliability signalling.
-6. **BUG-07 + BUG-08 + BUG-18** — correctness/safety layer 2: mid-session auth recovery, per-instrument classification, and expiry-day close enforcement.
+6. **BUG-07 + BUG-08 + BUG-18 + BUG-20** — correctness/safety layer 2: mid-session auth recovery, per-instrument classification, expiry-day close enforcement, and atomic snapshot writes.
 7. **BUG-09 + BUG-10 + BUG-11** (test infrastructure) — required before adding live-code tests on top.
-8. **BUG-12 through BUG-17** — cleanup, schedule opportunistically.
+8. **BUG-12 through BUG-17 + BUG-21** — cleanup, schedule opportunistically.
 
 After steps 1–5, the three known gaps in `TECHNICAL_REFERENCE.md` (§2.3 step 10, §3.1) and the verification gaps in `TEST_SCENARIOS.md` scenarios 1, 11, 13, 15, 20 all resolve — those docs can then be simplified.
 

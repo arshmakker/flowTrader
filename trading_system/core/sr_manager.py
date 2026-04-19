@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 class SRManager:
     def __init__(self, base_dir: str = "."):
         self.base_dir = Path(base_dir)
+        # BUG-17: cache by (instrument, fingerprint-of-market_data-dirs). Invalidates
+        # when a new market_data_* directory appears or the newest one is mtime-bumped.
+        self._cache: dict = {}  # instrument -> (sr_high, sr_low, fingerprint)
+
+    def _dirs_fingerprint(self) -> tuple:
+        """Cheap signature of the market_data_* directory set. Used to invalidate the cache."""
+        dirs = sorted(self.base_dir.glob('market_data_*'))
+        return tuple((d.name, int(d.stat().st_mtime)) for d in dirs if d.is_dir())
 
     @staticmethod
     def _is_trading_day_dir(dir_name: str) -> bool:
@@ -43,7 +51,13 @@ class SRManager:
         """
         Returns (20_day_high, 20_day_low) for the given index.
         Uses stored futures/spot data as proxy if available.
+        Result is cached and invalidated when the market_data_* directory set changes.
         """
+        fingerprint = self._dirs_fingerprint()
+        cached = self._cache.get(index_name)
+        if cached is not None and cached[2] == fingerprint:
+            return cached[0], cached[1]
+
         # 1. Identify relevant market data directories
         data_dirs = sorted([d for d in self.base_dir.glob('market_data_*') if d.is_dir()], reverse=True)
         
@@ -95,8 +109,9 @@ class SRManager:
 
         sr_high = max(all_daily_highs)
         sr_low = min(all_daily_lows)
-        
+
         logger.info(f"{index_name}: 20-day S/R calculated over {days_found} days: High={sr_high:.2f}, Low={sr_low:.2f}")
+        self._cache[index_name] = (sr_high, sr_low, fingerprint)
         return sr_high, sr_low
 
     def apply_buffer(self, strike: float, sr_high: float, sr_low: float, opt_type: str, step: int = 50) -> float:

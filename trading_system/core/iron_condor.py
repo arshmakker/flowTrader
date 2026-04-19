@@ -32,6 +32,9 @@ class IC_Position:
     lots: int
     entry_time: str
     peak_pnl: float = 0.0
+    # BUG-18 / Axiom 2: ISO date "YYYY-MM-DD" of this IC's expiry. Empty string
+    # is tolerated only to support loading state saved before this field existed.
+    expiry_date: str = ""
 
     def to_dict(self) -> Dict:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -46,6 +49,8 @@ class IronCondorStrategy:
         self.md = market_data
         self.instrument = instrument
         self._position: Optional[IC_Position] = None
+        # BUG-05: legs whose rollback reverse-orders failed; drained by main.py after enter().
+        self._last_rollback_stuck_legs: List[Dict] = []
 
     def is_active(self) -> bool:
         return self._position is not None
@@ -55,7 +60,12 @@ class IronCondorStrategy:
         return "BUY" if side == "SELL" else "SELL"
 
     def _rollback_partial_entry(self, placed_orders: List[Dict], qty: int) -> None:
-        """Flatten any successfully placed entry legs if entry orchestration fails."""
+        """Flatten any successfully placed entry legs if entry orchestration fails.
+        Axiom 5: tracker state must be unwound for rolled-back legs. Axiom 3+4
+        (BUG-05): any leg whose reverse order also fails is recorded in
+        self._last_rollback_stuck_legs so main.py can escalate to a hard halt.
+        """
+        stuck: List[Dict] = []
         for order in reversed(placed_orders):
             if order.get("status") != "COMPLETE":
                 continue
@@ -75,6 +85,22 @@ class IronCondorStrategy:
                     rollback.get("status"),
                     rollback.get("reason", ""),
                 )
+                stuck.append({
+                    "symbol": symbol,
+                    "original_side": side,
+                    "rollback_side": rollback_side,
+                    "qty": qty,
+                    "reason": rollback.get("reason", ""),
+                })
+                continue
+            # Unwind the tracker entry for the originally-filled leg.
+            tracker = getattr(self.om, "tracker", None)
+            if tracker is not None:
+                try:
+                    tracker.close_position(symbol, rollback.get("fill_price", 0.0))
+                except Exception:
+                    logger.exception("IC %s tracker unwind failed for rollback of %s", self.instrument, symbol)
+        self._last_rollback_stuck_legs = stuck
 
     def _log_credit_rejection(
         self,
@@ -230,12 +256,18 @@ class IronCondorStrategy:
                 self._rollback_partial_entry(placed_orders, qty)
                 return False
 
+        try:
+            expiry_iso = datetime.strptime(str(expiry).strip(), "%d-%b-%Y").date().isoformat()
+        except (ValueError, TypeError):
+            expiry_iso = ""
+            logger.warning("IC %s could not parse expiry '%s' to ISO date", self.instrument, expiry)
         self._position = IC_Position(
             instrument=self.instrument,
             sc_sym=sc_sym, sp_sym=sp_sym, lc_sym=lc_sym, lp_sym=lp_sym,
             sc_strike=sc, sp_strike=sp, lc_strike=lc, lp_strike=lp,
             max_profit=max_profit, entry_credit=net_credit_unit,
-            lots=lots, entry_time=datetime.now().strftime("%H:%M:%S")
+            lots=lots, entry_time=datetime.now().strftime("%H:%M:%S"),
+            expiry_date=expiry_iso,
         )
         logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
         return True
@@ -317,10 +349,22 @@ class IronCondorStrategy:
         lot_size = self.md.get_lot_size(pos.sc_sym)
         qty = pos.lots * lot_size
 
-        self.om.place_order(pos.sc_sym, "BUY", qty, track_position=False)
-        self.om.place_order(pos.sp_sym, "BUY", qty, track_position=False)
-        self.om.place_order(pos.lc_sym, "SELL", qty, track_position=False)
-        self.om.place_order(pos.lp_sym, "SELL", qty, track_position=False)
+        # Axiom 5: exit orders bypass tracker.add_position (track_position=False),
+        # so we must explicitly call tracker.close_position per leg to unwind state.
+        closing_legs = [
+            (pos.sc_sym, "BUY"),
+            (pos.sp_sym, "BUY"),
+            (pos.lc_sym, "SELL"),
+            (pos.lp_sym, "SELL"),
+        ]
+        tracker = getattr(self.om, "tracker", None)
+        for sym, side in closing_legs:
+            order = self.om.place_order(sym, side, qty, track_position=False)
+            if tracker is not None and order.get("status") == "COMPLETE":
+                try:
+                    tracker.close_position(sym, order.get("fill_price", 0.0))
+                except Exception:
+                    logger.exception("IC %s tracker unwind failed for exit of %s", self.instrument, sym)
 
         logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={pnl:.2f}")
         

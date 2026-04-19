@@ -191,6 +191,36 @@ def test_write_snapshot():
     os.remove(snap_path)
 
 
+def test_snapshot_write_is_atomic_no_tmp_left_behind():
+    """BUG-20: atomic writes should clean up the tmp path and leave only the final file."""
+    pnl = _make()
+    pnl.record_trade("A", 1500, {})
+    pnl.write_snapshot()
+    snap_path = os.path.join(pnl._data_dir, "pnl_snapshot.json")
+    tmp_path = snap_path + ".tmp"
+    assert os.path.exists(snap_path)
+    assert not os.path.exists(tmp_path), "tmp file must not linger after successful write"
+    # Second write should also succeed and not leak a tmp.
+    pnl.record_trade("A", 500, {})
+    pnl.write_snapshot()
+    assert not os.path.exists(tmp_path)
+    with open(snap_path) as f:
+        snap = json.load(f)
+    assert snap["realised_pnl"] == 2000
+    os.remove(snap_path)
+
+
+def test_summary_write_is_atomic_no_tmp_left_behind():
+    """BUG-20: same atomicity for paper_summary.json (triggered by record_trade)."""
+    pnl = _make()
+    pnl.record_trade("A", 1500, {})
+    summary_path = os.path.join(pnl._data_dir, "paper_summary.json")
+    tmp_path = summary_path + ".tmp"
+    assert os.path.exists(summary_path)
+    assert not os.path.exists(tmp_path), "tmp file must not linger after successful write"
+    os.remove(summary_path)
+
+
 def test_daily_counters():
     pnl = _make()
     pnl.record_trade("A", 5000, {})

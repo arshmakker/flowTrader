@@ -32,24 +32,36 @@ class DayClassification:
 class DayClassifier:
     """
     Classify the trading day once at 10:30 AM; result is locked until reset().
+    BUG-08: one classifier per instrument. Pass symbol + spot_key to decouple
+    from NIFTY-only hardcoding.
 
     Requires:
         market_data — object with .get_open_price(symbol) -> float
                        and .get_ltp(symbol_key) -> float
-        signal_engine — object with .compute_vwap_value() -> float
+        signal_engine — object with .compute_vwap_value(ohlcv_df) -> float
+        symbol — trade symbol used for open-price lookup (default: NIFTY)
+        spot_key — exchange|name key used for current LTP lookup
     """
 
-    def __init__(self, market_data: Any, signal_engine: Any):
+    def __init__(
+        self,
+        market_data: Any,
+        signal_engine: Any,
+        symbol: Optional[str] = None,
+        spot_key: Optional[str] = None,
+    ):
         self.md = market_data
         self.se = signal_engine
+        self.symbol = symbol if symbol is not None else settings.NIFTY_SYMBOL
+        self.spot_key = spot_key if spot_key is not None else settings.NIFTY_SPOT_KEY
         self._result: Optional[DayClassification] = None
 
     def classify(self) -> DayClassification:
         if self._result is not None:
             return self._result  # locked once set
 
-        open_px = self.md.get_open_price(settings.NIFTY_SYMBOL)
-        current = self.md.get_ltp(settings.NIFTY_SPOT_KEY)
+        open_px = self.md.get_open_price(self.symbol)
+        current = self.md.get_ltp(self.spot_key)
         if open_px <= 0 or current <= 0:
             self._result = DayClassification(
                 day_type="RANGING", confidence="LOW",
@@ -59,7 +71,7 @@ class DayClassifier:
             )
             return self._result
         move_pct = (current - open_px) / open_px
-        vwap = self.se.compute_vwap_value()
+        vwap = self.se.compute_vwap_value(self.md.get_ohlcv_df())
         vwap_dist = abs(current - vwap) / vwap if vwap else 0.0
         abs_move = abs(move_pct)
 
@@ -71,11 +83,11 @@ class DayClassifier:
         else:
             day_type, confidence = "RANGING", "HIGH"
 
-        if hasattr(self.md, "is_open_price_reliable") and not self.md.is_open_price_reliable(settings.NIFTY_SYMBOL):
+        if hasattr(self.md, "is_open_price_reliable") and not self.md.is_open_price_reliable(self.symbol):
             confidence = "LOW"
             logger.warning(
                 "Open price for %s was an LTP fallback — downgrading day classification confidence to LOW",
-                settings.NIFTY_SYMBOL,
+                self.symbol,
             )
 
         self._result = DayClassification(

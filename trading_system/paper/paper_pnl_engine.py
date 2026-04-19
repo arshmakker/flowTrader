@@ -185,22 +185,36 @@ class PaperPnLEngine:
             },
         }
 
+    @staticmethod
+    def _atomic_write_json(path: str, payload) -> None:
+        """BUG-20: write JSON to a tmp path then os.replace onto the final path,
+        mirroring position_persistence. Prevents partial/corrupt files on crash."""
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp, path)
+        except Exception:
+            logger.exception("Failed to atomically write %s", path)
+            # Best-effort cleanup of the tmp file so it doesn't linger.
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except Exception:
+                pass
+
     def write_snapshot(self) -> None:
         """Write current P&L snapshot to disk — called every cycle."""
-        path = os.path.join(self._data_dir, "pnl_snapshot.json")
-        try:
-            with open(path, "w") as f:
-                json.dump(self.get_summary(), f, indent=2)
-        except Exception:
-            logger.exception("Failed to write P&L snapshot")
+        self._atomic_write_json(
+            os.path.join(self._data_dir, "pnl_snapshot.json"),
+            self.get_summary(),
+        )
 
     def _write_summary(self) -> None:
-        path = os.path.join(self._data_dir, "paper_summary.json")
-        try:
-            with open(path, "w") as f:
-                json.dump(self.get_summary(), f, indent=2)
-        except Exception:
-            logger.exception("Failed to write paper summary")
+        self._atomic_write_json(
+            os.path.join(self._data_dir, "paper_summary.json"),
+            self.get_summary(),
+        )
 
     # ── Persistence ──────────────────────────────────────────────────────
 

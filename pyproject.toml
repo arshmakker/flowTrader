@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+# BUG-09: make `trading_system` importable for targeted pytest invocations.
+# Without this, `pytest tests/test_ic_strategy.py` fails at collection.
+pythonpath = ["."]
+testpaths = ["tests"]

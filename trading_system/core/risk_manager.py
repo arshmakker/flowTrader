@@ -21,6 +21,7 @@ class RiskManager:
         self.recovery_side = None # 'BULL_PUT' | 'BEAR_CALL'
         self.stop_hit_at = None
         self._stop_breach_streak = 0
+        self._rollback_failures: List[Dict] = []
 
     def update_pnl(self, pnl: float):
         self.daily_pnl += pnl
@@ -109,6 +110,24 @@ class RiskManager:
 
         return True
 
+    def escalate_rollback_failure(self, instrument: str, stuck_legs: List[Dict]) -> None:
+        """BUG-05 / Axiom 3+4: rollback failure is a safety event. Halt new entries
+        and record the stuck legs so the operator can reconcile against the broker.
+        """
+        self.halted = True
+        if self.stop_hit_at is None:
+            self.stop_hit_at = datetime.now()
+        record = {
+            "at": datetime.now().isoformat(),
+            "instrument": instrument,
+            "stuck_legs": stuck_legs,
+        }
+        self._rollback_failures.append(record)
+        logger.critical(
+            "ROLLBACK FAILURE — halting trading. instrument=%s stuck_legs=%s",
+            instrument, stuck_legs,
+        )
+
     def reset_daily(self):
         self.daily_pnl = 0.0
         self.halted = False
@@ -125,6 +144,7 @@ class RiskManager:
             "recovery_side": self.recovery_side,
             "stop_hit_at": self.stop_hit_at.isoformat() if self.stop_hit_at else None,
             "stop_breach_streak": self._stop_breach_streak,
+            "rollback_failures": self._rollback_failures,
         }
 
     def restore_state(self, state: Dict, *, reset_daily: bool = False) -> None:
@@ -136,6 +156,7 @@ class RiskManager:
         self.recovery_mode = state.get("recovery_mode", False)
         self.recovery_side = state.get("recovery_side", None)
         self._stop_breach_streak = state.get("stop_breach_streak", 0)
+        self._rollback_failures = state.get("rollback_failures", [])
         stop_hit_str = state.get("stop_hit_at")
         if stop_hit_str:
             self.stop_hit_at = datetime.fromisoformat(stop_hit_str)

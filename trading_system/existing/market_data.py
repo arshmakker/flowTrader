@@ -137,7 +137,11 @@ class MarketData:
             token = self.NIFTY_SPOT_TOKEN
             q = self.api.get_quotes(exchange="NSE", token=token)
             if q:
-                op = float(q.get("o", 0) or q.get("lp", 0))
+                # BUG-06: accept ONLY q["o"] as a real open. Fall through to the
+                # explicit LTP fallback path below if 'o' is missing/zero — that
+                # path flags _open_price_fallback so the classifier downgrades
+                # confidence to LOW.
+                op = float(q.get("o") or 0)
                 if op > 0:
                     self._open_prices[symbol] = op
                     return op

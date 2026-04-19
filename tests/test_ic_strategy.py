@@ -7,6 +7,17 @@ from trading_system.config import settings
 def mock_om():
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, strike, type: f"NFO|{inst}{exp}{type[0]}{int(strike)}"
+    # BUG-11: place_order must return a dict with status="COMPLETE" so the
+    # atomic four-leg gate (iron_condor.py:220) accepts the leg. Previously the
+    # fixture returned a raw MagicMock whose .get("status") was another MagicMock,
+    # causing every entry to abort on leg 1.
+    om.place_order.return_value = {
+        "status": "COMPLETE",
+        "fill_price": 18.0,
+        "order_id": "PAPER_MOCK",
+    }
+    # No tracker for these unit tests — BUG-03/BUG-04 unwind paths skip when None.
+    om.tracker = None
     return om
 
 @pytest.fixture
