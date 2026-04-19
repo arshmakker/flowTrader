@@ -3,14 +3,13 @@ Trade logger (agents.md).
 
 Writes output files:
   data/paper_trades.csv  — one row per completed trade
-  data/paper_signals.log — append-only signal/VIX/gate log
 """
 
 import csv
 import logging
 import os
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from trading_system.config import settings
 
@@ -29,7 +28,6 @@ class TradeLogger:
         self.data_dir = data_dir
         os.makedirs(self.data_dir, exist_ok=True)
         self._trades_path = os.path.join(self.data_dir, "paper_trades.csv")
-        self._signals_path = os.path.join(self.data_dir, "paper_signals.log")
         self._ensure_csv_header()
         self._trade_counter = self._read_last_counter()
 
@@ -71,12 +69,3 @@ class TradeLogger:
         except Exception:
             logger.exception("Failed to write trade to CSV")
         return trade_id
-
-    def log_signal(self, message: str) -> None:
-        ts = datetime.now().strftime("%H:%M:%S")
-        line = f"[{ts}] {message}"
-        try:
-            with open(self._signals_path, "a") as f:
-                f.write(line + "\n")
-        except Exception:
-            logger.exception("Failed to write signal log")

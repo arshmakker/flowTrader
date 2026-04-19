@@ -17,8 +17,6 @@ class RiskManager:
     def __init__(self):
         self.daily_pnl = 0.0
         self.halted = False
-        self.recovery_mode = False
-        self.recovery_side = None # 'BULL_PUT' | 'BEAR_CALL'
         self.stop_hit_at = None
         self._stop_breach_streak = 0
         self._rollback_failures: List[Dict] = []
@@ -86,30 +84,6 @@ class RiskManager:
         
         return False
 
-    def can_enter_recovery(self, vix_stable: bool, vix_falling: bool) -> bool:
-        """
-        Recovery Exception: A single-sided credit spread re-entry is permitted 
-        after a stop ONLY if it occurs before 1:00 PM and VIX is stable/falling.
-        """
-        if not self.halted or self.recovery_mode:
-            return False
-        
-        if self.stop_hit_at is None:
-            return False
-
-        # 1. Check Time (Before 1:00 PM)
-        deadline = datetime.strptime(settings.RECOVERY_DEADLINE, "%H:%M").time()
-        if self.stop_hit_at.time() >= deadline:
-            logger.info(f"Recovery denied: Stop hit at {self.stop_hit_at.time()} (>= {deadline})")
-            return False
-
-        # 2. Check VIX Stability/Trend
-        if not (vix_stable or vix_falling):
-            logger.info("Recovery denied: VIX is not stable or falling")
-            return False
-
-        return True
-
     def escalate_rollback_failure(self, instrument: str, stuck_legs: List[Dict]) -> None:
         """BUG-05 / Axiom 3+4: rollback failure is a safety event. Halt new entries
         and record the stuck legs so the operator can reconcile against the broker.
@@ -140,8 +114,6 @@ class RiskManager:
         return {
             "daily_pnl": self.daily_pnl,
             "halted": self.halted,
-            "recovery_mode": self.recovery_mode,
-            "recovery_side": self.recovery_side,
             "stop_hit_at": self.stop_hit_at.isoformat() if self.stop_hit_at else None,
             "stop_breach_streak": self._stop_breach_streak,
             "rollback_failures": self._rollback_failures,
@@ -153,8 +125,6 @@ class RiskManager:
             return
         self.daily_pnl = state.get("daily_pnl", 0.0)
         self.halted = state.get("halted", False)
-        self.recovery_mode = state.get("recovery_mode", False)
-        self.recovery_side = state.get("recovery_side", None)
         self._stop_breach_streak = state.get("stop_breach_streak", 0)
         self._rollback_failures = state.get("rollback_failures", [])
         stop_hit_str = state.get("stop_hit_at")

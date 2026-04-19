@@ -12,8 +12,6 @@ We explicitly ignore the latter so `pytest` is usable in CI/dev by default.
 collect_ignore = [
     "test_trade_logger.py",
     "test_smoke.py",
-    "test_signal_engine.py",
-    "test_risk_manager_ic.py",
     "test_risk_manager.py",
     "test_regime_filter.py",
     "test_all_fixes.py",

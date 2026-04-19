@@ -2,13 +2,13 @@
 
 ## Progress
 
-**16 of 21 fixed.** All P0 done. Remaining items are either complex (BUG-07) or cleanup work that touches active/ignored tests (BUG-14, 15, 16, 21).
+**19 of 21 fixed.** All P0 done. Remaining: BUG-07 (complex, needs auth-detection plumbing) and BUG-21 (touches active tests).
 
 | Priority | Fixed | Open |
 |---|---|---|
 | P0 | BUG-01, 02, 03, 04, 05, 19 | — |
 | P1 | BUG-06, 08, 09, 10, 11, 18, 20 | BUG-07 |
-| P2 | BUG-12, 13, 17 | BUG-14, 15, 16, 21 |
+| P2 | BUG-12, 13, 14, 15, 16, 17 | BUG-21 |
 
 Merged from `bugs_for_review1.md` (repo root) and `docs/bugs_for_review2.md`. Scope is intentionally tight:
 - **Current practical defects** — things that are wrong in the runtime you are actually using today.
@@ -246,7 +246,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Remove the import and instantiation until a real caller exists. Or wire it to evaluate `paper_summary.json` thresholds at end of each session.
 
 ## BUG-14 · `paper_signals.log` writer supported but never called in runtime
-- **Status:** 🟡 Deferred — decision needed: wire `log_signal` into gate decisions, or remove the writer and dashboard readers.
+- **Status:** ✅ Fixed — `TradeLogger.log_signal` and `_signals_path` removed. Dashboard readers will see a missing file and display no signals (existing behavior).
 - **Severity:** Low
 - **Severity reason:** This leaves an empty observability feature, but does not compromise trade execution or P&L correctness.
 - **Priority:** P2
@@ -259,7 +259,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Wire `log_signal()` into the regime/classification/gate decision points in `main.py` and `RegimeFilter` (call on each blocked/allowed decision with a structured message). Alternatively, remove the writer and dashboard readers if the signal log is not actually useful.
 
 ## BUG-15 · `RiskManager.can_enter_recovery()` never called
-- **Status:** 🟡 Deferred — removal touches the ignored `test_risk_manager_ic.py`; needs decision on whether to wire recovery mode or delete fully.
+- **Status:** ✅ Fixed — method, `recovery_mode`, `recovery_side`, and save/restore references removed. Ignored `test_risk_manager_ic.py` deleted; conftest `collect_ignore` cleaned.
 - **Severity:** Low (unfinished feature)
 - **Severity reason:** Unused recovery logic is misleading, but since no recovery flow is advertised as active behavior, this is feature incompleteness more than a live bug.
 - **Priority:** P2
@@ -271,7 +271,7 @@ These items are real, but they are not current execution blockers for the runtim
 - **Suggested fix:** Either wire the recovery-trade flow in `main.py` after a hard stop (and add a `RiskManager.enter_recovery()` execution path), or delete `can_enter_recovery`, `recovery_mode`, `recovery_side`, and related state to reflect what's actually implemented.
 
 ## BUG-16 · Unused `SignalEngine` methods
-- **Status:** 🟡 Deferred — deletion touches the ignored `test_signal_engine.py`; under IC-only scope (Axiom 1) the right path is to delete RSI/PCR/Max Pain/consensus methods.
+- **Status:** ✅ Fixed — `SignalEngine` reduced to just `compute_vwap_value` (the only method DayClassifier uses). RSI, PCR, Max Pain, consensus aggregator, and `SignalResult` dataclass removed. Ignored `test_signal_engine.py` deleted; conftest cleaned.
 - **Severity:** Low
 - **Severity reason:** Extra unused methods add cognitive overhead but do not break the active trading path.
 - **Priority:** P2
