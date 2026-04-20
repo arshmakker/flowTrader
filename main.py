@@ -440,8 +440,7 @@ def run():
                     flat_verified_at=datetime.now().isoformat() if flat_now else None,
                 )
                 log.info("Daily session ended.%s", " All positions closed." if not next_day_is_trading else " Positions carried overnight.")
-                _time.sleep(3600)
-                continue
+                break
 
             # 3. Day Classification (10:30 AM) — per instrument (BUG-08).
             if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time():
