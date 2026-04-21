@@ -16,7 +16,7 @@ from trading_system.config import settings
 logger = logging.getLogger(__name__)
 
 TRADE_COLUMNS = [
-    "trade_id", "date", "time_entry", "time_exit", "instrument",
+    "trade_id", "date", "entry_date", "time_entry", "time_exit", "instrument",
     "sc_strike", "sp_strike", "lc_strike", "lp_strike",
     "entry_credit", "exit_price", "gross_pnl", "net_pnl",
     "exit_reason", "lots", "peak_pnl",

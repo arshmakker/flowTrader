@@ -94,3 +94,51 @@ def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
     assert result['pnl'] == -650.0
     assert result['net_pnl'] == -650.0
     assert s.is_active() is False
+
+
+def test_from_dict_infers_expiry_from_symbol_when_absent():
+    """Bug fix: positions saved before expiry_date field existed must have it
+    backfilled from the sc_sym on restore, so _find_expiring_today can close them."""
+    d = {
+        "instrument": "NIFTY", "sc_sym": "NFO|NIFTY21APR26C24350",
+        "sp_sym": "NFO|NIFTY21APR26P22400", "lc_sym": "NFO|NIFTY21APR26C24450",
+        "lp_sym": "NFO|NIFTY21APR26P22300",
+        "sc_strike": 24350, "sp_strike": 22400, "lc_strike": 24450, "lp_strike": 22300,
+        "max_profit": 18752.5, "entry_credit": 28.85, "lots": 10,
+        "entry_time": "13:42:14", "peak_pnl": 0.0,
+        # expiry_date intentionally absent (old state format)
+    }
+    pos = IC_Position.from_dict(d)
+    assert pos.expiry_date == "2026-04-21"
+
+
+def test_from_dict_preserves_existing_expiry_date():
+    """from_dict must not overwrite a valid expiry_date already in the saved state."""
+    d = {
+        "instrument": "BANKNIFTY", "sc_sym": "NFO|BANKNIFTY28APR26C57400",
+        "sp_sym": "NFO|BANKNIFTY28APR26P51000", "lc_sym": "NFO|BANKNIFTY28APR26C57500",
+        "lp_sym": "NFO|BANKNIFTY28APR26P50900",
+        "sc_strike": 57400, "sp_strike": 51000, "lc_strike": 57500, "lp_strike": 50900,
+        "max_profit": 5970, "entry_credit": 19.9, "lots": 10,
+        "entry_time": "10:36:21", "peak_pnl": 0.0,
+        "expiry_date": "2026-04-28",
+    }
+    pos = IC_Position.from_dict(d)
+    assert pos.expiry_date == "2026-04-28"
+
+
+def test_exit_result_contains_entry_date(mock_om, mock_md):
+    """Bug fix: for overnight carries the result dict must carry entry_date so the
+    CSV logs the entry day, not the exit day."""
+    s = IronCondorStrategy(mock_om, mock_md, 'NIFTY')
+    s._position = IC_Position(
+        instrument='NIFTY',
+        sc_sym='SC', sp_sym='SP', lc_sym='LC', lp_sym='LP',
+        sc_strike=22150, sp_strike=21850, lc_strike=22200, lp_strike=21800,
+        max_profit=1000, entry_credit=20.0, lots=2, entry_time='15:02:49',
+        entry_date='2026-04-20',
+    )
+    mock_md.get_ltp.return_value = 10.0
+    result = s.force_exit()
+    assert result is not None
+    assert result['entry_date'] == '2026-04-20'

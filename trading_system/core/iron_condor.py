@@ -8,6 +8,7 @@ Iron Condor Strategist — implements the core Nifty/BankNifty strategist logic 
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple, List
 from datetime import datetime
@@ -15,6 +16,13 @@ from datetime import datetime
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
+
+_EXPIRY_RE = re.compile(r'(\d{2})([A-Z]{3})(\d{2})', re.IGNORECASE)
+_MONTH_MAP = {
+    "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
+    "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
+    "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12",
+}
 
 @dataclass
 class IC_Position:
@@ -35,13 +43,31 @@ class IC_Position:
     # BUG-18 / Axiom 2: ISO date "YYYY-MM-DD" of this IC's expiry. Empty string
     # is tolerated only to support loading state saved before this field existed.
     expiry_date: str = ""
+    # ISO date "YYYY-MM-DD" of when the IC was entered (may differ from exit date
+    # for positions carried overnight).
+    entry_date: str = ""
 
     def to_dict(self) -> Dict:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
 
+    @staticmethod
+    def _infer_expiry_from_symbol(sym: str) -> str:
+        """Parse expiry ISO date from a symbol like 'NFO|NIFTY21APR26C24350'."""
+        m = _EXPIRY_RE.search(sym.upper())
+        if not m:
+            return ""
+        day, mon, yr2 = m.groups()
+        month_num = _MONTH_MAP.get(mon.upper(), "")
+        if not month_num:
+            return ""
+        return f"20{yr2}-{month_num}-{day}"
+
     @classmethod
     def from_dict(cls, d: Dict) -> "IC_Position":
-        return cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        obj = cls(**{k: d[k] for k in cls.__dataclass_fields__ if k in d})
+        if not obj.expiry_date:
+            obj.expiry_date = cls._infer_expiry_from_symbol(obj.sc_sym)
+        return obj
 
 class IronCondorStrategy:
     def __init__(self, order_manager: Any, market_data: Any, instrument: str = 'NIFTY'):
@@ -261,13 +287,15 @@ class IronCondorStrategy:
         except (ValueError, TypeError):
             expiry_iso = ""
             logger.warning("IC %s could not parse expiry '%s' to ISO date", self.instrument, expiry)
+        now = datetime.now()
         self._position = IC_Position(
             instrument=self.instrument,
             sc_sym=sc_sym, sp_sym=sp_sym, lc_sym=lc_sym, lp_sym=lp_sym,
             sc_strike=sc, sp_strike=sp, lc_strike=lc, lp_strike=lp,
             max_profit=max_profit, entry_credit=net_credit_unit,
-            lots=lots, entry_time=datetime.now().strftime("%H:%M:%S"),
+            lots=lots, entry_time=now.strftime("%H:%M:%S"),
             expiry_date=expiry_iso,
+            entry_date=now.strftime("%Y-%m-%d"),
         )
         logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
         return True
@@ -374,6 +402,7 @@ class IronCondorStrategy:
         # gross_pnl, net_pnl, exit_reason, lots, peak_pnl, vix_entry, day_type, paper
         result = {
             "instrument": self.instrument,
+            "entry_date": pos.entry_date,
             "time_entry": pos.entry_time,
             "time_exit": datetime.now().strftime("%H:%M:%S"),
             "sc_strike": pos.sc_strike,
