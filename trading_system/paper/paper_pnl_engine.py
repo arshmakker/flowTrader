@@ -147,6 +147,14 @@ class PaperPnLEngine:
         losses = [p for p in self._trade_pnls if p < 0]
         return sum(losses) / len(losses) if losses else 0.0
 
+    @property
+    def max_drawdown_pct(self) -> float:
+        # Drawdown as a percentage of peak realised P&L. Meaningful only once
+        # we've had a positive peak; before that, pct is undefined (return 0).
+        if self._peak_pnl <= 0:
+            return 0.0
+        return (self.max_drawdown / self._peak_pnl) * 100
+
     def _strat_summary(self, stats: Dict[str, Dict]) -> Dict[str, Dict]:
         out = {}
         for k, v in stats.items():
@@ -171,6 +179,7 @@ class PaperPnLEngine:
             "win_rate_pct": round(self.win_rate, 1),
             "strategy_stats": self._strat_summary(self._strategy_stats),
             "max_drawdown": round(self.max_drawdown, 2),
+            "max_drawdown_pct": round(self.max_drawdown_pct, 2),
             "profit_factor": round(self.profit_factor, 2) if self.profit_factor != float("inf") else "inf",
             "avg_win": round(self.avg_win, 2),
             "avg_loss": round(self.avg_loss, 2),

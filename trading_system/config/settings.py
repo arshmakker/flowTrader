@@ -119,6 +119,8 @@ GL_MIN_TSL_EXITS = 5
 GL_WIN_LOSS_RATIO = 1.3
 GL_MIN_DAYS = 10
 GL_MAX_DD_PCT = 5.0
+GL_MAX_PLAUSIBLE_WR = 90.0
+GL_PLAUSIBLE_WR_MIN_TRADES = 30
 
 # ══ DATA PATHS ═══════════════════════════════════════════════════════
 DATA_DIR = "data"

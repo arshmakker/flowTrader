@@ -306,6 +306,33 @@ def test_summary_has_daily_and_metrics():
     assert "avg_loss" in s
 
 
+def test_max_drawdown_pct_zero_before_positive_peak():
+    """Bug F: pct is 0 before a positive peak is established (avoids div-by-zero)."""
+    pnl = _make()
+    pnl.record_trade("A", -1000, {})
+    assert pnl.max_drawdown_pct == 0.0
+    s = pnl.get_summary()
+    assert s["max_drawdown_pct"] == 0.0
+
+
+def test_max_drawdown_pct_tracks_peak_decline():
+    """Bug F: pct = max_drawdown / peak_pnl * 100 once peak is positive."""
+    pnl = _make()
+    pnl.record_trade("A", 10000, {})   # peak = 10000
+    pnl.record_trade("A", -500, {})    # drawdown = 500 → 5.0%
+    assert abs(pnl.max_drawdown_pct - 5.0) < 1e-9
+    s = pnl.get_summary()
+    assert s["max_drawdown_pct"] == 5.0
+
+
+def test_summary_includes_max_drawdown_pct():
+    """Bug F: snapshot must expose max_drawdown_pct so the evaluator can read it."""
+    pnl = _make()
+    pnl.record_trade("A", 5000, {})
+    s = pnl.get_summary()
+    assert "max_drawdown_pct" in s
+
+
 def test_save_restore_drawdown():
     pnl1 = _make()
     pnl1.record_trade("A", 5000, {})

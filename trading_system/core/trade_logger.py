@@ -35,6 +35,36 @@ class TradeLogger:
         if not os.path.exists(self._trades_path):
             with open(self._trades_path, "w", newline="") as f:
                 csv.writer(f).writerow(TRADE_COLUMNS)
+            return
+        try:
+            with open(self._trades_path, "r", newline="") as f:
+                existing_header = next(csv.reader(f), [])
+        except Exception:
+            logger.exception("Failed to read existing trades CSV header")
+            return
+        if existing_header == TRADE_COLUMNS:
+            return
+        archived = self._archive_path(self._trades_path)
+        try:
+            os.replace(self._trades_path, archived)
+        except Exception:
+            logger.exception("Failed to archive trades CSV with stale header; keeping as-is")
+            return
+        logger.warning(
+            "paper_trades.csv header mismatch (had %d cols, expected %d) — archived to %s",
+            len(existing_header), len(TRADE_COLUMNS), archived,
+        )
+        with open(self._trades_path, "w", newline="") as f:
+            csv.writer(f).writerow(TRADE_COLUMNS)
+
+    @staticmethod
+    def _archive_path(trades_path: str) -> str:
+        base, ext = os.path.splitext(trades_path)
+        legacy = f"{base}_legacy{ext}"
+        if not os.path.exists(legacy):
+            return legacy
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{base}_legacy_{ts}{ext}"
 
     def _read_last_counter(self) -> int:
         if not os.path.exists(self._trades_path):
