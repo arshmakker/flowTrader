@@ -7,14 +7,21 @@ Fills at live LTP with realistic slippage and cost simulation.
 
 from __future__ import annotations
 
+import csv
 import itertools
 import logging
+import os
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
+
+_ORDERS_CSV_COLUMNS = [
+    "timestamp", "order_id", "symbol", "side", "quantity",
+    "fill_price", "stt", "brokerage", "status", "reason", "paper",
+]
 
 
 class PaperOrderManager:
@@ -25,10 +32,39 @@ class PaperOrderManager:
 
     _id_counter = itertools.count(1)
 
-    def __init__(self, market_data: Any, position_tracker: Any = None) -> None:
+    def __init__(
+        self,
+        market_data: Any,
+        position_tracker: Any = None,
+        orders_csv_path: Optional[str] = None,
+    ) -> None:
         self.md = market_data
         self.tracker = position_tracker
         self.orders: list[Dict] = []
+        self._orders_csv_path = orders_csv_path or os.path.join(
+            settings.DATA_DIR, "paper_orders.csv"
+        )
+        self._ensure_orders_csv_header()
+
+    def _ensure_orders_csv_header(self) -> None:
+        if os.path.exists(self._orders_csv_path):
+            return
+        parent = os.path.dirname(self._orders_csv_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        try:
+            with open(self._orders_csv_path, "w", newline="") as f:
+                csv.writer(f).writerow(_ORDERS_CSV_COLUMNS)
+        except Exception:
+            logger.exception("Failed to initialise paper_orders.csv")
+
+    def _append_order_csv(self, order: Dict[str, Any]) -> None:
+        row = [order.get(col, "") for col in _ORDERS_CSV_COLUMNS]
+        try:
+            with open(self._orders_csv_path, "a", newline="") as f:
+                csv.writer(f).writerow(row)
+        except Exception:
+            logger.exception("Failed to append paper order to CSV")
 
     def _next_id(self) -> str:
         return f"PAPER_{next(self._id_counter)}"
@@ -86,7 +122,7 @@ class PaperOrderManager:
                 logger.warning("Paper LTP=0 for %s; using explicit fallback %.2f", tradingsymbol, ltp)
             else:
                 logger.error("Paper order rejected for %s: missing LTP and no fallback price", tradingsymbol)
-                return {
+                rejected = {
                     "order_id": self._next_id(),
                     "symbol": tradingsymbol,
                     "side": buy_or_sell,
@@ -99,6 +135,8 @@ class PaperOrderManager:
                     "paper": True,
                     "reason": "missing_ltp",
                 }
+                self._append_order_csv(rejected)
+                return rejected
 
         if is_option and (ltp < settings.PAPER_OPTION_LTP_MIN or ltp > settings.PAPER_OPTION_LTP_MAX):
             logger.error(
@@ -108,7 +146,7 @@ class PaperOrderManager:
                 settings.PAPER_OPTION_LTP_MIN,
                 settings.PAPER_OPTION_LTP_MAX,
             )
-            return {
+            rejected = {
                 "order_id": self._next_id(),
                 "symbol": tradingsymbol,
                 "side": buy_or_sell,
@@ -122,6 +160,8 @@ class PaperOrderManager:
                 "reason": "suspicious_option_ltp",
                 "ltp": ltp,
             }
+            self._append_order_csv(rejected)
+            return rejected
 
         if is_option and ltp < settings.SLIPPAGE_OTM_THRESHOLD:
             slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
@@ -151,6 +191,7 @@ class PaperOrderManager:
         self.orders.append(order)
         if self.tracker is not None and track_position:
             self.tracker.add_position(order)
+        self._append_order_csv(order)
         logger.info(
             "PAPER ORDER %s %s %d @ %.2f (stt=%.2f)",
             buy_or_sell, tradingsymbol, quantity, fill, stt,
