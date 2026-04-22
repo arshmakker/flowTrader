@@ -107,6 +107,12 @@ STT_OPTIONS_SELL = 0.0005
 STT_FUTURES = 0.0001
 BROKERAGE_PER_ORDER = 5.0
 
+# ══ LIVE ORDER POLLING ════════════════════════════════════════════════
+# Seconds between each poll of single_order_history while awaiting fill.
+POLL_INTERVAL_SEC = 1
+# Consecutive API errors before raising OrderPollingAbandoned and halting.
+MAX_POLL_ERRORS = 10
+
 # ══ CACHE TTLs ═══════════════════════════════════════════════════════
 LTP_CACHE_SEC = 2.0
 VIX_CACHE_SEC = 60.0

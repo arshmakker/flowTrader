@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple, List
 from datetime import datetime
 
 from trading_system.config import settings
+from trading_system.live.live_order_manager import persist_stuck_legs
 
 logger = logging.getLogger(__name__)
 
@@ -85,29 +86,31 @@ class IronCondorStrategy:
     def _opposite_side(side: str) -> str:
         return "BUY" if side == "SELL" else "SELL"
 
-    def _rollback_partial_entry(self, placed_orders: List[Dict], qty: int) -> None:
-        """Flatten any successfully placed entry legs if entry orchestration fails.
-        Axiom 5: tracker state must be unwound for rolled-back legs. Axiom 3+4
-        (BUG-05): any leg whose reverse order also fails is recorded in
-        self._last_rollback_stuck_legs so main.py can escalate to a hard halt.
+    def _rollback_partial_entry(self, placed_orders: List[Dict]) -> None:
+        """Flatten any filled entry legs when entry orchestration fails.
+
+        Uses fill_qty from each order so partial fills are reversed correctly.
+        Axiom 5: tracker state unwound for rolled-back legs. Axiom 3+4 (BUG-05):
+        legs whose reverse also fails are recorded in _last_rollback_stuck_legs.
         """
         stuck: List[Dict] = []
         for order in reversed(placed_orders):
-            if order.get("status") != "COMPLETE":
+            fq = order.get("fill_qty", 0)
+            if fq == 0:
                 continue
             symbol = order.get("symbol")
             side = order.get("side")
             if not symbol or side not in ("BUY", "SELL"):
                 continue
             rollback_side = self._opposite_side(side)
-            rollback = self.om.place_order(symbol, rollback_side, qty, track_position=False)
-            if rollback.get("status") != "COMPLETE":
+            rollback = self.om.place_order(symbol, rollback_side, fq, track_position=False)
+            if rollback.get("fill_qty", 0) < fq:
                 logger.error(
-                    "IC %s rollback failed for %s %s %s (status=%s, reason=%s)",
+                    "IC %s rollback failed for %s %s qty=%d (status=%s, reason=%s)",
                     self.instrument,
                     rollback_side,
                     symbol,
-                    qty,
+                    fq,
                     rollback.get("status"),
                     rollback.get("reason", ""),
                 )
@@ -115,11 +118,11 @@ class IronCondorStrategy:
                     "symbol": symbol,
                     "original_side": side,
                     "rollback_side": rollback_side,
-                    "qty": qty,
+                    "intended_qty": fq,
+                    "reversed_qty": rollback.get("fill_qty", 0),
                     "reason": rollback.get("reason", ""),
                 })
                 continue
-            # Unwind the tracker entry for the originally-filled leg.
             tracker = getattr(self.om, "tracker", None)
             if tracker is not None:
                 try:
@@ -127,6 +130,48 @@ class IronCondorStrategy:
                 except Exception:
                     logger.exception("IC %s tracker unwind failed for rollback of %s", self.instrument, symbol)
         self._last_rollback_stuck_legs = stuck
+        if stuck:
+            persist_stuck_legs(stuck)
+
+    def _handle_partial_fill_halt(self, placed_orders: List[Dict]) -> None:
+        """Reverse whatever fill_qty actually filled after a partial-fill CANCELED.
+
+        Records stuck legs and signals halt via _last_rollback_stuck_legs.
+        LIVE-05: full hedge path to be added when LIVE-03 hedge logic lands.
+        """
+        stuck: List[Dict] = []
+        for order in reversed(placed_orders):
+            fq = order.get("fill_qty", 0)
+            if fq == 0:
+                continue
+            symbol = order.get("symbol")
+            side = order.get("side")
+            if not symbol or side not in ("BUY", "SELL"):
+                continue
+            reverse_side = self._opposite_side(side)
+            reverse = self.om.place_order(symbol, reverse_side, fq, track_position=False)
+            reversed_qty = reverse.get("fill_qty", 0)
+            if reversed_qty < fq:
+                logger.error(
+                    "IC %s partial-fill reversal incomplete for %s %s: reversed %d of %d",
+                    self.instrument, reverse_side, symbol, reversed_qty, fq,
+                )
+                stuck.append({
+                    "symbol": symbol,
+                    "original_side": side,
+                    "intended_qty": fq,
+                    "reversed_qty": reversed_qty,
+                    "reason": "partial_fill_reversal_incomplete",
+                })
+            else:
+                tracker = getattr(self.om, "tracker", None)
+                if tracker is not None:
+                    try:
+                        tracker.close_position(symbol, reverse.get("fill_price", 0.0))
+                    except Exception:
+                        logger.exception("IC %s tracker unwind failed after partial fill of %s", self.instrument, symbol)
+        self._last_rollback_stuck_legs = stuck
+        persist_stuck_legs(stuck)
 
     def _log_credit_rejection(
         self,
@@ -258,29 +303,39 @@ class IronCondorStrategy:
         qty = lots * lot_size
         max_profit = net_credit_unit * qty
 
-        # Place all 4 legs and require COMPLETE status for each.
+        # Legs interleaved as short+wing pairs so any mid-entry failure leaves
+        # a capped spread (call spread or put spread) rather than a naked strangle.
         orders_to_place = [
             (sc_sym, "SELL"),
-            (sp_sym, "SELL"),
             (lc_sym, "BUY"),
+            (sp_sym, "SELL"),
             (lp_sym, "BUY"),
         ]
         placed_orders: List[Dict] = []
         for symbol, side in orders_to_place:
             order = self.om.place_order(symbol, side, qty)
             placed_orders.append(order)
-            if order.get("status") != "COMPLETE":
+            status = order.get("status")
+            fill_qty = order.get("fill_qty", 0)
+
+            if status == "COMPLETE":
+                continue
+
+            if status == "REJECTED" or (status == "CANCELED" and fill_qty == 0):
                 logger.error(
-                    "IC %s entry aborted: leg %s %s rejected (status=%s, reason=%s, ltp=%s)",
-                    self.instrument,
-                    side,
-                    symbol,
-                    order.get("status"),
-                    order.get("reason", ""),
-                    order.get("ltp", ""),
+                    "IC %s entry aborted: leg %s %s clean-rejected (status=%s, reason=%s)",
+                    self.instrument, side, symbol, status, order.get("reason", ""),
                 )
-                self._rollback_partial_entry(placed_orders, qty)
+                self._rollback_partial_entry(placed_orders)
                 return False
+
+            # CANCELED with a partial fill — reverse what filled, then halt.
+            logger.error(
+                "IC %s entry aborted: leg %s %s partial fill %d/%d",
+                self.instrument, side, symbol, fill_qty, qty,
+            )
+            self._handle_partial_fill_halt(placed_orders)
+            return False
 
         try:
             expiry_iso = datetime.strptime(str(expiry).strip(), "%d-%b-%Y").date().isoformat()
@@ -386,13 +441,34 @@ class IronCondorStrategy:
             (pos.lp_sym, "SELL"),
         ]
         tracker = getattr(self.om, "tracker", None)
+        exit_stuck: List[Dict] = []
         for sym, side in closing_legs:
             order = self.om.place_order(sym, side, qty, track_position=False)
-            if tracker is not None and order.get("status") == "COMPLETE":
+            fq = order.get("fill_qty", 0)
+            if fq < qty:
+                logger.error(
+                    "IC %s EXIT INCOMPLETE: %s %s filled %d/%d (status=%s, reason=%s)",
+                    self.instrument, side, sym, fq, qty,
+                    order.get("status"), order.get("reason", ""),
+                )
+                exit_stuck.append({
+                    "symbol": sym,
+                    "original_side": self._opposite_side(side),
+                    "intended_qty": qty,
+                    "reversed_qty": fq,
+                    "reason": "exit_leg_incomplete",
+                })
+                # Stop attempting further close legs — position state is ambiguous.
+                break
+            if tracker is not None:
                 try:
                     tracker.close_position(sym, order.get("fill_price", 0.0))
                 except Exception:
                     logger.exception("IC %s tracker unwind failed for exit of %s", self.instrument, sym)
+
+        if exit_stuck:
+            self._last_rollback_stuck_legs = exit_stuck
+            persist_stuck_legs(exit_stuck)
 
         logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={pnl:.2f}")
         
