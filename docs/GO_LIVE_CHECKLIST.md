@@ -6,11 +6,11 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**0 of 22 addressed.** All items open. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**0 of 23 addressed.** All items open. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 02, 03, 07, 10, 13, 19, 20, 21, 22 | — |
+| P0 | LIVE-01, 02, 03, 07, 10, 13, 19, 20, 21, 22, 25 | — |
 | P1 | LIVE-04, 05, 06, 08, 11, 12, 14, 18, 23, 24 | — |
 | P2 | LIVE-09, 17 | — |
 
@@ -77,12 +77,35 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Severity reason:** The most dangerous failure mode at 10 lots. The two short legs (SC, SP) are uncovered without their wings. If the rollback's reverse BUY fails (circuit, margin call triggered by the first leg's margin consumption, illiquid far-OTM), exposure is real, directional, and unhedged.
 - **Priority:** P0
 - **Priority reason:** No live-money use is acceptable until rollback failure is not just escalated but actively hedged. `RiskManager.escalate_rollback_failure` already halts entries; it does not unwind the stuck legs.
+- **Interaction with LIVE-25:** If LIVE-25 (hedge-first entry sequencing) ships first, the unbounded-naked-short scenario is eliminated by construction — wings are already on before any short leg goes out. LIVE-03 then narrows to the edge case of one wing filling but not the other, which is still possible but bounded, not catastrophic. Sequence LIVE-25 before LIVE-03's hedge implementation.
 - **Evidence:**
   - `trading_system/core/iron_condor.py:62-103` — `_rollback_partial_entry` submits reverse orders and records `stuck_legs` on failure; no hedge placed.
   - `trading_system/core/risk_manager.py:83-99` — `escalate_rollback_failure` sets `halted = True` and logs; halt does not remove the stuck exposure.
   - `trading_system/paper/paper_order_manager.py:117-199` — paper reverse orders always succeed.
 - **Impact:** At 10 lots NIFTY (650 qty) short 1 CE strike with no corresponding long CE, an adverse 100-point move is ₹65k of loss per strike per leg, uncapped.
 - **Suggested approach:** On rollback failure, attempt a protective hedge at the nearest liquid strike (cheapest available wing) to cap exposure, then halt. If the hedge also fails, emit an operator alert (LIVE-23) and persist the stuck set to `data/open_positions.json::stuck_legs`. Next startup must refuse to trade until an operator clears. Regression test: inject a rollback reverse-order rejection; assert a hedge order is attempted and an operator-alert path fires.
+
+### LIVE-25 · Hedge-first IC entry sequencing
+- **Status:** Open
+- **Severity:** High
+- **Severity reason:** Risk-profile-changing. Current implicit entry order treats all four legs symmetrically as market orders, which means any leg failure after a short leg fills produces unbounded naked-short exposure (the LIVE-03 scenario). A hedge-first ordering — buy the two long wings first as market orders, then sell the two short legs as limit orders priced off actual wing fills — converts the worst-case failure from *unbounded naked short* to *own a long strangle capped at premium paid*. Bounded vs unbounded is categorical, not incremental.
+- **Priority:** P0
+- **Priority reason:** Foundational to the live entry design. Landing LIVE-25 first materially simplifies LIVE-03 and strengthens LIVE-02. Deferring it means building LIVE-03's catastrophic-scenario hedge logic against a risk that this design eliminates by construction.
+- **Evidence:**
+  - `trading_system/core/iron_condor.py:316` — `place_order(symbol, side, qty)` called sequentially per leg with no `price_type`, so all legs go as `MKT` (the `paper_order_manager.place_order` default at `trading_system/paper/paper_order_manager.py:113`).
+  - `trading_system/core/iron_condor.py:195-213` — entry credit is computed once upfront from `get_ltp`; there is no notion of deriving short-leg prices from actual wing fills.
+  - No existing code supports limit orders with `price` parameter + terminal-status awaiting + cancel-on-timeout — this is new plumbing on top of LIVE-01.
+- **Impact:** Without LIVE-25, the strategy's worst-case live failure is unbounded. With LIVE-25, the worst case is bounded at roughly `(ask − bid) × wing_qty + wing_premium × wing_qty` ≈ ₹10k–₹20k for a 10-lot NIFTY entry — losable, not catastrophic. The scale of risk reduction justifies the additional state-machine complexity.
+- **Suggested approach:**
+  - Phase 1: submit LC + LP as `MKT` in parallel (async plumbing from LIVE-01).
+  - Phase 2: await both terminal. If one wing fills and the other fails, close the filled wing at market and halt (this is the narrowed LIVE-03 path).
+  - Phase 3: compute short-leg target limits from actual wing fills — `required_total_credit = IC_MIN_CREDIT + LC_fill + LP_fill`, split proportionally across SC and SP by current LTP.
+  - Phase 4: submit SC + SP as `LMT` orders at those targets, IOC or with a configurable timeout.
+  - Phase 5a: both short legs fill → post-fill credit re-check (LIVE-02) confirms ≥ `IC_MIN_CREDIT` net; entry complete.
+  - Phase 5b: one or both shorts don't fill within timeout → cancel remaining, close any filled short at market, close the wings at market, abort. Log reason so Phase 4's timeout/offset can be tuned.
+  - New settings: `IC_SHORT_LIMIT_TIMEOUT_SEC`, `IC_SHORT_LIMIT_OFFSET_TICKS` (aggressiveness above bid).
+  - Order type support: extend `place_order` (paper + live) to accept `price_type="LMT"` with `price` and a terminal-status awaiter that handles `CANCELED` on timeout.
+  - Regression tests: (a) happy-path all four fill, assert Phase 3 limit prices match computed formula within 1 tick; (b) one long fails → other wing closed at market, no shorts submitted; (c) shorts timeout → wings closed, abort path fires with bounded loss logged; (d) Phase 3 computation on hostile inputs — wings cost more than IC_MIN_CREDIT allows → entry refused with a structured reason; (e) short partial fill → cancel remainder + unwind (preserves 10-lot axiom).
 
 ## Category 2 — Fill model
 
@@ -328,14 +351,16 @@ Prioritised by exposure prevention first, then decision-quality:
 3. **LIVE-01** — async order plumbing. Unblocks category 1.
 4. **LIVE-07** — startup reconciliation. Prerequisite for trusting any live run after a crash.
 5. **LIVE-10, LIVE-13** — margin + freeze-qty pre-checks. Eliminate the most common causes of LIVE-03.
-6. **LIVE-03** — rollback hedge path. Last-line-of-defence against the exposure scenario.
-7. **LIVE-02** — post-fill credit re-check. Cheap; closes the atomicity loop.
-8. **LIVE-12, LIVE-04, LIVE-08** — cost stack + slippage calibration + per-trade reconciliation. Together these restore trust in paper numbers.
-9. **LIVE-21** — gate evaluator on reconciliation. The key deliverable that allows a credible GO LIVE verdict.
-10. **LIVE-05, LIVE-06** — partials + bid/ask. Finish category 2 before proving period.
-11. **LIVE-14** — WS + latency-bound stop. Substantial work; parallelisable with proving period.
-12. **LIVE-11, LIVE-18, BUG-07** — peak margin, market anomalies, mid-session auth recovery. Robustness layer.
-13. **LIVE-09, LIVE-17** — opportunistic cleanup.
+6. **LIVE-06** — bid/ask visibility. Required to set LIVE-25's short-leg limit prices sensibly.
+7. **LIVE-25** — hedge-first entry sequencing. Converts the naked-short exposure scenario into a bounded-premium scenario by construction. Narrows LIVE-03.
+8. **LIVE-03** — rollback hedge path. Now scoped to the one-wing-fails edge case, not the unbounded-naked-short scenario.
+9. **LIVE-02** — post-fill credit re-check. Becomes LIVE-25's Phase 5a gate.
+10. **LIVE-12, LIVE-04, LIVE-08** — cost stack + slippage calibration + per-trade reconciliation. Together these restore trust in paper numbers.
+11. **LIVE-21** — gate evaluator on reconciliation. The key deliverable that allows a credible GO LIVE verdict.
+12. **LIVE-05** — partials. Finish category 2 before proving period.
+13. **LIVE-14** — WS + latency-bound stop. Substantial work; parallelisable with proving period.
+14. **LIVE-11, LIVE-18, BUG-07** — peak margin, market anomalies, mid-session auth recovery. Robustness layer.
+15. **LIVE-09, LIVE-17** — opportunistic cleanup.
 
 ---
 
