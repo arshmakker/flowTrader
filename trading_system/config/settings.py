@@ -26,7 +26,7 @@ NIFTY_SPOT_EXCHANGE = "NSE"
 # ══ SESSION ═════════════════════════════════════════════════════════
 TRADE_START = "10:00"
 CLASSIFY_TIME = "10:30"
-TRADE_END = "15:10"  # Hard close ALL positions
+TRADE_END = "14:15"  # Hard close ALL positions (per CLAUDE.md axiom; 75 min buffer before 15:30 expiry settlement)
 SIGNAL_RECHECK_SEC = 60
 PRE_MARKET_SLEEP_SEC = 30
 MONITORING_SLEEP_SEC = 60
