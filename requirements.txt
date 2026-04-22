@@ -18,3 +18,7 @@ PyYAML>=5.4.1
 psutil>=5.8.0
 colorama>=0.4.4
 flask>=2.0.0
+
+# Auth (in-process Shoonya OAuth via headless Chrome)
+selenium>=4.10.0
+pyotp>=2.8.0

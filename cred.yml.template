@@ -32,3 +32,13 @@ Account_ID: ""
 # Example:
 # auth_code_cmd: "python3 /Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
 # auth_code_timeout: 180
+
+# Preferred: in-process Selenium auth (runs headless Chrome inside main.py
+# so the OAuth token exchange fires immediately after auth_code capture,
+# avoiding race conditions against the browser's own redirect).
+# Requires: selenium and pyotp (already in requirements.txt).
+# selenium_user_id: "YOUR_USER_ID"
+# selenium_password: "YOUR_PASSWORD"
+# selenium_totp_secret: "YOUR_TOTP_BASE32_SECRET"
+# Optional override; default uses Shoonya's investor-entry-level login URL:
+# selenium_login_url_template: "https://trade.shoonya.com/OAuthlogin/investor-entry-level/login?api_key={client_id}&route_to=abc"

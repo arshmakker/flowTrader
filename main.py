@@ -31,6 +31,7 @@ from trading_system.core.sr_manager import SRManager
 from trading_system.core.trade_logger import TradeLogger
 from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
+from trading_system.auth import shoonya_selenium_auth
 
 if settings.PAPER_TRADE_MODE:
     from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
@@ -242,7 +243,51 @@ def _initialize_api_legacy(api, creds):
         raise RuntimeError(f"Shoonya legacy login failed: {detail}")
     return api
 
+def _validate_oauth_creds(creds, log):
+    """Pre-flight sanity check on cred.yml OAuth fields.
+
+    Logs WARNING (not error — we still attempt the call) for drift from the
+    end-to-end-verified working configuration. Catches the two stale-config bugs
+    that recurred during the 2026-04-22 debugging session: a 40-char dummy
+    Secret_Code and a token_url pointing at the IP-whitelisted trade.shoonya.com
+    host. See CLAUDE.md "Auth flow" section for full context.
+    """
+    required = ("UID", "client_id", "Secret_Code", "oauth_url")
+    missing = [k for k in required if not str(creds.get(k, "")).strip()]
+    if missing:
+        log.warning("OAuth pre-flight: cred.yml missing required fields: %s", missing)
+
+    secret_code = str(creds.get("Secret_Code", "")).strip()
+    if secret_code and len(secret_code) < 50:
+        log.warning(
+            "OAuth pre-flight: Secret_Code is %d chars; the working value is 64 chars. "
+            "Likely the dummy/old value — exchange will return INVALID_VERIFIER.",
+            len(secret_code),
+        )
+
+    token_url = (
+        os.environ.get("SHOONYA_TOKEN_URL", "").strip()
+        or str(creds.get("token_url", "")).strip()
+    )
+    if token_url and "api.shoonya.com" not in token_url:
+        if "trade.shoonya.com" in token_url:
+            log.warning(
+                "OAuth pre-flight: token_url uses trade.shoonya.com which enforces "
+                "static-IP whitelist. If your IP isn't whitelisted in the Shoonya "
+                "portal you'll get INVALID_IP. Switch to api.shoonya.com to bypass. "
+                "Current: %s",
+                token_url,
+            )
+        else:
+            log.warning(
+                "OAuth pre-flight: token_url is on an unrecognized host: %s. "
+                "Working host is api.shoonya.com.",
+                token_url,
+            )
+
+
 def _initialize_api_oauth(api, creds, log):
+    _validate_oauth_creds(creds, log)
     uid = str(creds.get("UID", "")).strip()
     client_id = str(creds.get("client_id", "")).strip()
     secret_code = str(creds.get("Secret_Code", "")).strip()
@@ -287,9 +332,15 @@ def _initialize_api_oauth(api, creds, log):
     if not oauth_login_url:
         raise RuntimeError("Unable to generate OAuth login URL")
 
-    # Always try the command-based auth-code path on OAuth failures.
+    # Auth-code capture priority: env var (manual override) -> in-process Selenium ->
+    # external subprocess fallback. In-process Selenium runs the entire OAuth flow
+    # in this Python process so the token exchange fires before the browser's
+    # redirect can race against it.
     for attempt in range(1, oauth_reauth_attempts + 1):
         auth_code = os.environ.get("SHOONYA_AUTH_CODE", "").strip()
+        if not auth_code and shoonya_selenium_auth.is_configured(creds):
+            log.info("OAuth re-auth attempt %s/%s: capturing auth code via in-process Selenium.", attempt, oauth_reauth_attempts)
+            auth_code = shoonya_selenium_auth.fetch_auth_code(creds)
         if not auth_code:
             auth_code = _fetch_auth_code_from_command(creds, log)
         if not auth_code:

@@ -125,6 +125,36 @@ The system uses **Shoonya/Noren API** via `NorenRestApiPy`. The `api_helper.py` 
 - OAuth token caching and session validation with retry
 - Quote-level auth fallback (OAuth header -> jKey)
 
+## Auth flow — DO NOT modify without re-verifying against the live API
+
+The OAuth flow was end-to-end-verified on 2026-04-22 against this user's Shoonya account. Touching any of the following without explicit go-ahead and a fresh end-to-end test is high-risk — the system will fail to start and lock out paper trading.
+
+**Working configuration (cred.yml):**
+- `token_url: https://api.shoonya.com/NorenWClientAPI//GenAcsTok` — double slash is intentional, matches SDK concat. Do NOT switch to `trade.shoonya.com` without first whitelisting the user's static IP in the Shoonya portal (otherwise → `INVALID_IP`).
+- `Secret_Code` must be the **64-char** value from the Shoonya portal API-key section. A 40-char value is the dummy/old one and produces `INVALID_VERIFIER` on every exchange.
+- `client_id`, `UID`, `oauth_url` — see cred.yml.template for canonical values.
+
+**Files / functions that are load-bearing for auth — review carefully before editing:**
+- `api_helper.py` `exchange_auth_code()` — manual reimplementation of Noren's `getAccessToken`. Checksum recipe is `SHA256(client_id + Secret_Code + auth_code)`. Default URL must stay on `api.shoonya.com`.
+- `main.py` `_initialize_api_oauth()` — orchestrates env-var → in-process Selenium → subprocess-script → manual-paste fallback chain. Order matters.
+- `main.py` `_validate_oauth_creds()` — pre-flight sanity check; logs warnings for stale Secret_Code length, host mismatch, missing fields. Don't silence its warnings; investigate.
+- `trading_system/auth/shoonya_selenium_auth.py` — in-process Selenium login. Uses Shoonya's `OAuthlogin/investor-entry-level/login` URL (different from the OAuth authorize URL).
+
+**Regression tests that pin auth behavior:**
+- `tests/test_oauth_token_url.py` — pins default URL, override priority, blocks `trade.shoonya.com` from sneaking back in as default.
+- `tests/test_shoonya_selenium_auth.py` — pins selenium auth config detection and URL building.
+- `tests/test_oauth_preflight_validator.py` — pins the cred.yml shape validator.
+
+**Canonical reference scripts (Shoonya support pointed to these):**
+- `deepak-dhyani8742/Shoonya_oAuthAPI-py/GetAuthcode` (Selenium + manual exchange in one file)
+- `sauravfinvasia-ai/Shoonya_oAuth_API.py/test_oauth.py` (uses SDK `api.getAccessToken()`)
+
+**Diagnostic log line to look for:**
+```
+[api_helper] INFO — OAuth token exchange POST -> url=... client_id=... uid=... code_len=36 secret_len=64 checksum=...
+```
+`secret_len < 50` or `url` not on `api.shoonya.com` → likely broken config.
+
 ## Key constraints to respect
 
 - **No live trading** — `PAPER_TRADE_MODE` must stay True

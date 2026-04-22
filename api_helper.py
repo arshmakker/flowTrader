@@ -487,7 +487,12 @@ class ShoonyaApiPy(NorenApi):
             routes = config.get("routes") or {} if config else {}
             path = (routes.get("gen_acs_tok") or "").lstrip("/")
             route_url = f"{host}/{path}" if (host and path) else ""
-            # OAuth token exchange is served on NorenWClientAPI; TP host often returns non-JSON.
+            # OAuth token exchange host = api.shoonya.com (matches the SDK's NorenApi
+            # __service_config when initialized with host='https://api.shoonya.com/NorenWClientAPI/'
+            # — that's the host the user's working Shoonya_oAuth_API.py/test_oauth.py uses,
+            # verified end-to-end on 2026-04-22. The double slash is what the SDK itself
+            # produces (host ends with /, route starts with /) — harmless, kept for parity.
+            # Note: trade.shoonya.com hosts the same API but enforces static-IP whitelist.
             default_token_url = "https://api.shoonya.com/NorenWClientAPI//GenAcsTok"
             url = str(token_url or "").strip() or route_url.replace("NorenWClientTP", "NorenWClientAPI") or default_token_url
 
@@ -496,6 +501,10 @@ class ShoonyaApiPy(NorenApi):
             values = {"code": auth_code, "checksum": checksum, "uid": uid}
             payload = "jData=" + json.dumps(values)
 
+            logger.info(
+                "OAuth token exchange POST -> url=%s client_id=%s uid=%s code_len=%d secret_len=%d checksum=%s",
+                url, client_id, uid, len(auth_code or ""), len(secret_code or ""), checksum,
+            )
             res = requests.post(url, data=payload, timeout=30)
             text = (res.text or "").strip()
             if not res.ok:
