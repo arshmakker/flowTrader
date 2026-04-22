@@ -13,7 +13,8 @@ import re
 import subprocess
 import urllib.parse
 import yaml
-from datetime import datetime, time as dtime
+from datetime import datetime, time as dtime, timedelta
+from typing import Optional
 
 from api_helper import ShoonyaApiPy
 from symbol_manager import SymbolManager
@@ -93,6 +94,33 @@ def _find_expiring_today(strats, today_iso):
         if pos is not None and getattr(pos, "expiry_date", "") == today_iso:
             out.append(s)
     return out
+
+
+def _crossed_non_trading_day(saved_at_iso: str, now: Optional[datetime] = None) -> bool:
+    """Fix #5b: True if any calendar day strictly between ``saved_at`` and ``now``
+    (or either boundary day) is a non-trading day (weekend / IST holiday).
+
+    Why: identifies the "Friday afternoon crash → Monday morning restart" window
+    where an abnormal shutdown stranded positions across a non-trading gap. We
+    need to catch it even when the gap is short (e.g., shutdown Fri 13:48,
+    restart Mon 09:23 — only ~67h, but the weekend changed the market state).
+    """
+    if not saved_at_iso:
+        return False
+    try:
+        saved_dt = datetime.fromisoformat(saved_at_iso)
+    except ValueError:
+        return False
+    now = now or datetime.now()
+    if now < saved_dt:
+        return False
+    d = saved_dt.date()
+    end = now.date()
+    while d <= end:
+        if not is_trading_day_ist(datetime.combine(d, datetime.min.time())):
+            return True
+        d += timedelta(days=1)
+    return False
 
 
 def _find_past_expiry(strats, today_iso):
@@ -486,6 +514,39 @@ def run():
         risk.stop_hit_at = datetime.now()
         return
 
+    # Fix #5b: abnormal-exit-over-non-trading-day guard. If the previous session
+    # ended before TRADE_END (shutdown_reason != "eod") AND the gap between
+    # shutdowns crossed a weekend/holiday AND positions are still open, the
+    # weekend-flatten path was bypassed (the gate lives inside the main loop at
+    # TRADE_END; Ctrl-C / crash exits the loop first). Restoring blindly re-
+    # exposes the positions to whatever the market did across the gap. Halt and
+    # require the operator to reconcile intentionally.
+    last_reason = meta.get("last_shutdown_reason", "") or ""
+    last_saved_at = meta.get("saved_at", "") or ""
+    if (
+        last_reason
+        and last_reason != "eod"
+        and not position_persistence.is_flat(strats_map, pos_mgr)
+        and _crossed_non_trading_day(last_saved_at)
+    ):
+        open_syms = [s.instrument for s in strats if s.is_active()]
+        log.error(
+            "Past-abnormal-exit position(s): %s. Previous session ended with reason=%r "
+            "at %s; restart crossed a non-trading day.",
+            ", ".join(open_syms) or "(tracker-only)",
+            last_reason, last_saved_at,
+        )
+        log.error(
+            "HALTED at startup: abnormal shutdown (reason=%r) on %s left open positions that were "
+            "carried across a non-trading day. Weekend-flatten was bypassed. Manual reconciliation "
+            "required — inspect marks vs next-session open and close intentionally, or clear state "
+            "if positions were already closed out-of-band.",
+            last_reason, last_saved_at,
+        )
+        risk.halted = True
+        risk.stop_hit_at = datetime.now()
+        return
+
     day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False
 
@@ -613,6 +674,27 @@ def run():
     finally:
         if collection_started:
             collector.stop_collection()
+        # Fix #5a (HARD RULE — no weekend/holiday carry): if shutdown happens
+        # before TRADE_END and the next session crosses a non-trading day, the
+        # in-loop weekend-flatten gate never fires. Force flatten here
+        # unconditionally — per operator directive, positions must NEVER be
+        # carried across a non-trading day, even through abnormal exits.
+        #
+        # Fill-quality caveat: if the abnormal exit was triggered by a quote
+        # feed failure (the 2026-04-17 incident), flatten will use whatever
+        # cached/stale LTPs the market_data layer has. In paper mode this books
+        # an imperfect-but-bounded PnL. In live mode, the broker may reject or
+        # fill off-market — but still preferable to silent weekend carry.
+        try:
+            tomorrow = datetime.now() + timedelta(days=1)
+            if not is_trading_day_ist(tomorrow) and not position_persistence.is_flat(strats_map, pos_mgr):
+                log.warning(
+                    "Abnormal shutdown before TRADE_END with open positions and "
+                    "next day is non-trading — force-flattening (no-weekend-carry rule)."
+                )
+                _force_exit_all(strats, pnl_engine, risk)
+        except Exception:
+            log.exception("Shutdown-time force-flatten raised")
         try:
             flat_now = position_persistence.is_flat(strats_map, pos_mgr)
             position_persistence.save(

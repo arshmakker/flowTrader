@@ -129,6 +129,7 @@ def load(
         "session_status": None,
         "trading_date": None,
         "saved_at": None,
+        "last_shutdown_reason": None,
     }
     if not os.path.exists(STATE_FILE):
         return empty_meta
@@ -144,13 +145,15 @@ def load(
     saved_at = payload.get("saved_at", "unknown")
     session_status = payload.get("session_status", SESSION_ACTIVE)
     trading_date = payload.get("trading_date")
+    last_shutdown_reason = payload.get("last_shutdown_reason", "")
     today = datetime.now().date().isoformat()
     is_stale_trading_day = bool(trading_date and trading_date != today)
     logger.info(
-        "Found persisted state from %s (status=%s trading_date=%s)",
+        "Found persisted state from %s (status=%s trading_date=%s shutdown_reason=%s)",
         saved_at,
         session_status,
         trading_date or "unknown",
+        last_shutdown_reason or "unknown",
     )
     if session_status == SESSION_FLAT:
         logger.info("Persisted session is flat; skipping restore")
@@ -160,6 +163,7 @@ def load(
             "session_status": session_status,
             "trading_date": trading_date,
             "saved_at": saved_at,
+            "last_shutdown_reason": last_shutdown_reason,
         }
 
     restored = 0
@@ -204,6 +208,7 @@ def load(
         "trading_date": trading_date,
         "saved_at": saved_at,
         "is_stale_trading_day": is_stale_trading_day,
+        "last_shutdown_reason": last_shutdown_reason,
     }
 
 
