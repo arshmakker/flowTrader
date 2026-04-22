@@ -42,3 +42,13 @@ Account_ID: ""
 # selenium_totp_secret: "YOUR_TOTP_BASE32_SECRET"
 # Optional override; default uses Shoonya's investor-entry-level login URL:
 # selenium_login_url_template: "https://trade.shoonya.com/OAuthlogin/investor-entry-level/login?api_key={client_id}&route_to=abc"
+
+# -------------------------------------------------------------------
+# LIVE-23: Operator alert channel (optional)
+# -------------------------------------------------------------------
+# To enable ntfy alerts:
+#   1. Pick a hard-to-guess topic name — treat like a shared secret, since
+#      anyone who knows the URL can publish to the topic.
+#   2. Flip settings.ALERTS_ENABLED to True and set ALERTS_CHANNEL='ntfy'.
+#   3. Uncomment the line below and fill in your topic URL.
+# ALERTS_NTFY_TOPIC_URL: "https://ntfy.sh/your-private-topic-name"

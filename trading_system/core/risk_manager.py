@@ -7,18 +7,22 @@ Risk Manager — implements the 3x combined stop-loss and recovery protocol (age
 
 import logging
 from datetime import datetime, time
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 
 from trading_system.config import settings
+from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel
 
 logger = logging.getLogger(__name__)
 
 class RiskManager:
-    def __init__(self):
+    def __init__(self, alerts: Optional[AlertChannel] = None):
         self.halted = False
         self.stop_hit_at = None
         self._stop_breach_streak = 0
         self._rollback_failures: List[Dict] = []
+        # LIVE-23: alerts channel. Default to NullAlertChannel so existing
+        # RiskManager() call sites keep working unchanged.
+        self._alerts: AlertChannel = alerts if alerts is not None else NullAlertChannel()
 
     def check_combined_stop_loss(self, active_strategies: List[Any]) -> bool:
         """
@@ -74,6 +78,15 @@ class RiskManager:
                     self.halted = True
                     self.stop_hit_at = datetime.now()
                     self._stop_breach_streak = 0
+                    self._alerts.send(Alert(
+                        event="combined_stop",
+                        severity="critical",
+                        title="RegimeTrader: hard stop hit",
+                        body=(
+                            f"Combined unrealised PnL ₹{total_unrealized:,.0f} <= "
+                            f"limit ₹{stop_limit:,.0f}. Trading halted."
+                        ),
+                    ))
                     return True
             else:
                 self._stop_breach_streak = 0
@@ -92,6 +105,15 @@ class RiskManager:
             )
             self.halted = True
             self.stop_hit_at = datetime.now()
+            self._alerts.send(Alert(
+                event="daily_loss_cap",
+                severity="critical",
+                title="RegimeTrader: daily loss cap hit",
+                body=(
+                    f"Daily P&L ₹{daily:,.0f} breached cap ₹{-settings.DAILY_MAX_LOSS:,.0f}. "
+                    "Halting entries and flattening."
+                ),
+            ))
             return True
         return False
 
@@ -112,6 +134,15 @@ class RiskManager:
             "ROLLBACK FAILURE — halting trading. instrument=%s stuck_legs=%s",
             instrument, stuck_legs,
         )
+        self._alerts.send(Alert(
+            event="rollback_failure",
+            severity="critical",
+            title="RegimeTrader: rollback failure",
+            body=(
+                f"Rollback failed for {instrument}; {len(stuck_legs)} stuck leg(s). "
+                "Trading halted. Reconcile against broker before clearing."
+            ),
+        ))
 
     def reset_daily(self):
         self.halted = False

@@ -121,6 +121,14 @@ HALT_FILE = "data/HALT"
 # LIVE-20: PID lock file preventing duplicate process instances.
 PID_FILE = "data/regimetrader.pid"
 
+# ══ LIVE-23: OPERATOR ALERTS ═════════════════════════════════════════
+# Master switch. Defaults False so CI and fresh clones do not accidentally
+# emit alerts. Flip to True once cred.yml's ALERTS_NTFY_TOPIC_URL is set.
+ALERTS_ENABLED = False
+# 'ntfy' | 'log' | 'null'. 'log' writes to the process logger only; 'ntfy'
+# ships to the topic URL configured in cred.yml.
+ALERTS_CHANNEL = "log"
+
 # ══ CACHE TTLs ═══════════════════════════════════════════════════════
 LTP_CACHE_SEC = 2.0
 VIX_CACHE_SEC = 60.0

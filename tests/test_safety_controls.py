@@ -1,5 +1,6 @@
 """
-Regression tests for LIVE-19 (kill switch), LIVE-20 (PID guard), LIVE-22 (daily loss cap).
+Regression tests for LIVE-19 (kill switch), LIVE-20 (PID guard), LIVE-22 (daily loss cap),
+and LIVE-23 (operator alert emission from RiskManager events).
 """
 
 import os
@@ -8,6 +9,7 @@ import pytest
 from unittest.mock import MagicMock, patch, call
 from trading_system.core.risk_manager import RiskManager
 from trading_system.config import settings
+from trading_system.ops.alerts import NullAlertChannel
 
 
 # ── LIVE-19: Kill switch ──────────────────────────────────────────────────────
@@ -164,3 +166,79 @@ class TestDailyLossCap:
         # Cycles 2+: entry block skipped because risk.halted is True
         for _ in range(2):
             assert risk.halted is True   # entry guard would skip
+
+
+# ── LIVE-23: Operator alert emission from safety events ──────────────────────
+
+class TestAlertEmission:
+    """RiskManager must emit alerts on the three critical events: combined stop,
+    daily loss cap, rollback failure. Default (no alerts arg) keeps existing
+    call sites working unchanged."""
+
+    def _make_pnl(self, daily_realised, unrealised):
+        pnl = MagicMock()
+        pnl.daily_realised_pnl = daily_realised
+        pnl.unrealised_pnl = unrealised
+        return pnl
+
+    def test_default_risk_manager_has_null_alert_channel(self):
+        risk = RiskManager()
+        # The internal channel is a Null by default — existing 14 call sites that
+        # construct RiskManager() with no args continue to work without changes.
+        assert isinstance(risk._alerts, NullAlertChannel)
+
+    def test_daily_loss_cap_emits_critical_alert(self):
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+        pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
+
+        assert risk.check_daily_loss_cap(pnl) is True
+        assert len(alerts.sent) == 1
+        assert alerts.sent[0].event == "daily_loss_cap"
+        assert alerts.sent[0].severity == "critical"
+
+    def test_rollback_failure_emits_critical_alert(self):
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+
+        risk.escalate_rollback_failure(
+            instrument="NIFTY",
+            stuck_legs=[{"symbol": "NFO|X", "side": "BUY", "qty": 650}],
+        )
+
+        assert len(alerts.sent) == 1
+        assert alerts.sent[0].event == "rollback_failure"
+        assert alerts.sent[0].severity == "critical"
+        assert "NIFTY" in alerts.sent[0].body
+
+    def test_combined_stop_emits_critical_alert_when_confirmed(self):
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+
+        # Build one active strategy whose per-leg LTPs produce a loss past 3x stop.
+        strat = MagicMock()
+        strat.is_active.return_value = True
+        pos = MagicMock()
+        pos.sc_sym = "NFO|SC"
+        pos.sp_sym = "NFO|SP"
+        pos.lc_sym = "NFO|LC"
+        pos.lp_sym = "NFO|LP"
+        pos.entry_credit = 20.0
+        pos.lots = 10
+        pos.max_profit = 13_000.0  # 20 * 65 * 10
+        strat._position = pos
+        # LTPs give current_prem huge vs entry_credit → big unrealised loss.
+        strat.md = MagicMock()
+        strat.md.get_ltp.side_effect = lambda sym: {
+            "NFO|SC": 60.0, "NFO|SP": 60.0, "NFO|LC": 1.0, "NFO|LP": 1.0,
+        }[sym]
+        strat.md.get_lot_size.return_value = 65
+
+        # Feed confirm-ticks-required breaches so the hard stop fires.
+        required = max(1, int(getattr(settings, "IC_HARD_STOP_CONFIRM_TICKS", 1)))
+        for _ in range(required):
+            hit = risk.check_combined_stop_loss([strat])
+        assert hit is True
+        assert risk.halted is True
+        assert any(a.event == "combined_stop" for a in alerts.sent)
+        assert all(a.severity == "critical" for a in alerts.sent if a.event == "combined_stop")
