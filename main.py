@@ -96,6 +96,52 @@ def _find_expiring_today(strats, today_iso):
     return out
 
 
+def _next_trading_session_date(from_date):
+    """Fix #4: the next IST trading day strictly after ``from_date``.
+
+    Skips weekends and configured IST holidays. Returns None if none found
+    within a 14-day horizon (defensive — prevents infinite loop on a bad
+    calendar).
+    """
+    d = from_date + timedelta(days=1)
+    for _ in range(14):
+        if is_trading_day_ist(datetime.combine(d, datetime.min.time())):
+            return d
+        d += timedelta(days=1)
+    return None
+
+
+def _find_near_dte_at_next_session(strats, next_session_date, threshold):
+    """Fix #4: active strategies whose DTE at ``next_session_date`` would be
+    below ``threshold``. Matches expiry_manager.py's calendar-day convention
+    ``(expiry - session).days`` for consistency with the entry-gate rule.
+
+    Motivation: the 2026-04-17 → 2026-04-21 incident saw an IC with Fri→Mon
+    DTE dropping from 4 to 1 across the weekend. The entry-gate DTE check ran
+    only at entry (Thursday, DTE=5) and never re-evaluated. This helper closes
+    the loop: at every TRADE_END, check whether tomorrow's DTE will still pass
+    the threshold; if not, flatten now.
+    """
+    out = []
+    for s in strats:
+        if not s.is_active():
+            continue
+        pos = getattr(s, "_position", None)
+        if pos is None:
+            continue
+        expiry_str = getattr(pos, "expiry_date", "") or ""
+        if not expiry_str:
+            continue
+        try:
+            expiry_date = datetime.strptime(expiry_str, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        dte = (expiry_date - next_session_date).days
+        if dte < threshold:
+            out.append(s)
+    return out
+
+
 def _crossed_non_trading_day(saved_at_iso: str, now: Optional[datetime] = None) -> bool:
     """Fix #5b: True if any calendar day strictly between ``saved_at`` and ``now``
     (or either boundary day) is a non-trading day (weekend / IST holiday).
@@ -568,10 +614,11 @@ def run():
                 break
 
             # 2. End-of-day: force-exit expiring positions; also flatten if
-            #    next day is not a trading day.
+            #    next day is not a trading day or if next-session DTE would
+            #    drop below IC_DTE_THRESHOLD.
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
-                from datetime import timedelta
-                today_iso = datetime.now().date().isoformat()
+                today_date = datetime.now().date()
+                today_iso = today_date.isoformat()
                 tomorrow = datetime.now() + timedelta(days=1)
                 next_day_is_trading = is_trading_day_ist(tomorrow)
                 # BUG-18: close any IC whose own expiry is today, regardless of tomorrow.
@@ -579,6 +626,23 @@ def run():
                 if expiring:
                     _force_exit_all(expiring, pnl_engine, risk)
                     log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring))
+                # Fix #4: Overnight-DTE block. Close any position whose DTE at
+                # the next trading session would be below IC_DTE_THRESHOLD.
+                # Catches the Fri→Mon weekend-gap case where calendar DTE
+                # collapses (Fri=4 → Mon=1 for a Tue weekly).
+                next_session = _next_trading_session_date(today_date)
+                if next_session is not None:
+                    near_expiry_next = _find_near_dte_at_next_session(
+                        strats, next_session, settings.IC_DTE_THRESHOLD
+                    )
+                    if near_expiry_next:
+                        _force_exit_all(near_expiry_next, pnl_engine, risk)
+                        log.info(
+                            "Pre-near-expiry close: force-exited %d position(s) "
+                            "whose DTE at next session (%s) would be < %d.",
+                            len(near_expiry_next), next_session.isoformat(),
+                            settings.IC_DTE_THRESHOLD,
+                        )
                 if not next_day_is_trading:
                     _force_exit_all(strats, pnl_engine, risk)
                     log.info("Pre-holiday/weekend close: force-exited all positions.")
