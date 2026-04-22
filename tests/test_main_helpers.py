@@ -192,3 +192,51 @@ def test_halt_on_exception_does_not_overwrite_stop_hit_if_already_set():
     # touch stop_hit_at, which is the desired behavior.
     assert risk.halted is True
     assert risk.stop_hit_at == original
+
+
+# ── LIVE-23: alert emission from main helpers ────────────────────────────────
+
+def test_halt_on_exception_emits_alert_when_channel_provided():
+    """LIVE-23: an unhandled cycle exception must surface to the operator alert channel."""
+    import logging
+    from trading_system.ops.alerts import NullAlertChannel
+    alerts = NullAlertChannel()
+    risk = RiskManager()
+    main._halt_on_exception(
+        RuntimeError("simulated"), risk, logging.getLogger("t"), alerts=alerts,
+    )
+    assert risk.halted is True
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0].event == "unhandled_exception"
+    assert alerts.sent[0].severity == "critical"
+
+
+def test_halt_on_exception_without_alerts_still_halts():
+    """LIVE-23: alerts param is optional; existing callers that don't pass it keep working."""
+    import logging
+    risk = RiskManager()
+    main._halt_on_exception(RuntimeError("simulated"), risk, logging.getLogger("t"))
+    assert risk.halted is True  # still halts; alert channel just not notified
+
+
+def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypatch):
+    """LIVE-23: halt file detection must surface as a warning alert."""
+    import logging
+    from unittest.mock import MagicMock, patch
+    from trading_system.ops.alerts import NullAlertChannel
+    from trading_system.config import settings
+
+    alerts = NullAlertChannel()
+    halt_path = str(tmp_path / "HALT")
+    open(halt_path, "w").close()
+    strats = [MagicMock(is_active=MagicMock(return_value=False))]
+    pnl, risk, log = MagicMock(), MagicMock(), logging.getLogger("t")
+
+    with patch.object(settings, "HALT_FILE", halt_path), \
+         patch("main._force_exit_all"):
+        result = main._check_kill_switch(strats, pnl, risk, log, alerts=alerts)
+
+    assert result is True
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0].event == "halt_file_detected"
+    assert alerts.sent[0].severity == "warning"

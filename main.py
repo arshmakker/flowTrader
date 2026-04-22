@@ -34,6 +34,7 @@ from trading_system.core.trade_logger import TradeLogger
 from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
 from trading_system.auth import shoonya_selenium_auth
+from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
 
 if settings.PAPER_TRADE_MODE:
     from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
@@ -78,11 +79,19 @@ def _release_pid_lock() -> None:
         pass
 
 
-def _check_kill_switch(strats, pnl_engine, risk, log) -> bool:
-    """LIVE-19: Returns True if the HALT file was present (and acted on)."""
+def _check_kill_switch(strats, pnl_engine, risk, log, alerts=None) -> bool:
+    """LIVE-19: Returns True if the HALT file was present (and acted on).
+    LIVE-23: emits a warning alert when the file triggers."""
     if not os.path.exists(settings.HALT_FILE):
         return False
     log.critical("HALT FILE DETECTED — initiating emergency stop.")
+    if alerts is not None:
+        alerts.send(Alert(
+            event="halt_file_detected",
+            severity="warning",
+            title="RegimeTrader: halt file triggered",
+            body="Operator dropped data/HALT — initiating emergency flatten and exit.",
+        ))
     _force_exit_all(strats, pnl_engine, risk)
     try:
         os.remove(settings.HALT_FILE)
@@ -114,16 +123,45 @@ def _drain_rollback_failures(strats, risk):
             s._last_rollback_stuck_legs = []
 
 
-def _halt_on_exception(exc, risk, log):
+def _halt_on_exception(exc, risk, log, alerts=None):
     """BUG-19 / Axiom 3: convert an unhandled main-loop exception into a
     controlled halt rather than a process crash. Caller is responsible for
-    persisting state and continuing the loop."""
+    persisting state and continuing the loop.
+    LIVE-23: emits a critical alert so the operator learns the loop halted."""
     risk.halted = True
     log.critical(
         "Unhandled exception in main loop — halting trading: %s",
         exc,
         exc_info=True,
     )
+    if alerts is not None:
+        alerts.send(Alert(
+            event="unhandled_exception",
+            severity="critical",
+            title="RegimeTrader: main loop halted on exception",
+            body=f"{type(exc).__name__}: {exc}. Trading halted. See logs for traceback.",
+        ))
+
+
+def _build_alert_channel(log) -> AlertChannel:
+    """LIVE-23: build the operator alert channel at startup, honoring the
+    settings master switch and pulling the ntfy topic URL from cred.yml."""
+    if not getattr(settings, "ALERTS_ENABLED", False):
+        return NullAlertChannel()
+    topic_url = None
+    try:
+        with open("cred.yml") as f:
+            creds = yaml.safe_load(f) or {}
+        topic_url = creds.get("ALERTS_NTFY_TOPIC_URL")
+    except FileNotFoundError:
+        pass
+    channel = build_channel(
+        enabled=True,
+        channel_type=getattr(settings, "ALERTS_CHANNEL", "log"),
+        ntfy_topic_url=topic_url,
+    )
+    log.info("Alert channel built: %s", type(channel).__name__)
+    return channel
 
 
 def _find_expiring_today(strats, today_iso):
@@ -428,7 +466,7 @@ def _validate_oauth_creds(creds, log):
             )
 
 
-def _initialize_api_oauth(api, creds, log):
+def _initialize_api_oauth(api, creds, log, alerts=None):
     _validate_oauth_creds(creds, log)
     uid = str(creds.get("UID", "")).strip()
     client_id = str(creds.get("client_id", "")).strip()
@@ -514,11 +552,25 @@ def _initialize_api_oauth(api, creds, log):
     token_data = api.exchange_auth_code(auth_code, secret_code, client_id, uid, token_url=token_url)
     if not token_data:
         detail = api.get_last_broker_error() or "Unknown token exchange failure"
+        if alerts is not None:
+            alerts.send(Alert(
+                event="oauth_auth_failure",
+                severity="critical",
+                title="RegimeTrader: OAuth login failed",
+                body=f"All auth paths exhausted. Token exchange failure: {detail}",
+            ))
         raise RuntimeError(f"OAuth token exchange failed: {detail}")
     new_access_token, user_id, _refresh_token, new_account_id = token_data
     api.inject_oauth_header(new_access_token, user_id, new_account_id)
     if not api.validate_oauth_session():
         detail = api.get_last_broker_error() or "Unknown validation failure"
+        if alerts is not None:
+            alerts.send(Alert(
+                event="oauth_auth_failure",
+                severity="critical",
+                title="RegimeTrader: OAuth validation failed",
+                body=f"Token exchange succeeded but session validation failed: {detail}",
+            ))
         raise RuntimeError(f"OAuth session validation failed after token exchange: {detail}")
     creds["Access_token"] = new_access_token
     creds["Account_ID"] = new_account_id
@@ -527,11 +579,11 @@ def _initialize_api_oauth(api, creds, log):
     log.info("OAuth login successful (manual fallback); access token cached to cred.yml (%s).", _mask_secret(new_access_token))
     return api
 
-def initialize_api(log) -> ShoonyaApiPy:
+def initialize_api(log, alerts=None) -> ShoonyaApiPy:
     creds = _load_creds()
     api = ShoonyaApiPy()
     if _is_oauth_configured(creds):
-        return _initialize_api_oauth(api, creds, log)
+        return _initialize_api_oauth(api, creds, log, alerts=alerts)
     return _initialize_api_legacy(api, creds)
 
 def run():
@@ -540,7 +592,10 @@ def run():
     _acquire_pid_lock()   # LIVE-20: fail fast if already running
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
 
-    api = initialize_api(log)
+    # LIVE-23: build alert channel before API init so OAuth failures surface.
+    alerts = _build_alert_channel(log)
+
+    api = initialize_api(log, alerts=alerts)
     sm = SymbolManager(api)
     sm.load_symbol_files()
     
@@ -556,7 +611,7 @@ def run():
         'NIFTY': DayClassifier(md, signals, settings.NIFTY_SYMBOL, settings.NIFTY_SPOT_KEY),
         'BANKNIFTY': DayClassifier(md, signals, settings.BANKNIFTY_SYMBOL, settings.BANKNIFTY_SPOT_KEY),
     }
-    risk = RiskManager()
+    risk = RiskManager(alerts=alerts)
     expiry_mgr = ExpiryManager(sm)
     sr_mgr = SRManager()
     trade_logger = TradeLogger()
@@ -668,7 +723,7 @@ def run():
         while True:
           try:
             # LIVE-19: operator emergency stop — checked before anything else.
-            if _check_kill_switch(strats, pnl_engine, risk, log):
+            if _check_kill_switch(strats, pnl_engine, risk, log, alerts=alerts):
                 position_persistence.save(
                     strats_map, pos_mgr, pnl_engine, risk,
                     session_status=position_persistence.SESSION_FLAT,
@@ -802,7 +857,7 @@ def run():
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
           except Exception as exc:
             # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
-            _halt_on_exception(exc, risk, log)
+            _halt_on_exception(exc, risk, log, alerts=alerts)
             try:
                 position_persistence.save(
                     strats_map, pos_mgr, pnl_engine, risk,
