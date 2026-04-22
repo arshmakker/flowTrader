@@ -154,6 +154,31 @@ def test_find_expiring_today_tolerates_missing_expiry_date():
     assert result == []
 
 
+def test_find_past_expiry_matches_strictly_earlier():
+    """Position whose expiry is before today needs manual reconciliation on startup —
+    regression for the 2026-04-21 NIFTY IC that stranded overnight."""
+    today_iso = "2026-04-22"
+    past = FakePositionedStrategy("NIFTY", "2026-04-21")
+    today_pos = FakePositionedStrategy("NIFTY", "2026-04-22")
+    future = FakePositionedStrategy("BANKNIFTY", "2026-04-28")
+    result = main._find_past_expiry([past, today_pos, future], today_iso)
+    assert result == [past]
+
+
+def test_find_past_expiry_ignores_missing_expiry_date():
+    """Empty expiry_date must not be treated as past (empty string < any ISO date lexicographically)."""
+    today_iso = "2026-04-22"
+    s = FakePositionedStrategy("NIFTY", "")
+    assert main._find_past_expiry([s], today_iso) == []
+
+
+def test_find_past_expiry_ignores_inactive():
+    today_iso = "2026-04-22"
+    s = FakePositionedStrategy("NIFTY", "2026-04-21")
+    s._position = None  # is_active() → False
+    assert main._find_past_expiry([s], today_iso) == []
+
+
 def test_halt_on_exception_does_not_overwrite_stop_hit_if_already_set():
     """Escalation from a prior rollback failure should not be clobbered by a later exception halt."""
     from datetime import datetime

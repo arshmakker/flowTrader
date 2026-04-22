@@ -94,6 +94,30 @@ def _find_expiring_today(strats, today_iso):
             out.append(s)
     return out
 
+
+def _find_past_expiry(strats, today_iso):
+    """Return active strategies whose IC expiry is strictly earlier than today.
+
+    Why: the on-the-day TRADE_END hard-close can be missed (e.g. position
+    persisted before `expiry_date` existed, like the 2026-04-21 NIFTY miss that
+    motivated b99bfea). On next startup the stranded position would otherwise
+    sit forever logging `symbol not in master, LTP=0, excluded from mark`. Auto-
+    settling off stale ticks is unsafe — correct settlement needs NSE's final
+    settlement price — so the caller halts startup and directs the operator to
+    run a reconciliation tool manually with the authoritative spot.
+    """
+    out = []
+    for s in strats:
+        if not s.is_active():
+            continue
+        pos = getattr(s, "_position", None)
+        if pos is None:
+            continue
+        expiry = getattr(pos, "expiry_date", "") or ""
+        if expiry and expiry < today_iso:
+            out.append(s)
+    return out
+
 def setup_logging() -> None:
     from logging.handlers import RotatingFileHandler
     os.makedirs(settings.LOG_DIR, exist_ok=True)
@@ -439,6 +463,28 @@ def run():
             meta.get("saved_at"),
             meta.get("trading_date"),
         )
+
+    # Past-expiry safety: if startup restored positions whose expiry was before
+    # today, the on-the-day hard-close was missed. Refuse to enter the trading
+    # loop; operator must reconcile manually at the exchange's settlement price.
+    startup_today_iso = datetime.now().date().isoformat()
+    past_expiry = _find_past_expiry(strats, startup_today_iso)
+    if past_expiry:
+        for s in past_expiry:
+            expiry = getattr(s._position, "expiry_date", "")
+            log.error(
+                "Past-expiry position: %s expired %s (today=%s). Hard-close was missed on expiry day.",
+                s.instrument, expiry, startup_today_iso,
+            )
+        log.error(
+            "HALTED at startup: %d past-expiry position(s) require manual settlement at the NSE "
+            "final settlement price. See tools/reconcile_expired_nifty_20260421.py for a template; "
+            "adapt instrument + settlement spot and rerun. State left untouched.",
+            len(past_expiry),
+        )
+        risk.halted = True
+        risk.stop_hit_at = datetime.now()
+        return
 
     day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False
