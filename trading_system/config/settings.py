@@ -113,6 +113,14 @@ POLL_INTERVAL_SEC = 1
 # Consecutive API errors before raising OrderPollingAbandoned and halting.
 MAX_POLL_ERRORS = 10
 
+# ══ SAFETY CONTROLS ═══════════════════════════════════════════════════
+# LIVE-22: Absolute daily loss ceiling in rupees.
+DAILY_MAX_LOSS = 50_000
+# LIVE-19: Create this file from any terminal to trigger a clean emergency stop.
+HALT_FILE = "data/HALT"
+# LIVE-20: PID lock file preventing duplicate process instances.
+PID_FILE = "data/regimetrader.pid"
+
 # ══ CACHE TTLs ═══════════════════════════════════════════════════════
 LTP_CACHE_SEC = 2.0
 VIX_CACHE_SEC = 60.0

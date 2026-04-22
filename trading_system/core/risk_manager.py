@@ -80,6 +80,21 @@ class RiskManager:
         
         return False
 
+    def check_daily_loss_cap(self, pnl_engine: Any) -> bool:
+        """LIVE-22: returns True and halts if daily P&L is below -DAILY_MAX_LOSS."""
+        if self.halted:
+            return True
+        daily = pnl_engine.daily_realised_pnl + pnl_engine.unrealised_pnl
+        if daily < -settings.DAILY_MAX_LOSS:
+            logger.critical(
+                "DAILY LOSS CAP HIT: daily_pnl=%.2f < -%.0f. Halting entries and flattening.",
+                daily, settings.DAILY_MAX_LOSS,
+            )
+            self.halted = True
+            self.stop_hit_at = datetime.now()
+            return True
+        return False
+
     def escalate_rollback_failure(self, instrument: str, stuck_legs: List[Dict]) -> None:
         """BUG-05 / Axiom 3+4: rollback failure is a safety event. Halt new entries
         and record the stuck legs so the operator can reconcile against the broker.

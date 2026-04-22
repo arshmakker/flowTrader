@@ -4,6 +4,7 @@ Main Orchestrator — Iron Condor Trading System (agents.md).
 Wires all modules together for high-frequency Nifty/BankNifty IC trading.
 """
 
+import atexit
 import os
 import sys
 import logging
@@ -45,6 +46,49 @@ else:
     PnLEngine = None
 
 DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
+
+
+def _acquire_pid_lock() -> None:
+    """LIVE-20: Refuse to start if another instance is already running."""
+    pid_path = settings.PID_FILE
+    os.makedirs(os.path.dirname(pid_path), exist_ok=True)
+    if os.path.exists(pid_path):
+        try:
+            existing_pid = int(open(pid_path).read().strip())
+            os.kill(existing_pid, 0)   # signal 0 = check existence only
+            print(
+                f"ERROR: RegimeTrader already running (PID {existing_pid}). "
+                f"If the process is dead, delete {pid_path} and retry.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass  # stale PID file — overwrite below
+
+    with open(pid_path, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_pid_lock)
+
+
+def _release_pid_lock() -> None:
+    """LIVE-20: Remove PID file on clean shutdown."""
+    try:
+        os.remove(settings.PID_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def _check_kill_switch(strats, pnl_engine, risk, log) -> bool:
+    """LIVE-19: Returns True if the HALT file was present (and acted on)."""
+    if not os.path.exists(settings.HALT_FILE):
+        return False
+    log.critical("HALT FILE DETECTED — initiating emergency stop.")
+    _force_exit_all(strats, pnl_engine, risk)
+    try:
+        os.remove(settings.HALT_FILE)
+    except FileNotFoundError:
+        pass
+    return True
 
 
 def _force_exit_all(strats, pnl_engine, risk):
@@ -493,6 +537,7 @@ def initialize_api(log) -> ShoonyaApiPy:
 def run():
     setup_logging()
     log = logging.getLogger("main")
+    _acquire_pid_lock()   # LIVE-20: fail fast if already running
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
 
     api = initialize_api(log)
@@ -622,6 +667,15 @@ def run():
     try:
         while True:
           try:
+            # LIVE-19: operator emergency stop — checked before anything else.
+            if _check_kill_switch(strats, pnl_engine, risk, log):
+                position_persistence.save(
+                    strats_map, pos_mgr, pnl_engine, risk,
+                    session_status=position_persistence.SESSION_FLAT,
+                    shutdown_reason="kill-switch",
+                )
+                sys.exit(0)
+
             now = datetime.now()
             now_t = now.time()
 
@@ -706,6 +760,11 @@ def run():
             if risk.check_combined_stop_loss(strats):
                 _force_exit_all(strats, pnl_engine, risk)
                 log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
+
+            # 5b. LIVE-22: Daily rupee loss cap.
+            if pnl_engine and risk.check_daily_loss_cap(pnl_engine):
+                _force_exit_all(strats, pnl_engine, risk)
+                log.critical("DAILY LOSS CAP HIT - Trading Halted for the session.")
 
             # 6. Entry Logic (requires per-instrument classification).
             if not risk.halted:
