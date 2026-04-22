@@ -10,8 +10,8 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 02, 03, 07, 10, 13, 19, 20, 21, 22, 25 | — |
-| P1 | LIVE-04, 05, 06, 08, 11, 12, 14, 18, 23, 24 | — |
+| P0 | LIVE-01, 02, 03, 06, 07, 10, 13, 19, 20, 21, 22, 25 | — |
+| P1 | LIVE-04, 05, 08, 11, 12, 14, 18, 23, 24 | — |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -65,6 +65,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Severity reason:** The `net_credit_unit` that gates entry is computed from LTPs fetched before leg 1. In live, the 4 legs take non-zero time; prices drift and liquidity gets consumed, so legs 3–4 can fill at materially different prices than quoted — or not at all.
 - **Priority:** P0
 - **Priority reason:** Axiom 4 requires all four legs confirmed before the IC is considered to exist. Today the system uses a pre-trade price snapshot as proxy for post-trade reality.
+- **Interaction with LIVE-25:** Becomes LIVE-25's Phase 5a gate. Same post-fill credit re-check logic; new home in the phased entry flow — after both shorts fill, confirm `net_credit ≥ IC_MIN_CREDIT` using actual fill prices of all four legs; if not, abort via the Phase 5b unwind path.
 - **Evidence:**
   - `trading_system/core/iron_condor.py:195-213` — `prices = {...}` snapshot + credit gate run once.
   - `trading_system/core/iron_condor.py:243-257` — legs placed sequentially; no re-check of credit after fills.
@@ -78,6 +79,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Priority:** P0
 - **Priority reason:** No live-money use is acceptable until rollback failure is not just escalated but actively hedged. `RiskManager.escalate_rollback_failure` already halts entries; it does not unwind the stuck legs.
 - **Interaction with LIVE-25:** If LIVE-25 (hedge-first entry sequencing) ships first, the unbounded-naked-short scenario is eliminated by construction — wings are already on before any short leg goes out. LIVE-03 then narrows to the edge case of one wing filling but not the other, which is still possible but bounded, not catastrophic. Sequence LIVE-25 before LIVE-03's hedge implementation.
+- **Effective severity post-LIVE-25:** Medium. Once LIVE-25 ships, the only reachable failure is "one wing fills, the other doesn't" — yielding a single long option position with max loss bounded at `wing_premium × wing_qty` (roughly ₹3–10k at 10 lots NIFTY). Treat as cleanup path, not catastrophic exposure. Severity/Priority in this header reflect the pre-LIVE-25 state for audit continuity.
 - **Evidence:**
   - `trading_system/core/iron_condor.py:62-103` — `_rollback_partial_entry` submits reverse orders and records `stuck_legs` on failure; no hedge placed.
   - `trading_system/core/risk_manager.py:83-99` — `escalate_rollback_failure` sets `halted = True` and logs; halt does not remove the stuck exposure.
@@ -137,10 +139,10 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Status:** Open
 - **Severity:** Medium
 - **Severity reason:** `get_ltp` returns the last trade price. Short legs execute against the live bid; long legs against the live ask. On deep-OTM options, bid can be 0 with a non-zero last-trade, making the leg un-shortable at any price near LTP.
-- **Priority:** P1
-- **Priority reason:** Correct modelling needs a quote-book fetch (`get_quotes`'s `bp1`/`sp1`/`bq1`/`sq1`), not just `lp`. Calibrating the empirical slippage model (LIVE-04) first is cheaper.
+- **Priority:** P0
+- **Priority reason:** Prerequisite for LIVE-25 Phase 4 — without real `bp1`/`sp1`/`bq1`/`sq1` from `get_quotes`, the short-leg limit prices in the hedge-first sequencing can't be set and liquidity pre-checks on the wings can't be performed. Promoted from P1 when LIVE-25 became the live entry design.
 - **Evidence:**
-  - `trading_system/existing/market_data.py:64-111` — `get_ltp` reads only `quote["lp"]`. Bid/ask fields are untouched.
+  - `trading_system/existing/market_data.py:64-111` — `get_ltp` reads only `quote["lp"]`. Bid/ask fields are untouched (existing FixQ1 path at lines 116-117 already reads `bp1`/`sp1` as a fallback, so the API call shape is known to work).
   - `trading_system/core/iron_condor.py:195-209` — entry credit computed entirely off `lp`.
 - **Impact:** Pre-entry credit check can pass on stale last-trade values the book cannot support. Entry fills at materially worse levels or fails outright.
 - **Suggested approach:** Extend `MarketData` with `get_quote_book(symbol)` returning bid/ask/bid_qty/ask_qty. Pre-entry, reject any leg where `bid_qty < our_qty` on the short side or `ask_qty < our_qty` on the long side, with a configurable margin. Use `(bid+ask)/2` instead of `lp` for the credit computation. Regression test: craft a quote where `lp=20.0` but `bp1=0.0`; assert entry rejects on short-leg liquidity check.
@@ -366,7 +368,7 @@ Prioritised by exposure prevention first, then decision-quality:
 
 # Proving period (adapted for 10-lot minimum)
 
-Enter this phase only after step 9 above (LIVE-21 gating on real reconciliation).
+Enter this phase only after step 11 above (LIVE-21 gating on real reconciliation).
 
 - **One instrument, 10 lots, two weeks.** Since we can't go smaller, reduce the other dimension: run NIFTY only (or BANKNIFTY only) for ~10 trading days at `IC_LOT_SIZE=10`. Comment out the other `IronCondorStrategy` instantiation in `main.py`. Half the exposure, same per-trade economics.
 - **Nightly reconciliation** runs automatically (LIVE-08). Divergence > 2% on any single trade: find the bug before the next session.
@@ -383,10 +385,12 @@ These are behaviour rules for the operator, not code items.
 # Shortest realistic path
 
 - LIVE-19/20/22/23/24 (safety + alerts): ~1 evening
-- LIVE-01/07/10/13/03/02 (core live plumbing): ~1 week of focused build
+- LIVE-01/07/10/13 (async plumbing + startup reconciliation + margin/freeze pre-checks): ~4–5 days
+- LIVE-06/25 (bid/ask visibility + hedge-first entry sequencing): ~1 week
+- LIVE-03/02 (narrowed rollback hedge + post-fill credit gate): ~2–3 days
 - LIVE-12/04/08/21 (economics + reconciliation gate): ~3–5 days
 - Proving period: 2 weeks of real-money observation, single instrument
-- Total: **~3 weeks** from today to both-instrument live operation at 10 lots.
+- Total: **~4 weeks** from today to both-instrument live operation at 10 lots.
 
 # Explicitly deferred (don't need on day one)
 
@@ -402,3 +406,6 @@ These are behaviour rules for the operator, not code items.
 - Start with NIFTY only or BANKNIFTY only for the proving period?
 - Shoonya's actual brokerage tier for your account? (affects LIVE-12 calibration and LIVE-08 reconciliation tolerance)
 - Telegram bot or ntfy for alerts? (LIVE-23)
+- `IC_SHORT_LIMIT_TIMEOUT_SEC`: how long Phase 4 waits for the short legs to fill before aborting and closing the wings? (LIVE-25)
+- `IC_SHORT_LIMIT_OFFSET_TICKS`: aggressiveness of short limits vs top-of-book bid — 0 = at bid (safest fill), 1–2 = more credit but higher abort rate? (LIVE-25)
+- Phase 3 fallback when wings cost so much that the computed short-limit prices can't achieve `IC_MIN_CREDIT`: refuse entry, widen wings and retry, or accept reduced credit? (LIVE-25)
