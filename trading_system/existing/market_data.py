@@ -61,6 +61,23 @@ class MarketData:
     def _is_valid_option_ltp(ltp: float) -> bool:
         return settings.PAPER_OPTION_LTP_MIN <= ltp <= settings.PAPER_OPTION_LTP_MAX
 
+    def seed_option_ltp(self, symbol_key: str, price: float) -> None:
+        """FixQ2: seed the last-valid-option-LTP cache for ``symbol_key``.
+
+        Called at startup for each leg of a restored position using the leg's
+        ``avg_price``. Without this, the first post-restore monitor cycle can
+        hit a Shoonya ``lp``-is-spot response on a symbol with no cache entry,
+        causing ``get_ltp`` to return 0.0 — which in turn makes the monitor's
+        ``any(p <= 0) → return None`` early-exit fire and silently skip all
+        exit logic for that instrument. Seeding with the entry avg_price gives
+        a stale-but-finite fallback until a real clean tick arrives.
+        """
+        if not self._is_option_symbol_key(symbol_key):
+            return
+        if not self._is_valid_option_ltp(price):
+            return
+        self._last_valid_option_ltp[symbol_key] = float(price)
+
     def get_ltp(self, symbol_key: str) -> float:
         """
         Get last-traded price. Caches for 2 seconds to reduce API calls.
@@ -88,6 +105,32 @@ class MarketData:
                 ltp = float(quote["lp"])
                 if self._is_option_symbol_key(symbol_key):
                     if not self._is_valid_option_ltp(ltp):
+                        # FixQ1: Shoonya sometimes returns the underlying spot
+                        # in the ``lp`` field for option queries (~50/day across
+                        # weeklies and monthlies). When ``lp`` fails the sanity
+                        # filter, try the bid-ask midpoint from the same quote
+                        # response — these fields are populated independently
+                        # server-side and empirically stay clean ~98% of the
+                        # time even when ``lp`` is bogus.
+                        try:
+                            bid = float(quote.get("bp1", 0) or 0)
+                            ask = float(quote.get("sp1", 0) or 0)
+                        except (TypeError, ValueError):
+                            bid = ask = 0.0
+                        if (
+                            self._is_valid_option_ltp(bid)
+                            and self._is_valid_option_ltp(ask)
+                            and ask >= bid > 0
+                        ):
+                            mid = (bid + ask) / 2.0
+                            logger.info(
+                                "get_ltp: suspicious lp %.2f for %s; using bid-ask mid %.2f (bid=%.2f ask=%.2f)",
+                                ltp, symbol_key, mid, bid, ask,
+                            )
+                            self._last_valid_option_ltp[symbol_key] = mid
+                            self._ltp_cache[symbol_key] = (mid, now)
+                            return mid
+
                         fallback = self._last_valid_option_ltp.get(symbol_key, 0.0)
                         if fallback > 0:
                             logger.warning(

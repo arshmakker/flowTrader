@@ -537,6 +537,27 @@ def run():
             meta.get("saved_at"),
             meta.get("trading_date"),
         )
+        # FixQ2: seed the market_data last-valid-option-LTP cache with each
+        # restored leg's avg_price. The first post-restore monitor cycle may
+        # hit a Shoonya lp-is-spot response (see FixQ1) on a cold-cache symbol
+        # and return 0.0 — which silently freezes monitor() via its any(p<=0)
+        # early-exit. Seeding gives a stale-but-finite fallback on cycle one.
+        try:
+            tracker_positions = getattr(pos_mgr, "_positions", {}) or {}
+            seeded = 0
+            for sym, pos_dict in tracker_positions.items():
+                avg = pos_dict.get("avg_price") if isinstance(pos_dict, dict) else None
+                if avg is None:
+                    continue
+                try:
+                    md.seed_option_ltp(sym, float(avg))
+                    seeded += 1
+                except (TypeError, ValueError):
+                    continue
+            if seeded:
+                log.info("Seeded %d option LTP cache entries from restored avg_prices.", seeded)
+        except Exception:
+            log.exception("Failed to seed option LTP cache from restored tracker positions")
 
     # Past-expiry safety: if startup restored positions whose expiry was before
     # today, the on-the-day hard-close was missed. Refuse to enter the trading
