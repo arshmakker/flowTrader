@@ -121,6 +121,13 @@ HALT_FILE = "data/HALT"
 # LIVE-20: PID lock file preventing duplicate process instances.
 PID_FILE = "data/regimetrader.pid"
 
+# LIVE-13: NSE per-order freeze quantity for index F&O. Breaching these triggers
+# an exchange-side rejection mid-entry which cascades into rollback (LIVE-03).
+# Refuse upfront instead. Values current as of Apr 2026; verify against NSE's
+# market-wide position limits circular when lot-size changes occur.
+FREEZE_QTY_NIFTY = 1800
+FREEZE_QTY_BANKNIFTY = 900
+
 # ══ LIVE-23: OPERATOR ALERTS ═════════════════════════════════════════
 # Master switch. Defaults False so CI and fresh clones do not accidentally
 # emit alerts. Flip to True once cred.yml's ALERTS_NTFY_TOPIC_URL is set.

@@ -303,6 +303,21 @@ class IronCondorStrategy:
         qty = lots * lot_size
         max_profit = net_credit_unit * qty
 
+        # LIVE-13: reject if per-leg qty exceeds NSE freeze limit, which would
+        # rejection-cascade leg 3 or 4 mid-entry and land us in LIVE-03's
+        # rollback path. Prevention is cheap; detection mid-entry is expensive.
+        freeze_qty = (
+            settings.FREEZE_QTY_NIFTY if self.instrument == 'NIFTY'
+            else settings.FREEZE_QTY_BANKNIFTY
+        )
+        if qty > freeze_qty:
+            logger.error(
+                "IC_REJECT reason=FREEZE_QTY_BREACH instrument=%s qty=%d freeze_qty=%d "
+                "lots=%d lot_size=%d. Reduce IC_LOT_SIZE or split the entry.",
+                self.instrument, qty, freeze_qty, lots, lot_size,
+            )
+            return False
+
         # Legs interleaved as short+wing pairs so any mid-entry failure leaves
         # a capped spread (call spread or put spread) rather than a naked strangle.
         orders_to_place = [

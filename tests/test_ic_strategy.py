@@ -127,6 +127,60 @@ def test_from_dict_preserves_existing_expiry_date():
     assert pos.expiry_date == "2026-04-28"
 
 
+def test_freeze_qty_breach_refuses_entry_and_places_no_orders(mock_om, mock_md):
+    """LIVE-13: per-leg qty exceeding NSE freeze-qty must refuse upfront,
+    before any order is submitted. Prevents a leg-3-rejection cascade into
+    LIVE-03's rollback path."""
+    s = IronCondorStrategy(mock_om, mock_md, 'NIFTY')
+
+    sr_mgr = MagicMock()
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+
+    # Good LTPs — credit rule passes so we reach the freeze check.
+    def ltp_side_effect(sym):
+        if 'C22150' in sym or 'P21850' in sym:
+            return 18.0
+        if 'C22200' in sym or 'P21800' in sym:
+            return 5.0
+        return 10.0
+    mock_md.get_ltp.side_effect = ltp_side_effect
+
+    # NIFTY lot_size=65, FREEZE_QTY_NIFTY=1800 → breach at ≥28 lots (28*65=1820).
+    # Pick 30 lots → qty=1950 > 1800.
+    breaching_lots = 30
+    assert breaching_lots * settings.NIFTY_LOT_SIZE > settings.FREEZE_QTY_NIFTY
+
+    success = s.enter(22000, 12, 22500, 21500, sr_mgr, '19-MAR-2026', breaching_lots)
+
+    assert success is False
+    assert s.is_active() is False
+    # No orders should have been placed — the guard runs before the legs loop.
+    assert mock_om.place_order.call_count == 0
+
+
+def test_at_freeze_qty_boundary_allows_entry(mock_om, mock_md):
+    """Boundary: qty == freeze_qty is allowed; strictly greater is refused."""
+    s = IronCondorStrategy(mock_om, mock_md, 'NIFTY')
+
+    sr_mgr = MagicMock()
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+
+    def ltp_side_effect(sym):
+        if 'C22150' in sym or 'P21850' in sym:
+            return 18.0
+        if 'C22200' in sym or 'P21800' in sym:
+            return 5.0
+        return 10.0
+    mock_md.get_ltp.side_effect = ltp_side_effect
+
+    # 27 lots × 65 = 1755, below 1800 — should pass. The test fixture's lot_size
+    # is NIFTY_LOT_SIZE (65), so 1800/65 = 27.69 → 27 lots is the largest clean
+    # multiple below the freeze cap.
+    s.enter(22000, 12, 22500, 21500, sr_mgr, '19-MAR-2026', 27)
+
+    assert mock_om.place_order.call_count == 4  # all four legs went out
+
+
 def test_exit_result_contains_entry_date(mock_om, mock_md):
     """Bug fix: for overnight carries the result dict must carry entry_date so the
     CSV logs the entry day, not the exit day."""

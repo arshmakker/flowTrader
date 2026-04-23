@@ -6,11 +6,11 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**5 of 23 addressed.** LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**6 of 23 addressed.** LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 02, 03, 06, 07, 10, 13, 21, 25 | LIVE-19, LIVE-20, LIVE-22 |
+| P0 | LIVE-01, 02, 03, 06, 07, 10, 21, 25 | LIVE-13, LIVE-19, LIVE-20, LIVE-22 |
 | P1 | LIVE-04, 05, 08, 11, 12, 14, 18 | LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
@@ -222,7 +222,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Add `compute_taxes_and_fees(symbol, side, price, qty)` returning `{stt, exch_txn, sebi, stamp, gst_on_total}`. Apply in both entry and exit cost calcs. Source rates from a `settings.FEES_NIFTY_OPT` config block. Regression test: compute round-trip cost on a canonical 10-lot NIFTY IC at ₹18 credit; assert within ±5% of a manually-derived expected number from Shoonya's published charges.
 
 ### LIVE-13 · Freeze-quantity limit not enforced
-- **Status:** Open
+- **Status:** Addressed (2026-04-23) — `FREEZE_QTY_NIFTY=1800` and `FREEZE_QTY_BANKNIFTY=900` added to `settings.py`; `IronCondorStrategy.enter` refuses entry with a structured `IC_REJECT reason=FREEZE_QTY_BREACH` log before any leg is placed. 2 regression tests in `tests/test_ic_strategy.py` (breach + boundary).
 - **Severity:** High
 - **Severity reason:** NSE enforces a per-order freeze quantity (e.g. NIFTY options currently 1800 qty ≈ 28 NIFTY lots at 65/lot). Today's 10 lots × 65 = 650 is within limit. But lot sizes and freeze quantities change; any scale-up or lot-size change silently breaches it, producing exchange-side rejections the engine does not classify distinctly.
 - **Priority:** P0
