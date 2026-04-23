@@ -370,6 +370,193 @@ class IronCondorStrategy:
         logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
         return True
 
+    # ── LIVE-25: Hedge-first entry ──────────────────────────────────────
+
+    def enter_hedge_first(
+        self, spot: float, vix: float, sr_high: float, sr_low: float,
+        sr_manager: Any, expiry: str, lots: int,
+    ) -> bool:
+        """
+        LIVE-25: hedge-first IC entry. Wings (LC+LP) go as MKT first; shorts
+        (SC+SP) as LMT at top-of-book bid. Converts the worst-case entry
+        failure from unbounded naked short to bounded premium-at-risk.
+
+        Returns True on successful 4-leg entry; False on any abort (wings
+        failed, Phase 3 credit-infeasible, shorts didn't fill, or post-fill
+        credit under floor). Unwinds cleanly in every failure path.
+        """
+        sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
+        sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
+        sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
+        lc_sym = self.om.build_option_symbol(self.instrument, expiry, lc, "CE")
+        lp_sym = self.om.build_option_symbol(self.instrument, expiry, lp, "PE")
+
+        # LIVE-06 consumer: real bid/ask visibility rather than LTP guesses.
+        books = {
+            "sc": self.md.get_quote_book(sc_sym),
+            "sp": self.md.get_quote_book(sp_sym),
+            "lc": self.md.get_quote_book(lc_sym),
+            "lp": self.md.get_quote_book(lp_sym),
+        }
+        for leg, book in books.items():
+            if book is None or not book.is_tradable:
+                logger.warning(
+                    "IC %s hedge-first: leg %s book untradable (book=%s) — refusing entry",
+                    self.instrument, leg, book,
+                )
+                return False
+
+        lot_size = self.md.get_lot_size(sc_sym)
+        qty = lots * lot_size
+
+        # LIVE-13: freeze-qty guard mirrors the legacy enter() path.
+        freeze_qty = (
+            settings.FREEZE_QTY_NIFTY if self.instrument == "NIFTY"
+            else settings.FREEZE_QTY_BANKNIFTY
+        )
+        if qty > freeze_qty:
+            logger.error(
+                "IC_REJECT reason=FREEZE_QTY_BREACH instrument=%s qty=%d freeze_qty=%d",
+                self.instrument, qty, freeze_qty,
+            )
+            return False
+
+        # Pre-entry credit sanity — use bid/ask mids instead of LTP (LIVE-06).
+        # Shorts at bid (we sell into bid); wings at ask (we buy from ask).
+        pre_entry_credit_unit = (
+            books["sc"].bid + books["sp"].bid
+            - books["lc"].ask - books["lp"].ask
+        )
+        if pre_entry_credit_unit < settings.IC_MIN_CREDIT:
+            logger.info(
+                "IC %s hedge-first: pre-entry book credit %.2f < IC_MIN_CREDIT %.2f "
+                "(SC_bid=%.2f SP_bid=%.2f LC_ask=%.2f LP_ask=%.2f)",
+                self.instrument, pre_entry_credit_unit, settings.IC_MIN_CREDIT,
+                books["sc"].bid, books["sp"].bid, books["lc"].ask, books["lp"].ask,
+            )
+            return False
+
+        # ── Phase 1: submit wings as MKT ─────────────────────────────
+        lc_order = self.om.place_order(lc_sym, "BUY", qty)
+        lp_order = self.om.place_order(lp_sym, "BUY", qty)
+
+        def _filled(o: Dict) -> bool:
+            return o.get("status") == "COMPLETE" and int(o.get("fill_qty", 0)) == qty
+
+        # ── Phase 2: both wings must be fully on before any short leg goes out ──
+        # Handles: both fully filled (proceed), one clean-failure (close the other),
+        # both clean-failure (nothing to unwind), AND partial fills on either wing
+        # (close whatever filled on both legs — no shorts ever go out). Per LIVE-05,
+        # partial wing fill halts the entry rather than attempting recovery.
+        lc_qty_filled = int(lc_order.get("fill_qty", 0))
+        lp_qty_filled = int(lp_order.get("fill_qty", 0))
+        lc_fully = _filled(lc_order)
+        lp_fully = _filled(lp_order)
+
+        if not (lc_fully and lp_fully):
+            if lc_qty_filled > 0:
+                self.om.place_order(lc_sym, "SELL", lc_qty_filled)
+            if lp_qty_filled > 0:
+                self.om.place_order(lp_sym, "SELL", lp_qty_filled)
+            logger.error(
+                "IC %s Phase 2: wings not both fully filled "
+                "(LC status=%s fill=%d/%d, LP status=%s fill=%d/%d) — "
+                "unwound partial exposure, halting; no shorts submitted",
+                self.instrument,
+                lc_order.get("status"), lc_qty_filled, qty,
+                lp_order.get("status"), lp_qty_filled, qty,
+            )
+            return False
+
+        lc_fill = float(lc_order["fill_price"])
+        lp_fill = float(lp_order["fill_price"])
+
+        # ── Phase 3: compute short-leg limit prices from actual wing fills ──
+        # OFFSET_TICKS=0 submits exactly at the bid. Paper/live SELL LMT fills
+        # only if limit ≤ bid, so limit == bid trades at bid.
+        tick = settings.PRICE_TICK
+        offset = settings.IC_SHORT_LIMIT_OFFSET_TICKS * tick
+        sc_limit = round((books["sc"].bid + offset) / tick) * tick
+        sp_limit = round((books["sp"].bid + offset) / tick) * tick
+
+        # Feasibility: given wings already filled, can the shorts at these limits
+        # still clear IC_MIN_CREDIT?
+        projected_net_credit_unit = sc_limit + sp_limit - lc_fill - lp_fill
+        if projected_net_credit_unit < settings.IC_MIN_CREDIT:
+            logger.error(
+                "IC %s Phase 3: projected credit %.2f < IC_MIN_CREDIT %.2f after wings filled "
+                "at LC=%.2f LP=%.2f with SC_limit=%.2f SP_limit=%.2f — fallback=%s; unwinding wings",
+                self.instrument, projected_net_credit_unit, settings.IC_MIN_CREDIT,
+                lc_fill, lp_fill, sc_limit, sp_limit, settings.IC_PHASE3_FALLBACK,
+            )
+            # 'refuse' is the only implemented fallback. 'widen' / 'accept'
+            # are checklist options for future tuning — they reuse this unwind.
+            self.om.place_order(lc_sym, "SELL", qty)
+            self.om.place_order(lp_sym, "SELL", qty)
+            return False
+
+        # ── Phase 4: submit shorts as LMT ────────────────────────────
+        sc_order = self.om.place_order(sc_sym, "SELL", qty, price_type="LMT", price=sc_limit)
+        sp_order = self.om.place_order(sp_sym, "SELL", qty, price_type="LMT", price=sp_limit)
+
+        sc_filled = _filled(sc_order)
+        sp_filled = _filled(sp_order)
+
+        if not (sc_filled and sp_filled):
+            # ── Phase 5b: unwind everything ─────────────
+            logger.error(
+                "IC %s Phase 5b: short(s) did not fill (SC=%s, SP=%s); unwinding "
+                "any filled shorts + both wings",
+                self.instrument, sc_order.get("status"), sp_order.get("status"),
+            )
+            if sc_filled:
+                self.om.place_order(sc_sym, "BUY", qty)
+            if sp_filled:
+                self.om.place_order(sp_sym, "BUY", qty)
+            self.om.place_order(lc_sym, "SELL", qty)
+            self.om.place_order(lp_sym, "SELL", qty)
+            return False
+
+        sc_fill = float(sc_order["fill_price"])
+        sp_fill = float(sp_order["fill_price"])
+
+        # ── Phase 5a: post-fill credit re-check (LIVE-02 absorbed here) ──
+        actual_net_credit_unit = sc_fill + sp_fill - lc_fill - lp_fill
+        if actual_net_credit_unit < settings.IC_MIN_CREDIT:
+            logger.error(
+                "IC %s Phase 5a: post-fill credit %.2f < IC_MIN_CREDIT %.2f "
+                "(SC=%.2f SP=%.2f LC=%.2f LP=%.2f); unwinding all 4 legs",
+                self.instrument, actual_net_credit_unit, settings.IC_MIN_CREDIT,
+                sc_fill, sp_fill, lc_fill, lp_fill,
+            )
+            self.om.place_order(sc_sym, "BUY", qty)
+            self.om.place_order(sp_sym, "BUY", qty)
+            self.om.place_order(lc_sym, "SELL", qty)
+            self.om.place_order(lp_sym, "SELL", qty)
+            return False
+
+        # Entry successful — construct IC_Position mirroring legacy enter().
+        max_profit = actual_net_credit_unit * qty
+        try:
+            expiry_iso = datetime.strptime(str(expiry).strip(), "%d-%b-%Y").date().isoformat()
+        except (ValueError, TypeError):
+            expiry_iso = ""
+        now = datetime.now()
+        self._position = IC_Position(
+            instrument=self.instrument,
+            sc_sym=sc_sym, sp_sym=sp_sym, lc_sym=lc_sym, lp_sym=lp_sym,
+            sc_strike=sc, sp_strike=sp, lc_strike=lc, lp_strike=lp,
+            max_profit=max_profit, entry_credit=actual_net_credit_unit,
+            lots=lots, entry_time=now.strftime("%H:%M:%S"),
+            expiry_date=expiry_iso,
+            entry_date=now.strftime("%Y-%m-%d"),
+        )
+        logger.info(
+            "IC %s ENTERED (hedge-first): SC=%s SP=%s LC=%s LP=%s | Credit=%.2f | Lots=%d (LotSize=%d)",
+            self.instrument, sc, sp, lc, lp, actual_net_credit_unit, lots, lot_size,
+        )
+        return True
+
     # ── Monitor ─────────────────────────────────────────────────────────
 
     def monitor(self) -> Optional[Dict]:
