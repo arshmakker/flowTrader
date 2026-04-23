@@ -2,15 +2,27 @@
 
 ## On conversation start
 
-Every time this project is opened in Claude, automatically compute and display the day's PnL summary. Use the system date (do NOT hardcode a date). Steps:
+Every time this project is opened in Claude, do these two things in order.
 
-1. Get today's date from the system (`date` command)
-2. Read `data/pnl_snapshot.json` — check if the `timestamp` field matches today's date
-3. If it matches today, display a summary: daily realised PnL, unrealised PnL, net total, trade count, win rate, and per-instrument breakdown (NIFTY/BANKNIFTY)
-4. Also scan `data/paper_trades.csv` for rows matching today's date to show individual trade details if useful
-5. If the snapshot is from a previous day, report "No trading data for today yet" with the date of the last snapshot
+### 1. Anchor the current date — required for all date-based planning
 
-Format the output as a concise table. Always show the PnL in INR (₹).
+Run `date` and `TZ=Asia/Kolkata date` (IST is the trading timezone). Never hardcode, infer, or estimate today's date. Every date reference in this session — log filenames, market-hours checks, weekend carry rules, session resume files, checklist "Addressed YYYY-MM-DD" timestamps — must resolve against that anchored value. When the user mentions a relative date ("Thursday", "next week", "yesterday's session"), convert it against the system-anchored date before acting.
+
+### 2. Show session state — PnL summary AND next-session pickup
+
+**PnL summary:**
+- Read `data/pnl_snapshot.json`; if `timestamp` matches today, display: daily realised PnL, unrealised PnL, net total, trade count, win rate, per-instrument breakdown (NIFTY/BANKNIFTY)
+- Also scan `data/paper_trades.csv` for today's rows if useful
+- If the snapshot is from a previous day, report "No trading data for today yet" with the date of the last snapshot
+- Format as a concise table; all PnL in INR (₹)
+
+**Next-session pickup:**
+- Read the latest `session_<date>_resume.md` under `/Users/arshdeep/.claude/projects/-Users-arshdeep-git-regimetrader/memory/` (the file pointed to by `MEMORY.md`'s first entry)
+- Display in 3-5 bullets: current branch @ commit, test count, what landed last session, what's next to pick up
+- Flag any operator-pending items (e.g. "LIVE-23 ntfy smoke test still open")
+- If the session resume is older than today, note the gap — the user may want to re-plan rather than blindly continue
+
+This block keeps the operator oriented without needing to read the memory file themselves.
 
 ## What is this project
 
