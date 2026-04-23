@@ -2,9 +2,19 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest
+
 from trading_system.paper.paper_order_manager import PaperOrderManager
 from trading_system.paper.paper_position_tracker import PaperPositionTracker
 from trading_system.core.iron_condor import IronCondorStrategy
+from trading_system.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _force_sequential_entry(monkeypatch):
+    """Lifecycle tests cover the legacy sequential entry path. Pin it so they
+    keep exercising sequential regardless of the branch-level default."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
 
 
 class FakeMD:

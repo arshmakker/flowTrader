@@ -47,10 +47,12 @@ IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
 IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
 
 # ══ LIVE-25: HEDGE-FIRST ENTRY SEQUENCING ════════════════════════════
-# 'sequential' = legacy interleaved short+wing order (default until proving
-# period validates hedge-first). 'hedge_first' routes through
-# IronCondorStrategy.enter_hedge_first (wings MKT then shorts LMT).
-IC_ENTRY_MODE = "sequential"
+# 'hedge_first' (default on this branch) routes IronCondorStrategy.enter()
+# through enter_hedge_first — wings as MKT, then shorts as LMT priced off
+# the actual wing fills. Converts the worst-case entry failure from unbounded
+# naked short to bounded premium-at-risk. 'sequential' is the legacy path,
+# retained for regression testing and operator fallback.
+IC_ENTRY_MODE = "hedge_first"
 #
 # Wings (LC+LP) go as MKT first; shorts (SC+SP) as LMT priced off actual
 # wing fills. Converts the worst-case entry failure from unbounded naked

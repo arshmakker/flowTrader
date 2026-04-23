@@ -3,6 +3,13 @@ from unittest.mock import MagicMock
 from trading_system.core.iron_condor import IronCondorStrategy, IC_Position
 from trading_system.config import settings
 
+
+@pytest.fixture(autouse=True)
+def _force_sequential_entry(monkeypatch):
+    """These tests cover the legacy sequential entry path. Pin IC_ENTRY_MODE
+    so they keep exercising it regardless of the branch-level default."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
+
 @pytest.fixture
 def mock_om():
     om = MagicMock()

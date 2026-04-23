@@ -13,6 +13,14 @@ import pytest
 from itertools import cycle
 from unittest.mock import MagicMock, patch
 from trading_system.core.iron_condor import IronCondorStrategy
+from trading_system.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _force_sequential_entry(monkeypatch):
+    """LIVE-01 / LIVE-05 tests cover the legacy sequential path's state machine;
+    pin IC_ENTRY_MODE='sequential' regardless of the branch-level default."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
 from trading_system.live.live_order_manager import LiveOrderManager, OrderPollingAbandoned
 from trading_system.config import settings
 
