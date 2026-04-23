@@ -6,11 +6,11 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**7 of 23 addressed.** LIVE-08, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired; LIVE-06 is plumbing-only pending LIVE-25 wiring. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**11 of 23 addressed.** Fully: LIVE-08, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 and LIVE-05 have paper-side stubs; live-side emerges with full hedge-first rollout. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 02, 03, 06, 07, 10, 21, 25 | LIVE-13, LIVE-19, LIVE-20, LIVE-22 |
+| P0 | LIVE-01, 07, 10, 21 | LIVE-02, LIVE-03, LIVE-06, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-25 |
 | P1 | LIVE-04, 05, 11, 12, 14, 18 | LIVE-08, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
@@ -60,7 +60,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Introduce a per-leg `await_terminal_status(order_id, timeout)` polling `single_order_history` until status resolves to `COMPLETE` / `REJECTED` / `CANCELED`. Favour blocking inside `place_order` for interface parity with paper — the strategy contract is small. Regression test: fake broker returning `PENDING` → `COMPLETE` across two polls; assert entry proceeds, not rolls back.
 
 ### LIVE-02 · Atomic 4-leg entry assumes no price drift or partial fills
-- **Status:** Open
+- **Status:** Addressed-via-LIVE-25 (2026-04-23) — Phase 5a of `enter_hedge_first` recomputes net credit from actual fill prices of all 4 legs and unwinds everything if `< IC_MIN_CREDIT`. Becomes the active path when `settings.IC_ENTRY_MODE="hedge_first"`.
 - **Severity:** High
 - **Severity reason:** The `net_credit_unit` that gates entry is computed from LTPs fetched before leg 1. In live, the 4 legs take non-zero time; prices drift and liquidity gets consumed, so legs 3–4 can fill at materially different prices than quoted — or not at all.
 - **Priority:** P0
@@ -73,7 +73,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** After all legs terminal-resolve, recompute post-fill credit. If below `IC_MIN_CREDIT` beyond a configurable tolerance, close the position through the normal exit path rather than carrying a structurally-worse IC. Regression test: simulate legs 1–2 filling 10% worse than quoted; assert post-fill credit check triggers close.
 
 ### LIVE-03 · Rollback reverse orders can fail in live, leaving naked short options
-- **Status:** Open
+- **Status:** Narrowed-by-LIVE-25 (2026-04-23) — under `IC_ENTRY_MODE="hedge_first"` the unbounded-naked-short scenario is eliminated by construction: wings are on before any short leg goes out. Phase 2's one-wing-fails path and Phase 5b's short-timeout path both unwind cleanly with bounded loss. The original LIVE-03 "mid-rollback hedge" lives in the legacy sequential path only; once hedge-first is the default, that path and its LIVE-03 exposure surface go away.
 - **Severity:** High
 - **Severity reason:** The most dangerous failure mode at 10 lots. The two short legs (SC, SP) are uncovered without their wings. If the rollback's reverse BUY fails (circuit, margin call triggered by the first leg's margin consumption, illiquid far-OTM), exposure is real, directional, and unhedged.
 - **Priority:** P0
