@@ -105,7 +105,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
   - Phase 4: submit SC + SP as `LMT` orders at those targets, IOC or with a configurable timeout.
   - Phase 5a: both short legs fill → post-fill credit re-check (LIVE-02) confirms ≥ `IC_MIN_CREDIT` net; entry complete.
   - Phase 5b: one or both shorts don't fill within timeout → cancel remaining, close any filled short at market, close the wings at market, abort. Log reason so Phase 4's timeout/offset can be tuned.
-  - New settings: `IC_SHORT_LIMIT_TIMEOUT_SEC`, `IC_SHORT_LIMIT_OFFSET_TICKS` (aggressiveness above bid).
+  - New settings (locked 2026-04-23): `IC_SHORT_LIMIT_TIMEOUT_SEC=600`, `IC_SHORT_LIMIT_OFFSET_TICKS=0`, `IC_PHASE3_FALLBACK="refuse"`.
   - **Caching note for `get_quote_book` consumers:** `MarketData.get_quote_book` (landed 2026-04-23) has no internal TTL today. Phase 1 and Phase 4 both call it per-leg; decide upfront whether to (a) add a short TTL inside `get_quote_book` mirroring `get_ltp`'s 2s cache, or (b) fetch once per leg in `enter()` and pass the snapshot down. Avoid burning Shoonya rate-limit headroom (LIVE-17).
   - Order type support: extend `place_order` (paper + live) to accept `price_type="LMT"` with `price` and a terminal-status awaiter that handles `CANCELED` on timeout.
   - Regression tests: (a) happy-path all four fill, assert Phase 3 limit prices match computed formula within 1 tick; (b) one long fails → other wing closed at market, no shorts submitted; (c) shorts timeout → wings closed, abort path fires with bounded loss logged; (d) Phase 3 computation on hostile inputs — wings cost more than IC_MIN_CREDIT allows → entry refused with a structured reason; (e) short partial fill → cancel remainder + unwind (preserves 10-lot axiom).
@@ -406,7 +406,5 @@ These are behaviour rules for the operator, not code items.
 - What is your `DAILY_MAX_LOSS` tolerance in absolute rupees? (LIVE-22)
 - Start with NIFTY only or BANKNIFTY only for the proving period?
 - Shoonya's actual brokerage tier for your account? (affects LIVE-12 calibration and LIVE-08 reconciliation tolerance)
-- Telegram bot or ntfy for alerts? (LIVE-23)
-- `IC_SHORT_LIMIT_TIMEOUT_SEC`: how long Phase 4 waits for the short legs to fill before aborting and closing the wings? (LIVE-25)
-- `IC_SHORT_LIMIT_OFFSET_TICKS`: aggressiveness of short limits vs top-of-book bid — 0 = at bid (safest fill), 1–2 = more credit but higher abort rate? (LIVE-25)
-- Phase 3 fallback when wings cost so much that the computed short-limit prices can't achieve `IC_MIN_CREDIT`: refuse entry, widen wings and retry, or accept reduced credit? (LIVE-25)
+- Telegram bot or ntfy for alerts? (LIVE-23) — **Decided 2026-04-22: ntfy.**
+- `IC_SHORT_LIMIT_TIMEOUT_SEC` / `IC_SHORT_LIMIT_OFFSET_TICKS` / Phase 3 fallback (LIVE-25) — **Decided 2026-04-23: 600s / 0 ticks / refuse.** See `settings.py::IC_SHORT_LIMIT_*` and `IC_PHASE3_FALLBACK`.

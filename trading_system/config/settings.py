@@ -46,6 +46,26 @@ IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before ha
 IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
 IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
 
+# ══ LIVE-25: HEDGE-FIRST ENTRY SEQUENCING ════════════════════════════
+# Wings (LC+LP) go as MKT first; shorts (SC+SP) as LMT priced off actual
+# wing fills. Converts the worst-case entry failure from unbounded naked
+# short to bounded premium-at-risk.
+#
+# Max time Phase 4 waits for both shorts to fill before aborting the entry
+# and unwinding the wings. 600s = patient with 0-tick-above-bid fills; the
+# wings pay theta (~₹50-200 at 10 lots NIFTY weekly) during the wait window,
+# which is the acceptable price of not accepting worse fills.
+IC_SHORT_LIMIT_TIMEOUT_SEC = 600
+# Ticks above the top-of-book bid for the short-leg limit price. 0 = at bid
+# (safest, highest probability of fill); 1-2 ticks adds credit at the cost of
+# more Phase 5b aborts. After proving-period data, this is tunable upward.
+IC_SHORT_LIMIT_OFFSET_TICKS = 0
+# Phase 3 fallback when wing fills are so expensive that computed short-leg
+# limits cannot achieve IC_MIN_CREDIT: 'refuse' aborts + unwinds wings; 'widen'
+# re-runs strike calc with wider width; 'accept' lowers IC_MIN_CREDIT for this
+# entry. Defaults to 'refuse' — cleanest, no hidden credit degradation.
+IC_PHASE3_FALLBACK = "refuse"
+
 # ══ TRADING CALENDAR (IST) ═══════════════════════════════════════════
 # Used by strategy runner gates (data collection / strategy loop) and
 # by data-quality guards to avoid treating holiday data as a trading day.
