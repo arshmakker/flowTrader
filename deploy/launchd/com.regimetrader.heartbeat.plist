@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+LIVE-24: heartbeat watchdog launchd agent.
+
+Install:
+    cp deploy/launchd/com.regimetrader.heartbeat.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.regimetrader.heartbeat.plist
+
+Verify:
+    launchctl list | grep regimetrader
+
+Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.regimetrader.heartbeat.plist
+    rm ~/Library/LaunchAgents/com.regimetrader.heartbeat.plist
+
+Replace REPLACE_WITH_HOME with the actual absolute path to this repo before loading.
+The script self-skips outside market hours, so running it every 5 min year-round is safe.
+
+Prerequisites:
+    mkdir -p logs/
+before loading — launchd fails silently if StandardOutPath's parent doesn't exist.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.regimetrader.heartbeat</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_WITH_HOME/git/regimetrader/venv/bin/python</string>
+        <string>REPLACE_WITH_HOME/git/regimetrader/tools/heartbeat_check.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader</string>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader/logs/heartbeat.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader/logs/heartbeat.err</string>
+</dict>
+</plist>

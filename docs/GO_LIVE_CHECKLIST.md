@@ -6,12 +6,12 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**0 of 23 addressed.** All items open. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**5 of 23 addressed.** LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 02, 03, 06, 07, 10, 13, 19, 20, 21, 22, 25 | — |
-| P1 | LIVE-04, 05, 08, 11, 12, 14, 18, 23, 24 | — |
+| P0 | LIVE-01, 02, 03, 06, 07, 10, 13, 21, 25 | LIVE-19, LIVE-20, LIVE-22 |
+| P1 | LIVE-04, 05, 08, 11, 12, 14, 18 | LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -319,7 +319,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Single integration — Telegram bot or `ntfy.sh` (free, no auth setup). Alert events: stop-loss hit, entry rejection cascade, auth failure, rollback escalation, unhandled main-loop exception, daily-loss cap hit. ~30 lines. Read Telegram/ntfy config from `cred.yml`. Regression test: trigger each alert event in a fake; assert the correct channel payload is emitted.
 
 ### LIVE-24 · No external heartbeat / silent-death detection
-- **Status:** Open
+- **Status:** Addressed (2026-04-23) — `tools/heartbeat_check.py` + `deploy/launchd/com.regimetrader.heartbeat.plist`. Off-hours silent, fires `heartbeat_stale` / `heartbeat_missing` critical alerts during market hours if `data/pnl_snapshot.json` is older than `--stale-sec` (default 180s). 7 unit tests in `tests/test_heartbeat_check.py`. Operator install: copy the plist to `~/Library/LaunchAgents/`, substitute `REPLACE_WITH_HOME` with `$HOME`, then `launchctl load`.
 - **Severity:** Medium
 - **Severity reason:** If the process dies silently (OOM, macOS force-kill, sleep), open positions are unmonitored until the operator notices. There is no external watchdog.
 - **Priority:** P1
@@ -348,9 +348,9 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 
 Prioritised by exposure prevention first, then decision-quality:
 
-1. **LIVE-19, LIVE-20, LIVE-22** — kill switch, single-instance, daily loss cap. Trivial; enables safe experimentation.
-2. **LIVE-23, LIVE-24** — alert channel + heartbeat. Trivial; required before anything else can "fail loudly."
-3. **LIVE-01** — async order plumbing. Unblocks category 1.
+1. ~~**LIVE-19, LIVE-20, LIVE-22** — kill switch, single-instance, daily loss cap.~~ Done 2026-04-22.
+2. ~~**LIVE-23, LIVE-24** — alert channel + heartbeat.~~ Done 2026-04-23.
+3. **LIVE-01** — async order plumbing. Paper-side stub landed 2026-04-22; live-side terminal-status awaiter still pending and emerges with LIVE-25.
 4. **LIVE-07** — startup reconciliation. Prerequisite for trusting any live run after a crash.
 5. **LIVE-10, LIVE-13** — margin + freeze-qty pre-checks. Eliminate the most common causes of LIVE-03.
 6. **LIVE-06** — bid/ask visibility. Required to set LIVE-25's short-leg limit prices sensibly.

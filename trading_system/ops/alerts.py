@@ -43,6 +43,7 @@ class Alert:
 
 class AlertChannel(Protocol):
     def send(self, alert: Alert) -> bool: ...
+    def flush(self, timeout: float = _SEND_TIMEOUT_SEC) -> bool: ...
 
 
 class NullAlertChannel:
@@ -53,6 +54,9 @@ class NullAlertChannel:
 
     def send(self, alert: Alert) -> bool:
         self.sent.append(alert)
+        return True
+
+    def flush(self, timeout: float = _SEND_TIMEOUT_SEC) -> bool:  # noqa: ARG002
         return True
 
 
@@ -71,6 +75,9 @@ class LogAlertChannel:
             "[ALERT:%s] %s — %s",
             alert.event, alert.title, alert.body,
         )
+        return True
+
+    def flush(self, timeout: float = _SEND_TIMEOUT_SEC) -> bool:  # noqa: ARG002
         return True
 
 
@@ -119,6 +126,21 @@ class NtfyAlertChannel:
                 self._post(alert)
             finally:
                 self._q.task_done()
+
+    def flush(self, timeout: float = _SEND_TIMEOUT_SEC) -> bool:
+        """Block until all queued alerts have POSTed or `timeout` elapses.
+        Required for short-lived scripts (e.g. heartbeat_check.py) where the
+        daemon worker thread would otherwise die with the interpreter before
+        draining the queue. Returns True if drained within the timeout."""
+        deadline = time.monotonic() + timeout
+        # unfinished_tasks covers both queued and in-flight work — decrements
+        # only after the worker calls task_done() at the end of each POST.
+        while self._q.unfinished_tasks > 0:
+            if time.monotonic() >= deadline:
+                logger.warning("ntfy flush timed out with %d alerts still in-flight", self._q.unfinished_tasks)
+                return False
+            time.sleep(0.05)
+        return True
 
     def _post(self, alert: Alert) -> None:
         headers = {"Title": alert.title}

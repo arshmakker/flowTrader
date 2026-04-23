@@ -103,6 +103,39 @@ class TestNtfyAlertChannel:
         with pytest.raises(ValueError):
             NtfyAlertChannel("")
 
+    def test_flush_drains_in_flight_posts(self, monkeypatch):
+        """LIVE-24: short-lived scripts must be able to wait for queued alerts
+        to actually POST before the interpreter tears down the daemon worker."""
+        import threading
+        import time as _time
+
+        release = threading.Event()
+        calls: list[bytes] = []
+
+        def slow_post(url, data, headers, timeout):
+            # Worker blocks until the test releases it — simulates a slow HTTP POST.
+            release.wait(timeout=2.0)
+            calls.append(data)
+            return _FakeResp()
+
+        monkeypatch.setattr("trading_system.ops.alerts.requests.post", slow_post)
+        chan = NtfyAlertChannel("https://ntfy.sh/test-topic")
+        assert chan.send(Alert("heartbeat_stale", "critical", "T", "B")) is True
+
+        # Before release, flush with a tight timeout must fail (work still in flight).
+        assert chan.flush(timeout=0.1) is False
+        assert calls == []
+
+        release.set()
+        # Now flush should drain cleanly.
+        assert chan.flush(timeout=1.0) is True
+        assert calls == [b"B"]
+
+    def test_flush_no_op_on_null_and_log(self):
+        """Non-async channels don't queue; flush is a trivial True."""
+        assert NullAlertChannel().flush() is True
+        assert LogAlertChannel().flush() is True
+
 
 class TestBuildChannel:
     def test_disabled_returns_null(self):
