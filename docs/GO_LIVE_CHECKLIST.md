@@ -106,6 +106,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
   - Phase 5a: both short legs fill → post-fill credit re-check (LIVE-02) confirms ≥ `IC_MIN_CREDIT` net; entry complete.
   - Phase 5b: one or both shorts don't fill within timeout → cancel remaining, close any filled short at market, close the wings at market, abort. Log reason so Phase 4's timeout/offset can be tuned.
   - New settings: `IC_SHORT_LIMIT_TIMEOUT_SEC`, `IC_SHORT_LIMIT_OFFSET_TICKS` (aggressiveness above bid).
+  - **Caching note for `get_quote_book` consumers:** `MarketData.get_quote_book` (landed 2026-04-23) has no internal TTL today. Phase 1 and Phase 4 both call it per-leg; decide upfront whether to (a) add a short TTL inside `get_quote_book` mirroring `get_ltp`'s 2s cache, or (b) fetch once per leg in `enter()` and pass the snapshot down. Avoid burning Shoonya rate-limit headroom (LIVE-17).
   - Order type support: extend `place_order` (paper + live) to accept `price_type="LMT"` with `price` and a terminal-status awaiter that handles `CANCELED` on timeout.
   - Regression tests: (a) happy-path all four fill, assert Phase 3 limit prices match computed formula within 1 tick; (b) one long fails → other wing closed at market, no shorts submitted; (c) shorts timeout → wings closed, abort path fires with bounded loss logged; (d) Phase 3 computation on hostile inputs — wings cost more than IC_MIN_CREDIT allows → entry refused with a structured reason; (e) short partial fill → cancel remainder + unwind (preserves 10-lot axiom).
 

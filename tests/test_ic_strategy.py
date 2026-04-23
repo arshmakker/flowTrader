@@ -158,8 +158,8 @@ def test_freeze_qty_breach_refuses_entry_and_places_no_orders(mock_om, mock_md):
     assert mock_om.place_order.call_count == 0
 
 
-def test_at_freeze_qty_boundary_allows_entry(mock_om, mock_md):
-    """Boundary: qty == freeze_qty is allowed; strictly greater is refused."""
+def test_just_below_freeze_qty_allows_entry(mock_om, mock_md):
+    """Qty under the freeze cap passes the guard; 27 × 65 = 1755 < 1800."""
     s = IronCondorStrategy(mock_om, mock_md, 'NIFTY')
 
     sr_mgr = MagicMock()
@@ -173,12 +173,34 @@ def test_at_freeze_qty_boundary_allows_entry(mock_om, mock_md):
         return 10.0
     mock_md.get_ltp.side_effect = ltp_side_effect
 
-    # 27 lots × 65 = 1755, below 1800 — should pass. The test fixture's lot_size
-    # is NIFTY_LOT_SIZE (65), so 1800/65 = 27.69 → 27 lots is the largest clean
-    # multiple below the freeze cap.
     s.enter(22000, 12, 22500, 21500, sr_mgr, '19-MAR-2026', 27)
 
     assert mock_om.place_order.call_count == 4  # all four legs went out
+
+
+def test_freeze_qty_breach_for_banknifty_uses_banknifty_cap(mock_om, mock_md):
+    """BANKNIFTY has its own cap (900). Guard must read the right instrument's
+    setting — not silently fall through to NIFTY's value."""
+    s = IronCondorStrategy(mock_om, mock_md, 'BANKNIFTY')
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE  # 30
+
+    sr_mgr = MagicMock()
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+
+    # Tighten to a symbol-agnostic LTP table — BANKNIFTY strikes differ.
+    mock_md.get_ltp.side_effect = lambda sym: 18.0 if sym.endswith(("C52000", "P48000")) else 5.0 if sym.endswith(("C52100", "P47900")) else 10.0
+
+    # 31 lots × 30 = 930 > 900 FREEZE_QTY_BANKNIFTY, but under 1800 (NIFTY cap).
+    # Using NIFTY's cap here would let the order through, which is the bug we
+    # are pinning against.
+    breaching_lots = 31
+    assert breaching_lots * settings.BANKNIFTY_LOT_SIZE > settings.FREEZE_QTY_BANKNIFTY
+    assert breaching_lots * settings.BANKNIFTY_LOT_SIZE < settings.FREEZE_QTY_NIFTY
+
+    success = s.enter(50000, 12, 51000, 49000, sr_mgr, '19-MAR-2026', breaching_lots)
+
+    assert success is False
+    assert mock_om.place_order.call_count == 0
 
 
 def test_exit_result_contains_entry_date(mock_om, mock_md):
