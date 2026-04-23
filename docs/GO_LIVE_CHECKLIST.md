@@ -136,7 +136,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** In `LiveOrderManager.await_terminal_status`, treat partial-then-cancel as a distinct status. If encountered mid-entry, treat as leg failure and trigger LIVE-03's hedge-and-halt path rather than rollback (rollback on a partial is ambiguous). Regression test: fake broker returning qty=650 order as partial-filled=300 then canceled; assert hedge-and-halt.
 
 ### LIVE-06 · LTP is not an executable price (bid/ask and size blindness)
-- **Status:** Open
+- **Status:** Partial (2026-04-23) — `MarketData.get_quote_book(symbol_key)` + `QuoteBook` dataclass (bid/ask/bid_qty/ask_qty/mid/spread/is_tradable) added with 7 regression tests. Remaining work: wire into IC entry for (a) mid-based credit computation and (b) per-leg liquidity pre-check. Both consumers land naturally as part of LIVE-25's Phase 1 (wing liquidity) and Phase 4 (short-leg limit pricing).
 - **Severity:** Medium
 - **Severity reason:** `get_ltp` returns the last trade price. Short legs execute against the live bid; long legs against the live ask. On deep-OTM options, bid can be 0 with a non-zero last-trade, making the leg un-shortable at any price near LTP.
 - **Priority:** P0
