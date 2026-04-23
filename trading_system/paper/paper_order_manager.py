@@ -105,6 +105,30 @@ class PaperOrderManager:
             return turnover * settings.STT_OPTIONS_SELL
         return 0.0
 
+    def _limit_not_reached_cancel(
+        self, symbol: str, side: str, qty: int, limit_price: float, ltp: float,
+    ) -> Dict:
+        """LIVE-25 Phase 4: LMT order whose limit was never crossed by the book
+        gets CANCELED (no fill). Mirrors Shoonya's behavior when a timeout-IOC
+        limit doesn't trade through."""
+        canceled = {
+            "order_id": self._next_id(),
+            "symbol": symbol, "side": side, "quantity": qty,
+            "fill_qty": 0, "fill_price": 0.0,
+            "stt": 0.0, "brokerage": 0.0,
+            "status": "CANCELED",
+            "timestamp": datetime.now().isoformat(), "paper": True,
+            "reason": "limit_not_reached",
+            "limit_price": limit_price,
+            "ltp_at_submit": ltp,
+        }
+        self._append_order_csv(canceled)
+        logger.info(
+            "PAPER ORDER CANCELED %s %s qty=%d limit=%.2f ltp=%.2f — limit not reached",
+            side, symbol, qty, limit_price, ltp,
+        )
+        return canceled
+
     def place_order(
         self,
         tradingsymbol: str,
@@ -169,10 +193,44 @@ class PaperOrderManager:
             slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
         else:
             slip = max(ltp * settings.SLIPPAGE_PCT, settings.SLIPPAGE_MIN_ABS)
-        if buy_or_sell in ("BUY", "B"):
-            fill = ltp + slip
-        else:
-            fill = ltp - slip
+
+        # LIVE-25: paper-side LMT support. The paper "book" is modeled as
+        # ask=ltp+slip, bid=ltp-slip. A BUY LMT fills only if the limit is at
+        # or above the ask; a SELL LMT only if at or below the bid. Otherwise
+        # the order is CANCELED (paper's equivalent of "timed out without fill").
+        # MKT flow is unchanged — ignores price entirely.
+        if price_type == "LMT":
+            if price <= 0:
+                logger.error("Paper LMT order for %s rejected: no price provided", tradingsymbol)
+                rejected = {
+                    "order_id": self._next_id(),
+                    "symbol": tradingsymbol, "side": buy_or_sell, "quantity": quantity,
+                    "fill_qty": 0, "fill_price": 0.0,
+                    "stt": 0.0, "brokerage": 0.0,
+                    "status": "REJECTED",
+                    "timestamp": datetime.now().isoformat(), "paper": True,
+                    "reason": "limit_price_missing",
+                }
+                self._append_order_csv(rejected)
+                return rejected
+
+            paper_ask = ltp + slip
+            paper_bid = ltp - slip
+            if buy_or_sell in ("BUY", "B"):
+                if price >= paper_ask:
+                    fill = min(price, paper_ask)
+                else:
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+            else:
+                if price <= paper_bid:
+                    fill = max(price, paper_bid)
+                else:
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+        else:  # MKT (default)
+            if buy_or_sell in ("BUY", "B"):
+                fill = ltp + slip
+            else:
+                fill = ltp - slip
 
         fill = round(round(fill / settings.PRICE_TICK) * settings.PRICE_TICK, 2)
 
