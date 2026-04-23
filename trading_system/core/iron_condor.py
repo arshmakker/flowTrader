@@ -256,8 +256,15 @@ class IronCondorStrategy:
     # ── Entry ───────────────────────────────────────────────────────────
 
     def enter(self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any, expiry: str, lots: int) -> bool:
+        # LIVE-25 dispatch: operator flips settings.IC_ENTRY_MODE to 'hedge_first'
+        # to route through enter_hedge_first (wings-as-MKT then shorts-as-LMT).
+        # Default stays 'sequential' (the legacy path) until the proving period
+        # validates the new path on real money.
+        if getattr(settings, "IC_ENTRY_MODE", "sequential") == "hedge_first":
+            return self.enter_hedge_first(spot, vix, sr_high, sr_low, sr_manager, expiry, lots)
+
         sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
-        
+
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
         sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
         lc_sym = self.om.build_option_symbol(self.instrument, expiry, lc, "CE")

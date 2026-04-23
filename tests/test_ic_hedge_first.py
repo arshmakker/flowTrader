@@ -352,6 +352,54 @@ def test_freeze_qty_breach_refuses_under_hedge_first_too(mock_om, mock_md):
 
 # ── Phase 5a: post-fill credit under floor ─────────────────────────────
 
+def test_ic_entry_mode_sequential_does_not_route_to_hedge_first(mock_om, mock_md, monkeypatch):
+    """With IC_ENTRY_MODE='sequential' (default), enter() must NOT call
+    enter_hedge_first — regression guarding against an accidental default flip."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+
+    called = {"hedge_first": False}
+    orig = s.enter_hedge_first
+    def _spy(*a, **k):
+        called["hedge_first"] = True
+        return orig(*a, **k)
+    monkeypatch.setattr(s, "enter_hedge_first", _spy)
+
+    # Legacy path uses get_ltp, not get_quote_book — wire that up.
+    _configure_books_for_clean_ic(mock_md)  # harmless in legacy path
+    mock_md.get_ltp.side_effect = lambda sym: 5.0 if "2220" in sym or "2180" in sym else 18.0
+    mock_om.place_order.return_value = _fill(18.0, 650)
+
+    s.enter(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert called["hedge_first"] is False
+
+
+def test_ic_entry_mode_hedge_first_routes_through_enter_hedge_first(mock_om, mock_md, monkeypatch):
+    """Flipping IC_ENTRY_MODE='hedge_first' dispatches enter() to the new path."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first")
+    _configure_books_for_clean_ic(mock_md)
+
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        if "C22200" in symbol or "P21800" in symbol:
+            return _fill(5.0, q)
+        return _fill(18.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    called = {"hedge_first": False}
+    orig = s.enter_hedge_first
+    def _spy(*a, **k):
+        called["hedge_first"] = True
+        return orig(*a, **k)
+    monkeypatch.setattr(s, "enter_hedge_first", _spy)
+
+    ok = s.enter(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert called["hedge_first"] is True
+    assert ok is True
+
+
 def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md):
     """Live-divergence scenario: pre-entry book healthy, Phase 3 projection
     healthy (uses sc_bid at quote time), BUT the short LMTs fill materially
