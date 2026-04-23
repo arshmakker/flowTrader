@@ -6,12 +6,12 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**6 of 23 addressed.** LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**7 of 23 addressed.** LIVE-08, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. LIVE-01 and LIVE-05 have paper-side stubs but remain Open until live-side is wired; LIVE-06 is plumbing-only pending LIVE-25 wiring. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
 | P0 | LIVE-01, 02, 03, 06, 07, 10, 21, 25 | LIVE-13, LIVE-19, LIVE-20, LIVE-22 |
-| P1 | LIVE-04, 05, 08, 11, 12, 14, 18 | LIVE-23, LIVE-24 |
+| P1 | LIVE-04, 05, 11, 12, 14, 18 | LIVE-08, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -163,7 +163,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** On startup (live mode), call `get_positions` + `get_order_book`, reconstruct the `PositionTracker` from those, and compare against the JSON. Any divergence: halt, log a structured diff, require operator clear. JSON becomes audit artefact, not primary source. Regression test: seed JSON with a leg the fake broker doesn't have; assert startup halts with a structured diff in the log.
 
 ### LIVE-08 · No per-trade reconciliation against broker trade book
-- **Status:** Open
+- **Status:** Addressed (2026-04-23) — `trading_system/ops/reconcile.py` library + `tools/reconcile_trades.py` CLI. Matches engine `paper_orders.csv` legs to broker contract-note CSV on `(symbol, side, time±window)` with tie-break by closest-in-time; emits `data/reconciliation_YYYYMMDD.json` with matched pairs (`price_delta`, `price_delta_pct`, `qty_delta`, `cost_delta`, `time_delta_sec`), unmatched engine legs (phantom fills), unmatched broker legs (rogue fills), and flagged rows where price drift > 2%. CLI exits non-zero on any drift so cron/launchd can alert without parsing JSON. 10 regression tests in `tests/test_reconcile.py`. Live-mode broker-fetcher shim over `api.get_trade_book()` still pending — the reconcile logic itself is independent of source.
 - **Severity:** Medium
 - **Severity reason:** Nothing today ties `paper_trades.csv` rows to broker contract notes. Fills logged in the engine may differ from what actually printed. Without per-trade reconciliation, divergence cannot be attributed to slippage (LIVE-04), fees (LIVE-12), or a real bug.
 - **Priority:** P1
