@@ -74,25 +74,38 @@ class RegimeFilter:
         # Simple check: last value < average of previous 9
         return recent[-1] < (sum(recent[:-1]) / len(recent[:-1]))
 
-    def get_regime_gate(self, day_type: str) -> bool:
+    def get_regime_gate(
+        self, day_type: str, broker_halt_flag: Optional[bool] = None
+    ) -> bool:
         """
         Entry Gate: New positions permitted ONLY when:
+        - market is in a tradable session (LIVE-18: not pre-open, halt, weekend, holiday, ...)
         - day_type == 'RANGING'
         - VIX < 30.0
         - VIX stable for 45 mins
         """
+        # LIVE-18: refuse entries during pre-open, after-close, weekends,
+        # holidays, muhurat-date-outside-window, or a broker-reported halt.
+        # Put this first — no point consulting VIX or day type if we
+        # can't place an order.
+        from strategy_runner import is_tradable_now
+        tradable, reason = is_tradable_now(broker_halt_flag=broker_halt_flag)
+        if not tradable:
+            logger.info(f"Entry Gate BLOCKED: market not tradable (reason={reason})")
+            return False
+
         vix = self.get_vix()
-        
+
         if day_type != 'RANGING':
             logger.info(f"Entry Gate BLOCKED: Day type is {day_type} (not RANGING)")
             return False
-            
+
         if vix >= settings.IC_VIX_MAX:
             logger.info(f"Entry Gate BLOCKED: VIX {vix:.2f} >= Limit {settings.IC_VIX_MAX}")
             return False
-            
+
         if not self.is_vix_stable():
             logger.info(f"Entry Gate BLOCKED: VIX not stable for {settings.IC_VIX_STABLE_MINS} mins")
             return False
-            
+
         return True

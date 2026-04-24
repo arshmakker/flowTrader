@@ -96,6 +96,20 @@ TRADING_HOLIDAYS_IST = {
     '2026-12-25',  # Christmas
 }
 
+# LIVE-18: NSE pre-open session. Quotes flow here but orders queue until
+# regular session opens at 09:15 — entries placed during pre-open get odd
+# fills (auction matching, not continuous). Refuse entry in this window.
+PRE_OPEN_START_IST = "09:00"
+PRE_OPEN_END_IST = "09:15"
+
+# LIVE-18: Muhurat sessions — days where the *regular* session is closed but
+# a short trading window is open (e.g. Diwali evening). Populate from the
+# NSE annual muhurat circular. Shape: list of {date, open, close} in IST.
+# If present, the listed date becomes tradable ONLY within [open, close] —
+# outside that window the same date is non-tradable even if the holiday
+# list does not include it. Leave empty until the official circular lands.
+MUHURAT_SESSIONS: list = []  # e.g. [{"date": "2026-11-08", "open": "18:15", "close": "19:15"}]
+
 
 # ══ VIX TIERS & OTM DISTANCES ══════════════════════════════════════
 # VIX < 14: 150-200 OTM, 50 width
