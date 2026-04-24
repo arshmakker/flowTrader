@@ -785,6 +785,25 @@ def run():
                 log.info("Market closed. Exiting loop.")
                 break
 
+            # LIVE-11: intra-day margin shortfall. SEBI peak-margin snapshots
+            # hit at random intervals; a position that passed LIVE-10's
+            # pre-entry check can still hit shortfall if spot moves or SPAN
+            # re-prices. Halt new entries on any broker-reported shortfall;
+            # existing positions keep being monitored/harvested.
+            if not settings.PAPER_TRADE_MODE and not risk.halted:
+                shortfall = order_mgr.get_margin_shortfall()
+                if shortfall > 0:
+                    log.critical("LIVE-11 intraday margin shortfall ₹%.2f — halting new entries.", shortfall)
+                    if alerts is not None:
+                        alerts.send(Alert(
+                            event="intraday_margin_shortfall",
+                            severity="critical",
+                            title="RegimeTrader: intraday margin shortfall",
+                            body=f"Broker reports margin shortfall of Rs {shortfall:,.2f}. New entries halted; reconcile against broker before clearing.",
+                        ))
+                    risk.halted = True
+                    risk.stop_hit_at = datetime.now()
+
             # 2. End-of-day: force-exit expiring positions; also flatten if
             #    next day is not a trading day or if next-session DTE would
             #    drop below IC_DTE_THRESHOLD.

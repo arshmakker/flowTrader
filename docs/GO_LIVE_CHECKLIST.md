@@ -11,7 +11,7 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 | Priority | Open | Addressed |
 |---|---|---|
 | P0 | LIVE-01 (wiring) | LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
-| P1 | LIVE-04, 11, 14 | LIVE-05, LIVE-08, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
+| P1 | LIVE-04, 14 | LIVE-05, LIVE-08, LIVE-11, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -201,7 +201,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Add `broker.get_limits()` to `MarketData` (or a new `AccountInfo` adapter). Before leg 1, compute required SPAN+Exposure for the 4-leg structure at our lot size; refuse entry if available margin < required × 1.2 (buffer for intraday shifts). Regression test: stub limits to 0.5× required; assert entry is refused and no orders are sent.
 
 ### LIVE-11 · Peak-margin and intraday margin phases unmodeled
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — `LiveOrderManager.get_margin_shortfall()` returns rupees of `marginused - cash` (clamped at 0). `PaperOrderManager.get_margin_shortfall()` returns 0. `main.py`'s main loop polls it once per cycle in live mode and, on any positive shortfall, logs critical, fires a `intraday_margin_shortfall` LIVE-23 alert, and sets `risk.halted=True`. Fails open on query errors (transient API hiccups don't halt — LIVE-24 heartbeat catches silent death). 6 regression tests in `tests/test_intraday_margin.py` pin the solvent/shortfall/fail-open paths on both managers.
 - **Severity:** Medium
 - **Severity reason:** SEBI peak-margin rules snapshot margin at intervals through the day. A position that passed margin at entry can trigger a shortfall later if the index moves, especially near the 15:00 snapshot.
 - **Priority:** P1

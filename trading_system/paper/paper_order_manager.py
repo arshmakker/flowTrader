@@ -95,6 +95,10 @@ class PaperOrderManager:
         branch monkeypatch this to a small number."""
         return float("inf")
 
+    def get_margin_shortfall(self) -> float:
+        """LIVE-11: paper has no broker to be short against."""
+        return 0.0
+
     @staticmethod
     def build_option_symbol(
         symbol: str, expiry: str, strike: float, opt_type: str

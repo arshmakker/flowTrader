@@ -134,6 +134,26 @@ class LiveOrderManager:
         )
         return order
 
+    def get_margin_shortfall(self) -> float:
+        """LIVE-11: rupees of intra-day margin shortfall (marginused > cash).
+        Returns 0 when solvent. Fails open on query error — the LIVE-24
+        heartbeat catches a dead process; we don't want a transient API
+        blip to spuriously halt trading.
+        """
+        try:
+            limits = self.api.get_limits() or {}
+        except Exception:
+            logger.exception("LIVE-11 margin query get_limits() failed; reporting 0 shortfall")
+            return 0.0
+        if not isinstance(limits, dict):
+            return 0.0
+        try:
+            cash = float(limits.get("cash", 0) or 0)
+            used = float(limits.get("marginused", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, used - cash)
+
     def get_available_margin(self) -> float:
         """LIVE-10: query Shoonya ``get_limits()`` and return available margin
         as ``cash - marginused``. Fails closed — any error or malformed
