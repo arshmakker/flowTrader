@@ -15,13 +15,27 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from trading_system.config import settings
+from trading_system.core.fees import compute_taxes_and_fees
 
 logger = logging.getLogger(__name__)
 
+# LIVE-12: CSV now carries the full six-component cost stack so
+# ops/reconcile.py can diff every charge against the broker contract note
+# rather than eating a fat opaque "costs" delta.
 _ORDERS_CSV_COLUMNS = [
     "timestamp", "order_id", "symbol", "side", "quantity",
-    "fill_price", "stt", "brokerage", "status", "reason", "paper",
+    "fill_price",
+    "stt", "brokerage", "exch_txn", "sebi", "stamp", "gst", "taxes_total",
+    "status", "reason", "paper",
 ]
+
+# Zero-cost stub used on REJECTED/CANCELED orders that never filled — no
+# charges apply since no trade happened. Kept as a single dict so every
+# non-fill path stays consistent.
+_ZERO_FEES = {
+    "stt": 0.0, "brokerage": 0.0, "exch_txn": 0.0,
+    "sebi": 0.0, "stamp": 0.0, "gst": 0.0, "taxes_total": 0.0,
+}
 
 
 class PaperOrderManager:
@@ -96,15 +110,6 @@ class PaperOrderManager:
         ot = opt_type[0] if opt_type else "C"  # CE→C, PE→P
         return f"NFO|{symbol}{exp_str}{ot}{int(strike)}"
 
-    @staticmethod
-    def _calc_stt(symbol: str, side: str, price: float, qty: int) -> float:
-        turnover = price * qty
-        if "FUT" in symbol:
-            return turnover * settings.STT_FUTURES
-        if side == "SELL" or side == "S":
-            return turnover * settings.STT_OPTIONS_SELL
-        return 0.0
-
     def _limit_not_reached_cancel(
         self, symbol: str, side: str, qty: int, limit_price: float, ltp: float,
     ) -> Dict:
@@ -115,7 +120,7 @@ class PaperOrderManager:
             "order_id": self._next_id(),
             "symbol": symbol, "side": side, "quantity": qty,
             "fill_qty": 0, "fill_price": 0.0,
-            "stt": 0.0, "brokerage": 0.0,
+            **_ZERO_FEES,
             "status": "CANCELED",
             "timestamp": datetime.now().isoformat(), "paper": True,
             "reason": "limit_not_reached",
@@ -153,8 +158,7 @@ class PaperOrderManager:
                     "quantity": quantity,
                     "fill_qty": 0,
                     "fill_price": 0.0,
-                    "stt": 0.0,
-                    "brokerage": 0.0,
+                    **_ZERO_FEES,
                     "status": "REJECTED",
                     "timestamp": datetime.now().isoformat(),
                     "paper": True,
@@ -178,8 +182,7 @@ class PaperOrderManager:
                 "quantity": quantity,
                 "fill_qty": 0,
                 "fill_price": 0.0,
-                "stt": 0.0,
-                "brokerage": 0.0,
+                **_ZERO_FEES,
                 "status": "REJECTED",
                 "timestamp": datetime.now().isoformat(),
                 "paper": True,
@@ -206,7 +209,7 @@ class PaperOrderManager:
                     "order_id": self._next_id(),
                     "symbol": tradingsymbol, "side": buy_or_sell, "quantity": quantity,
                     "fill_qty": 0, "fill_price": 0.0,
-                    "stt": 0.0, "brokerage": 0.0,
+                    **_ZERO_FEES,
                     "status": "REJECTED",
                     "timestamp": datetime.now().isoformat(), "paper": True,
                     "reason": "limit_price_missing",
@@ -234,7 +237,7 @@ class PaperOrderManager:
 
         fill = round(round(fill / settings.PRICE_TICK) * settings.PRICE_TICK, 2)
 
-        stt = self._calc_stt(tradingsymbol, buy_or_sell, fill, quantity)
+        fees = compute_taxes_and_fees(tradingsymbol, buy_or_sell, fill, quantity)
 
         order = {
             "order_id": self._next_id(),
@@ -243,8 +246,13 @@ class PaperOrderManager:
             "quantity": quantity,
             "fill_qty": quantity,
             "fill_price": fill,
-            "stt": round(stt, 2),
-            "brokerage": settings.BROKERAGE_PER_ORDER,
+            "stt": fees["stt"],
+            "brokerage": fees["brokerage"],
+            "exch_txn": fees["exch_txn"],
+            "sebi": fees["sebi"],
+            "stamp": fees["stamp"],
+            "gst": fees["gst"],
+            "taxes_total": fees["total"],
             "status": "COMPLETE",
             "timestamp": datetime.now().isoformat(),
             "paper": True,
@@ -254,7 +262,9 @@ class PaperOrderManager:
             self.tracker.add_position(order)
         self._append_order_csv(order)
         logger.info(
-            "PAPER ORDER %s %s %d @ %.2f (stt=%.2f)",
-            buy_or_sell, tradingsymbol, quantity, fill, stt,
+            "PAPER ORDER %s %s %d @ %.2f (fees=₹%.2f stt=%.2f brok=%.2f exch=%.2f sebi=%.2f stamp=%.2f gst=%.2f)",
+            buy_or_sell, tradingsymbol, quantity, fill,
+            fees["total"], fees["stt"], fees["brokerage"],
+            fees["exch_txn"], fees["sebi"], fees["stamp"], fees["gst"],
         )
         return order

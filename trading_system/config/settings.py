@@ -130,9 +130,23 @@ SLIPPAGE_OTM_THRESHOLD = 50.0
 # Quote sanity guard to avoid corrupt option fills from bad ticks/token mixups.
 PAPER_OPTION_LTP_MIN = 0.05
 PAPER_OPTION_LTP_MAX = 5000.0
-STT_OPTIONS_SELL = 0.0005
-STT_FUTURES = 0.0001
-BROKERAGE_PER_ORDER = 5.0
+# LIVE-12: Full Indian F&O options cost stack. Previously only STT (stale at
+# 0.05%, three Budget-revisions behind) and a flat ₹5 brokerage were applied —
+# exchange txn / SEBI / stamp / GST were missing, under-stating paper costs by
+# ~₹60-80 per IC leg and making LIVE-08 reconciliation unusable.
+#
+# Rates verified 2026-04-24 against Shoonya FAQ (brokerage) + Zerodha's charges
+# page (exch/sebi/stamp/gst base) + Budget 2026 circular (STT hike to 0.15%
+# effective 2026-04-01). See trading_system/core/fees.py for the calculation.
+FEES_NIFTY_OPT = {
+    "brokerage_per_order": 5.0,   # Shoonya flat ₹5 per executed order
+    "stt_sell_pct": 0.0015,       # 0.15% on SELL premium (Budget 2026)
+    "stt_exercise_pct": 0.0015,   # 0.15% on intrinsic × qty on ITM exercise
+    "exch_txn_pct": 0.0003553,    # NSE F&O options, both sides
+    "sebi_pct": 0.000001,         # ₹10/crore = 0.0001% of turnover, both sides
+    "stamp_buy_pct": 0.00003,     # 0.003% on BUY premium only
+    "gst_pct": 0.18,              # 18% of (brokerage + exch_txn + sebi)
+}
 
 # ══ LIVE ORDER POLLING ════════════════════════════════════════════════
 # Seconds between each poll of single_order_history while awaiting fill.

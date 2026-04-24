@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List
 
 from trading_system.config import settings
+from trading_system.core.fees import compute_taxes_and_fees
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,13 @@ class PaperPositionTracker:
         qty = order["quantity"]
         price = order["fill_price"]
         side = order["side"]
-        order_costs = order.get("stt", 0.0) + order.get("brokerage", 0.0)
+        # LIVE-12: order dicts now carry the full six-component cost stack
+        # (taxes_total). Prefer that; fall back to stt+brokerage only for
+        # legacy orders produced before LIVE-12 landed.
+        order_costs = order.get(
+            "taxes_total",
+            order.get("stt", 0.0) + order.get("brokerage", 0.0),
+        )
 
         if sym in self._positions:
             pos = self._positions[sym]
@@ -77,21 +84,15 @@ class PaperPositionTracker:
         else:
             gross = (pos["avg_price"] - exit_price) * abs_qty
 
-        exit_stt = PaperPositionTracker._estimate_exit_stt(symbol, pos, exit_price, abs_qty)
-        exit_brokerage = settings.BROKERAGE_PER_ORDER
-        total_costs = pos["costs"] + exit_stt + exit_brokerage
+        # LIVE-12: exit side pays the full six-component cost stack, not just
+        # STT + flat brokerage. Long-leg exits (SELL) pay STT but no stamp;
+        # short-leg exits (BUY) pay stamp but no STT — delegated to the fee
+        # engine so asymmetry stays correct.
+        exit_side = "SELL" if pos["qty"] > 0 else "BUY"
+        exit_fees = compute_taxes_and_fees(symbol, exit_side, exit_price, abs_qty)
+        total_costs = pos["costs"] + exit_fees["total"]
 
         return gross - total_costs
-
-    @staticmethod
-    def _estimate_exit_stt(symbol: str, pos: Dict, exit_price: float, qty: int) -> float:
-        turnover = exit_price * qty
-        if "FUT" in symbol:
-            return turnover * settings.STT_FUTURES
-        exit_side = "SELL" if pos["qty"] > 0 else "BUY"
-        if exit_side == "SELL":
-            return turnover * settings.STT_OPTIONS_SELL
-        return 0.0
 
     def get_unrealised_pnl(self, market_data: Any) -> float:
         total = 0.0

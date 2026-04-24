@@ -211,7 +211,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Poll margin usage vs availability once per cycle in the monitor loop. On shortfall > 0, halt new entries; on shortfall > configurable threshold, proactively harvest or hedge. Regression test: drop available margin below used margin mid-session; assert entry halt fires.
 
 ### LIVE-12 · Cost stack excludes GST, exchange transaction charges, SEBI fees, stamp duty
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — `compute_taxes_and_fees(symbol, side, price, qty)` in `trading_system/core/fees.py` returns the full six-component stack (brokerage, STT, exch_txn, SEBI, stamp, GST, total). Applied in `PaperOrderManager._build_fill()` on every entry and in `PaperPositionTracker.close_position()` on every exit — side-asymmetry (STT only on SELL, stamp only on BUY) is preserved. Rates pinned in `settings.FEES_NIFTY_OPT`, verified 2026-04-24 against Shoonya FAQ (brokerage ₹5 flat) + Zerodha's charges page (exch 0.03553%, SEBI ₹10/cr, stamp 0.003% BUY, GST 18% base=brok+exch+sebi) + Budget 2026 STT hike (0.15% effective 2026-04-01, up from 0.10%). Previous setting was 0.05% — three Budget-revisions stale. Paper-orders CSV widened to carry all six components so `ops/reconcile.py` can diff each line against the Shoonya contract note (already referenced via its 6-column `cost_cols` tuple). 16 new regression tests in `tests/test_fees.py` pin each component, the GST base exclusion (STT+stamp not GSTed), side-asymmetry, worked ₹68.31 SELL / ₹7-ish BUY examples, and a rates-block guard that fails loudly if `FEES_NIFTY_OPT` is edited without test updates.
 - **Severity:** Medium
 - **Severity reason:** Paper layer models only STT on the sell side + flat ₹5 brokerage per order. Live adds ~₹50–₹200 per round-trip 4-leg cycle depending on tier. The 1% harvest threshold is already near break-even at 10 lots; these missing costs can flip cycles net-negative.
 - **Priority:** P1
@@ -358,7 +358,7 @@ Prioritised by exposure prevention first, then decision-quality:
 7. **LIVE-25** — hedge-first entry sequencing. Converts the naked-short exposure scenario into a bounded-premium scenario by construction. Narrows LIVE-03.
 8. **LIVE-03** — rollback hedge path. Now scoped to the one-wing-fails edge case, not the unbounded-naked-short scenario.
 9. **LIVE-02** — post-fill credit re-check. Becomes LIVE-25's Phase 5a gate.
-10. **LIVE-12, LIVE-04, LIVE-08** — cost stack + slippage calibration + per-trade reconciliation. Together these restore trust in paper numbers.
+10. ~~**LIVE-12**~~, **LIVE-04, LIVE-08** — cost stack (done 2026-04-24) + slippage calibration + per-trade reconciliation. Together these restore trust in paper numbers.
 11. ~~**LIVE-21** — gate evaluator on reconciliation. The key deliverable that allows a credible GO LIVE verdict.~~ Done 2026-04-23.
 12. **LIVE-05** — partials. Finish category 2 before proving period.
 13. **LIVE-14** — WS + latency-bound stop. Substantial work; parallelisable with proving period.
