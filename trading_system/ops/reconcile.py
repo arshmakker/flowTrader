@@ -299,3 +299,23 @@ def write_report(report: ReconciliationReport, path: str) -> None:
     with open(tmp, "w") as f:
         json.dump(report.to_dict(), f, indent=2, default=str)
     os.replace(tmp, path)
+
+
+def load_reconciliation_reports(data_dir: str) -> List[Dict]:
+    """Discover and load every ``reconciliation_YYYYMMDD.json`` in ``data_dir``.
+
+    Consumed by the go-live evaluator (LIVE-21). Unreadable/corrupt files are
+    skipped with a warning rather than aborting, because a single bad report
+    shouldn't prevent the evaluator from running over the rest.
+    """
+    import glob
+
+    pattern = os.path.join(data_dir, "reconciliation_*.json")
+    reports: List[Dict] = []
+    for path in sorted(glob.glob(pattern)):
+        try:
+            with open(path) as f:
+                reports.append(json.load(f))
+        except (OSError, ValueError) as e:
+            logger.warning("skipping unreadable reconciliation report %s: %s", path, e)
+    return reports

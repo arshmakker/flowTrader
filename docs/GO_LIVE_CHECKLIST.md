@@ -332,7 +332,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 ## Category 7 — Meta
 
 ### LIVE-21 · Go-live evaluator grades paper-optimistic numbers
-- **Status:** Open
+- **Status:** Addressed 2026-04-23 — `live_reconciled_trades` check added; evaluator caps verdict at KEEP PAPER TRADING unless `GL_MIN_RECONCILED_DAYS` (=10) days of LIVE-08 reports exist with every matched leg within `GL_RECONCILED_PRICE_DRIFT_PCT` (=2%) and zero unmatched legs. Stricter than the original aggregate-PnL spec: per-leg drift is checked against a pinned threshold re-derived in the evaluator (doesn't trust the writer's `flagged_count`, which depends on the operator's `--flag-pct`). Loader lives at `trading_system.ops.reconcile.load_reconciliation_reports()`. Regressions pinned in `tests/test_go_live_evaluator.py` (11 new tests) and `tests/test_reconcile.py` (3 loader tests).
 - **Severity:** High
 - **Severity reason:** `GoLiveEvaluator` enforces win rate, win/loss ratio, drawdown, and PnL thresholds — but computes them entirely against paper fills. The fill model (LIVE-04, LIVE-05, LIVE-06) and cost model (LIVE-12) are systematically biased optimistic. A "GO LIVE" verdict today does not mean live would pass the same thresholds.
 - **Priority:** P0
@@ -359,7 +359,7 @@ Prioritised by exposure prevention first, then decision-quality:
 8. **LIVE-03** — rollback hedge path. Now scoped to the one-wing-fails edge case, not the unbounded-naked-short scenario.
 9. **LIVE-02** — post-fill credit re-check. Becomes LIVE-25's Phase 5a gate.
 10. **LIVE-12, LIVE-04, LIVE-08** — cost stack + slippage calibration + per-trade reconciliation. Together these restore trust in paper numbers.
-11. **LIVE-21** — gate evaluator on reconciliation. The key deliverable that allows a credible GO LIVE verdict.
+11. ~~**LIVE-21** — gate evaluator on reconciliation. The key deliverable that allows a credible GO LIVE verdict.~~ Done 2026-04-23.
 12. **LIVE-05** — partials. Finish category 2 before proving period.
 13. **LIVE-14** — WS + latency-bound stop. Substantial work; parallelisable with proving period.
 14. **LIVE-11, LIVE-18, BUG-07** — peak margin, market anomalies, mid-session auth recovery. Robustness layer.

@@ -253,3 +253,38 @@ def test_closest_broker_leg_wins_on_multiple_candidates(tmp_path):
     # The other one is unmatched broker-side.
     assert len(report.unmatched_broker) == 1
     assert report.unmatched_broker[0].fill_price == 10.5
+
+
+# ── LIVE-21 loader helper — feeds the go-live evaluator ────────────────
+
+def test_load_reconciliation_reports_discovers_and_sorts_by_date(tmp_path):
+    # Two valid reports and one sibling file that should be ignored.
+    (tmp_path / "reconciliation_20260422.json").write_text(
+        json.dumps({"date": "2026-04-22", "matched_count": 4})
+    )
+    (tmp_path / "reconciliation_20260421.json").write_text(
+        json.dumps({"date": "2026-04-21", "matched_count": 3})
+    )
+    (tmp_path / "paper_trades.csv").write_text("not-a-report")
+
+    reports = rec.load_reconciliation_reports(str(tmp_path))
+
+    assert len(reports) == 2
+    # Glob order == lexical == chronological for YYYYMMDD-named files.
+    assert [r["date"] for r in reports] == ["2026-04-21", "2026-04-22"]
+
+
+def test_load_reconciliation_reports_skips_corrupt_files_without_raising(tmp_path):
+    (tmp_path / "reconciliation_20260422.json").write_text('{"date": "2026-04-22"}')
+    (tmp_path / "reconciliation_20260423.json").write_text("{not valid json")
+
+    reports = rec.load_reconciliation_reports(str(tmp_path))
+
+    # Corrupt file is skipped, not fatal — evaluator can still run on the rest.
+    assert len(reports) == 1
+    assert reports[0]["date"] == "2026-04-22"
+
+
+def test_load_reconciliation_reports_empty_on_missing_dir(tmp_path):
+    missing = tmp_path / "nope"
+    assert rec.load_reconciliation_reports(str(missing)) == []

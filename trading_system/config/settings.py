@@ -177,6 +177,12 @@ GL_MIN_DAYS = 10
 GL_MAX_DD_PCT = 5.0
 GL_MAX_PLAUSIBLE_WR = 90.0
 GL_PLAUSIBLE_WR_MIN_TRADES = 30
+# LIVE-21: reconciliation gate — N days of engine-vs-broker reconciliation
+# reports with every matched leg within the pinned drift threshold, and no
+# unmatched legs on either side. Until that bar is met, verdict caps at
+# KEEP PAPER TRADING regardless of paper-side numbers.
+GL_MIN_RECONCILED_DAYS = 10
+GL_RECONCILED_PRICE_DRIFT_PCT = 0.02
 
 # ══ DATA PATHS ═══════════════════════════════════════════════════════
 DATA_DIR = "data"
