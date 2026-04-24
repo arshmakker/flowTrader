@@ -11,7 +11,7 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 | Priority | Open | Addressed |
 |---|---|---|
 | P0 | LIVE-01 (wiring) | LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
-| P1 | LIVE-04, 05, 11, 14 | LIVE-08, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
+| P1 | LIVE-04, 11, 14 | LIVE-05, LIVE-08, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -125,7 +125,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** During the proving period, collect per-leg broker fill prices vs quoted LTP and fit an empirical slippage model keyed off `(moneyness, VIX_tier, side)`. Apply that model to paper as a calibrated floor. Regression test: inject a broker fill at LTP + ₹3 on a short leg priced at ₹20; assert paper model's calibrated slippage lies within 25% of observed.
 
 ### LIVE-05 · Partial fills are not handled
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — both entry paths now treat a partial-fill event as a halt trigger, and the hedge-first Phase 5b correctly unwinds partial-filled shorts by their actual `fill_qty` rather than the requested `qty` (which was over-reversing into net-LONG exposure on the short strike — a real bug surfaced during LIVE-05 triage). Legacy `enter()`: `_handle_partial_fill_halt` always populates `_last_rollback_stuck_legs` with a `partial_fill_during_entry` sentinel even when every reversal completes cleanly, so main.py's drain escalates to `risk.escalate_rollback_failure` and the LIVE-23 critical alert fires. Hedge-first `enter_hedge_first()` Phase 5b: partial-filled SC/SP are reversed by `sc_fill_qty`/`sp_fill_qty`, and a `partial_fill_during_hedge_first_entry` sentinel escalates halt. Clean non-fills (fill_qty=0) intentionally do NOT escalate — that's a thin-liquidity case where the next cycle's retry is appropriate. 5 regression tests in `tests/test_partial_fill_halt.py` pin both escalation paths, the fill_qty-not-qty reversal invariant, the reversal-also-incomplete double-record case, and the no-escalate-on-clean-nonfill boundary.
 - **Severity:** Medium
 - **Severity reason:** Shoonya returns `COMPLETE` only when total quantity fills. A 10-lot (650-qty) order on a deep OTM leg can fill 300 and then stall. The tracker and strategy have no representation for this state.
 - **Priority:** P1

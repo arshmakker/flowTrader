@@ -135,11 +135,30 @@ class IronCondorStrategy:
             persist_stuck_legs(stuck)
 
     def _handle_partial_fill_halt(self, placed_orders: List[Dict]) -> None:
-        """Reverse whatever fill_qty actually filled after a partial-fill CANCELED.
+        """LIVE-05: reverse partial fills and ALWAYS escalate to halt.
 
-        Records stuck legs and signals halt via _last_rollback_stuck_legs.
-        LIVE-05: full hedge path to be added when LIVE-03 hedge logic lands.
+        A partial fill during entry is a liquidity-stress signal — the next
+        cycle is likely to hit the same book condition. Per LIVE-05's spec,
+        this is treated as a leg-failure event that demands operator
+        attention, not a silent retry. Even when every reversal reports
+        ``fill_qty == requested``, the halt sentinel is recorded so
+        ``main.py``'s drain escalates to ``risk.escalate_rollback_failure``
+        and the LIVE-23 critical alert fires.
         """
+        # Snapshot of the partial-fill event itself, regardless of how the
+        # reversal attempts go.
+        partial_legs_info = [
+            {
+                "symbol": o.get("symbol"),
+                "side": o.get("side"),
+                "fill_qty": o.get("fill_qty", 0),
+                "requested_qty": o.get("quantity", 0),
+                "status": o.get("status"),
+            }
+            for o in placed_orders
+            if o.get("fill_qty", 0) > 0
+        ]
+
         stuck: List[Dict] = []
         for order in reversed(placed_orders):
             fq = order.get("fill_qty", 0)
@@ -171,8 +190,15 @@ class IronCondorStrategy:
                         tracker.close_position(symbol, reverse.get("fill_price", 0.0))
                     except Exception:
                         logger.exception("IC %s tracker unwind failed after partial fill of %s", self.instrument, symbol)
-        self._last_rollback_stuck_legs = stuck
-        persist_stuck_legs(stuck)
+
+        event_record = {
+            "symbol": "(entry-partial-fill-event)",
+            "reason": "partial_fill_during_entry",
+            "partial_legs": partial_legs_info,
+            "reversal_incomplete_count": len(stuck),
+        }
+        self._last_rollback_stuck_legs = [event_record] + stuck
+        persist_stuck_legs(self._last_rollback_stuck_legs)
 
     def _log_credit_rejection(
         self,
@@ -588,17 +614,39 @@ class IronCondorStrategy:
 
         if not (sc_filled and sp_filled):
             # ── Phase 5b: unwind everything ─────────────
+            # LIVE-05: short legs may PARTIAL-fill (CANCELED with fill_qty > 0).
+            # Unwinding by `qty` in that case over-buys and leaves NET LONG
+            # exposure on the short strike — worse than the original short.
+            # Use the actual filled quantity for each short-side reversal.
+            sc_fill_qty = int(sc_order.get("fill_qty", 0))
+            sp_fill_qty = int(sp_order.get("fill_qty", 0))
             logger.error(
-                "IC %s Phase 5b: short(s) did not fill (SC=%s, SP=%s); unwinding "
-                "any filled shorts + both wings",
-                self.instrument, sc_order.get("status"), sp_order.get("status"),
+                "IC %s Phase 5b: short(s) did not fill cleanly (SC status=%s fill=%d/%d, "
+                "SP status=%s fill=%d/%d); unwinding filled portions + both wings",
+                self.instrument,
+                sc_order.get("status"), sc_fill_qty, qty,
+                sp_order.get("status"), sp_fill_qty, qty,
             )
-            if sc_filled:
-                self.om.place_order(sc_sym, "BUY", qty)
-            if sp_filled:
-                self.om.place_order(sp_sym, "BUY", qty)
+            if sc_fill_qty > 0:
+                self.om.place_order(sc_sym, "BUY", sc_fill_qty)
+            if sp_fill_qty > 0:
+                self.om.place_order(sp_sym, "BUY", sp_fill_qty)
             self.om.place_order(lc_sym, "SELL", qty)
             self.om.place_order(lp_sym, "SELL", qty)
+            # LIVE-05: a partial-fill Phase-5b is a liquidity-stress signal —
+            # halt new entries until operator clears, same as legacy enter()'s
+            # _handle_partial_fill_halt.
+            if sc_fill_qty > 0 or sp_fill_qty > 0:
+                self._last_rollback_stuck_legs = [{
+                    "symbol": "(entry-partial-fill-event)",
+                    "reason": "partial_fill_during_hedge_first_entry",
+                    "partial_legs": [
+                        {"symbol": sc_sym, "side": "SELL", "fill_qty": sc_fill_qty, "requested_qty": qty},
+                        {"symbol": sp_sym, "side": "SELL", "fill_qty": sp_fill_qty, "requested_qty": qty},
+                    ],
+                    "reversal_incomplete_count": 0,
+                }]
+                persist_stuck_legs(self._last_rollback_stuck_legs)
             return False
 
         sc_fill = float(sc_order["fill_price"])
