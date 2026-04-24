@@ -67,21 +67,32 @@ def test_sr_manager_buffer_banknifty():
     assert adjusted_pe == 61100.0
 
 
-def test_regime_filter_gates():
+def test_regime_filter_gates(monkeypatch):
+    # LIVE-18: get_regime_gate now consults is_tradable_now() first, so pin
+    # a tradable state regardless of wall-clock. Otherwise this test flaps
+    # based on when in the IST day the suite happens to run.
+    monkeypatch.setattr(
+        "strategy_runner.is_tradable_now",
+        lambda *a, **kw: (True, "regular"),
+    )
+
     api = MagicMock()
     api.get_quotes.return_value = {'lp': '15.0'}
-    
+
     rf = RegimeFilter(api)
-    
-    # Mock history for stability
-    rf._vix_history = [(datetime.now().timestamp(), 15.0)] * 10
-    
+
+    # Mock history for stability — stamps must fall within the rolling window
+    # that is_vix_stable() examines (monotonic clock, last IC_VIX_STABLE_MINS).
+    import time
+    now_mono = time.monotonic()
+    rf._vix_history = [(now_mono - i, 15.0) for i in range(10)]
+
     # RANGING + VIX 15 + Stable = OK
     assert rf.get_regime_gate('RANGING') is True
-    
+
     # TRENDING = BLOCKED
     assert rf.get_regime_gate('TRENDING_UP') is False
-    
+
     # VIX 31 = BLOCKED
     api.get_quotes.return_value = {'lp': '31.0'}
     rf._vix_cache = None # clear cache

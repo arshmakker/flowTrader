@@ -184,12 +184,15 @@ FREEZE_QTY_NIFTY = 1800
 FREEZE_QTY_BANKNIFTY = 900
 
 # ══ LIVE-23: OPERATOR ALERTS ═════════════════════════════════════════
-# Master switch. Defaults False so CI and fresh clones do not accidentally
-# emit alerts. Flip to True once cred.yml's ALERTS_NTFY_TOPIC_URL is set.
-ALERTS_ENABLED = False
+# Enabled 2026-04-24 after the end-to-end ntfy smoke test passed. If
+# cred.yml's ALERTS_NTFY_TOPIC_URL is missing or empty, build_channel
+# degrades gracefully to LogAlertChannel with a warning — no startup
+# crash, just log-only alerts — so this stays safe in CI and fresh
+# clones that don't have cred.yml populated.
+ALERTS_ENABLED = True
 # 'ntfy' | 'log' | 'null'. 'log' writes to the process logger only; 'ntfy'
 # ships to the topic URL configured in cred.yml.
-ALERTS_CHANNEL = "log"
+ALERTS_CHANNEL = "ntfy"
 
 # ══ CACHE TTLs ═══════════════════════════════════════════════════════
 LTP_CACHE_SEC = 2.0
