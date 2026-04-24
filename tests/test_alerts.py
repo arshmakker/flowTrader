@@ -136,6 +136,39 @@ class TestNtfyAlertChannel:
         assert NullAlertChannel().flush() is True
         assert LogAlertChannel().flush() is True
 
+    def test_unicode_title_does_not_silently_drop_alert(self, monkeypatch):
+        """LIVE-23 smoke test surfaced this: HTTP header values must encode as
+        latin-1. Em-dash, ₹, emoji and similar raise UnicodeEncodeError inside
+        urllib3. Before LIVE-23 hardening, the worker swallowed the exception
+        and the alert vanished with only a log warning — operationally silent
+        failure. The alert MUST still POST with a sanitized title rather than
+        vanish."""
+        calls: list[dict] = []
+
+        def fake_post(url, data, headers, timeout):
+            # If the header still contains a non-latin-1 codepoint, urllib3's
+            # real encoder would raise — simulate that strictness here so the
+            # test fails the way production would.
+            for k, v in headers.items():
+                v.encode("latin-1")  # must not raise
+            calls.append({"headers": headers, "data": data})
+            return _FakeResp()
+
+        monkeypatch.setattr("trading_system.ops.alerts.requests.post", fake_post)
+        chan = NtfyAlertChannel("https://ntfy.sh/test-topic")
+
+        # Em-dash — the exact character that broke the LIVE-23 smoke test.
+        assert chan.send(Alert("em_dash", "info", "dedup 1st — should arrive", "body")) is True
+        # Indian rupee — realistic production case for PnL alerts.
+        assert chan.send(Alert("rupee", "warning", "Daily PnL ₹1,065", "body")) is True
+        # Emoji — future operator convenience.
+        assert chan.send(Alert("emoji", "critical", "🚨 combined stop", "body")) is True
+
+        chan._q.join()
+        assert len(calls) == 3, "all three alerts must POST, none silently dropped"
+        # Bodies (UTF-8) are untouched — only the header is sanitized.
+        assert all(c["data"] == b"body" for c in calls)
+
 
 class TestBuildChannel:
     def test_disabled_returns_null(self):

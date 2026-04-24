@@ -142,8 +142,17 @@ class NtfyAlertChannel:
             time.sleep(0.05)
         return True
 
+    @staticmethod
+    def _latin1_safe(value: str) -> str:
+        """HTTP headers must encode as latin-1 (RFC 7230). Titles containing
+        em-dashes, ₹, emoji, or any codepoint >0xFF raise UnicodeEncodeError
+        inside urllib3 and the alert vanishes with only a logged warning.
+        Replace unencodable chars with '?' so the alert still POSTs — the
+        body (UTF-8) carries the full detail anyway."""
+        return value.encode("latin-1", "replace").decode("latin-1")
+
     def _post(self, alert: Alert) -> None:
-        headers = {"Title": alert.title}
+        headers = {"Title": self._latin1_safe(alert.title)}
         if alert.severity == "critical":
             headers["Priority"] = "urgent"
             headers["Tags"] = "rotating_light"
