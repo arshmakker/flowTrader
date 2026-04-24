@@ -37,17 +37,29 @@ from trading_system.auth import shoonya_selenium_auth
 from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
 from trading_system.ops.startup_reconcile import reconcile_startup_positions
 
-if settings.PAPER_TRADE_MODE:
-    from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
-    from trading_system.paper.paper_position_tracker import PaperPositionTracker as PosMgr
-    from trading_system.paper.paper_pnl_engine import PaperPnLEngine as PnLEngine
-else:
-    # Live mode not yet fully integrated for this specific strategist
-    OrderMgr = None
-    PosMgr = None
-    PnLEngine = None
+from trading_system.paper.paper_order_manager import PaperOrderManager
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.live.live_order_manager import LiveOrderManager
 
 DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
+
+
+def _build_order_stack(api, md, trade_logger):
+    """LIVE-01: construct (pos_mgr, order_mgr, pnl_engine) per settings.PAPER_TRADE_MODE.
+
+    PaperPositionTracker and PaperPnLEngine are state containers — mode-agnostic
+    despite the name — so they're shared. Only the order manager swaps. The
+    tracker is threaded into whichever order manager is built, so fills flow
+    into the same in-memory position state regardless of mode.
+    """
+    pos_mgr = PaperPositionTracker()
+    if settings.PAPER_TRADE_MODE:
+        order_mgr = PaperOrderManager(md, pos_mgr)
+    else:
+        order_mgr = LiveOrderManager(api, md, pos_mgr)
+    pnl_engine = PaperPnLEngine(pos_mgr, md, trade_logger)
+    return pos_mgr, order_mgr, pnl_engine
 
 
 def _acquire_pid_lock() -> None:
@@ -617,11 +629,8 @@ def run():
     sr_mgr = SRManager()
     trade_logger = TradeLogger()
     
-    if settings.PAPER_TRADE_MODE:
-        pos_mgr = PosMgr()
-        order_mgr = OrderMgr(md, pos_mgr)
-        pnl_engine = PnLEngine(pos_mgr, md, trade_logger)
-    
+    pos_mgr, order_mgr, pnl_engine = _build_order_stack(api, md, trade_logger)
+
     # Strategies
     nifty_ic = IronCondorStrategy(order_mgr, md, 'NIFTY')
     banknifty_ic = IronCondorStrategy(order_mgr, md, 'BANKNIFTY')
@@ -837,7 +846,7 @@ def run():
                 if not next_day_is_trading:
                     _force_exit_all(strats, pnl_engine, risk)
                     log.info("Pre-holiday/weekend close: force-exited all positions.")
-                if settings.PAPER_TRADE_MODE and pnl_engine:
+                if pnl_engine:
                     pnl_engine.write_snapshot()
                 if collection_started:
                     collector.stop_collection()
@@ -906,7 +915,9 @@ def run():
             _drain_rollback_failures(strats, risk)
 
             # Keep live P&L fresh for dashboards (realised + unrealised).
-            if settings.PAPER_TRADE_MODE and pnl_engine:
+            # LIVE-01/LIVE-24: snapshot must refresh in both modes so the
+            # heartbeat watchdog sees a live process.
+            if pnl_engine:
                 pnl_engine.write_snapshot()
 
             # Persist position + P&L state so a crash/restart can resume cleanly.

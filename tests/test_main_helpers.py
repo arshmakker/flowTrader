@@ -240,3 +240,53 @@ def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypat
     assert len(alerts.sent) == 1
     assert alerts.sent[0].event == "halt_file_detected"
     assert alerts.sent[0].severity == "warning"
+
+
+# ── LIVE-01: _build_order_stack ──────────────────────────────────────────────
+#
+# These pin the main.py wiring that selects LiveOrderManager vs PaperOrderManager
+# at run-time based on settings.PAPER_TRADE_MODE. The prior shape resolved the
+# import-time conditional once against the default (True), so live was
+# unreachable from the running process even with the flag flipped.
+
+def test_build_order_stack_paper_mode_uses_paper_order_manager(tmp_path):
+    from unittest.mock import MagicMock, patch
+    from trading_system.config import settings
+    from trading_system.paper.paper_order_manager import PaperOrderManager
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
+    from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+
+    api, md, tl = MagicMock(), FakeMD(), MagicMock()
+    with patch.object(settings, "PAPER_TRADE_MODE", True), \
+         patch.object(settings, "DATA_DIR", str(tmp_path)):
+        pos, om, pnl = main._build_order_stack(api, md, tl)
+
+    assert isinstance(om, PaperOrderManager)
+    assert isinstance(pos, PaperPositionTracker)
+    assert isinstance(pnl, PaperPnLEngine)
+    # Tracker threaded into the order manager so fills flow into the same state.
+    assert om.tracker is pos
+    # Paper mode must not touch the Shoonya API.
+    api.assert_not_called()
+
+
+def test_build_order_stack_live_mode_uses_live_order_manager(tmp_path):
+    from unittest.mock import MagicMock, patch
+    from trading_system.config import settings
+    from trading_system.live.live_order_manager import LiveOrderManager
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
+    from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+
+    api, md, tl = MagicMock(), FakeMD(), MagicMock()
+    with patch.object(settings, "PAPER_TRADE_MODE", False), \
+         patch.object(settings, "DATA_DIR", str(tmp_path)):
+        pos, om, pnl = main._build_order_stack(api, md, tl)
+
+    assert isinstance(om, LiveOrderManager)
+    # Tracker/PnL containers are mode-agnostic and shared.
+    assert isinstance(pos, PaperPositionTracker)
+    assert isinstance(pnl, PaperPnLEngine)
+    # LiveOrderManager must carry the api handle and the tracker.
+    assert om.api is api
+    assert om.tracker is pos
+    assert om.md is md

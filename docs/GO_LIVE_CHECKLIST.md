@@ -6,11 +6,11 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**15 of 23 addressed.** Fully: LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 has a live-side implementation in `trading_system/live/live_order_manager.py`; the main.py wiring to select it when `PAPER_TRADE_MODE=False` is still pending. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**18 of 23 addressed.** Fully: LIVE-01, LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 live-side implementation in `trading_system/live/live_order_manager.py` is now wired into `main.py`; flipping `PAPER_TRADE_MODE=False` selects it at construction time. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01 (wiring) | LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
+| P0 | — | LIVE-01, LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
 | P1 | LIVE-04, 14 | LIVE-05, LIVE-08, LIVE-11, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
@@ -47,7 +47,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 ## Category 1 — Order lifecycle
 
 ### LIVE-01 · Synchronous order completion is assumed
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — `trading_system/live/live_order_manager.py::LiveOrderManager.place_order` blocks until the order reaches a terminal status (`COMPLETE` / `REJECTED` / `CANCELED`) by polling `single_order_history` with exponential-backoff retry (raises `OrderPollingAbandoned` after `MAX_POLL_ERRORS` consecutive API errors). Public interface is identical to `PaperOrderManager.place_order`, so `IronCondorStrategy` is mode-unaware. `main.py` wiring flipped from an import-time `if PAPER_TRADE_MODE` branch (which resolved once against the default at module load and made the live path unreachable under monkey-patched tests) to a runtime `_build_order_stack(api, md, trade_logger)` helper that selects the class at construction time. `PaperPositionTracker`/`PaperPnLEngine` are kept as shared state containers (mode-agnostic despite the name) — only the order manager swaps. Two downstream gates un-gated as part of the wiring: the cycle-end `pnl_engine.write_snapshot()` and the EOD snapshot write are now mode-agnostic (LIVE-24 heartbeat watches freshness and would starve in live otherwise). Secondary safety win: `pnl_engine.record_trade(...)` and the LIVE-22 daily loss-cap check, which previously would have `NameError`'d in live because `pnl_engine=None`, now actually run. 2 new regression tests in `tests/test_main_helpers.py` pin `_build_order_stack`'s construction and tracker-threading for both modes; full suite 371 green (up from 369). `OrderPollingAbandoned` propagates through `iron_condor.py` (no `try/except` wraps any `place_order` call there) to `main.py`'s cycle-level halt-on-exception handler, which halts, alerts, and persists state — same fate as any other unhandled exception per Axiom 3.
 - **Severity:** High
 - **Severity reason:** The entire IC entry/exit/rollback control flow depends on `place_order()` returning a terminal status on the same call. Shoonya's live API returns orders in `PENDING`/`OPEN` and resolves asynchronously via order-update messages or polling — so today's control flow cannot correctly drive live orders.
 - **Priority:** P0
