@@ -35,6 +35,7 @@ def mock_om():
         f"NFO|{inst}{exp}{type[0]}{int(strike)}"
     )
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     return om
 
 

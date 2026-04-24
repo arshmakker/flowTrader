@@ -15,7 +15,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from unittest.mock import MagicMock
 import pytest
 
-from trading_system.config import settings
 from trading_system.core.margin import estimate_ic_required_margin
 
 
@@ -134,12 +133,11 @@ def _build_strategy_with_mocked_om(available_margin):
     return IronCondorStrategy(order_manager=om, market_data=md, instrument="NIFTY")
 
 
-def test_insufficient_margin_refuses_entry_with_structured_log(caplog, monkeypatch):
+def test_insufficient_margin_refuses_entry_with_structured_log(caplog):
     """The core protection: if broker says we can't afford the IC, refuse
     upfront instead of letting leg-3 reject mid-entry."""
     import logging
     caplog.set_level(logging.ERROR)
-    monkeypatch.setattr(settings, "IC_MARGIN_CHECK_ENABLED", True, raising=False)
 
     strat = _build_strategy_with_mocked_om(available_margin=1_000.0)
     # Required for 10-lot NIFTY IC at 100-pt wings / ₹18 credit ≈ ₹63,960.
@@ -169,20 +167,6 @@ def test_sufficient_margin_passes():
     ) is True
 
 
-def test_margin_check_disabled_is_a_noop(monkeypatch):
-    """Feature flag off → the helper doesn't even query the order manager.
-    Useful for bootstrap / debugging when the operator wants to bypass."""
-    monkeypatch.setattr(settings, "IC_MARGIN_CHECK_ENABLED", False, raising=False)
-    strat = _build_strategy_with_mocked_om(available_margin=1.0)  # would fail if checked
-
-    assert strat._pre_entry_margin_ok(
-        wing_width=100, lot_size=65, lots=10,
-        qty=650, net_credit_unit=18,
-    ) is True
-    # And the order manager was never asked.
-    strat.om.get_available_margin.assert_not_called()
-
-
 def test_margin_query_exception_refuses_entry():
     """If get_available_margin() raises, we can't verify margin — refuse
     entry. Axiom 3: uncertain state halts new entries."""
@@ -195,14 +179,3 @@ def test_margin_query_exception_refuses_entry():
     ) is False
 
 
-def test_buffer_multiplier_is_honoured(monkeypatch):
-    """Raising the buffer from 1.2× to 2.0× must push a previously-sufficient
-    margin into 'insufficient' territory."""
-    # Canonical IC requires 53,300 at 1.0×, 63,960 at 1.2×, 106,600 at 2.0×.
-    strat = _build_strategy_with_mocked_om(available_margin=70_000.0)
-
-    monkeypatch.setattr(settings, "IC_MARGIN_BUFFER_MULT", 1.2, raising=False)
-    assert strat._pre_entry_margin_ok(100, 65, 10, 650, 18) is True
-
-    monkeypatch.setattr(settings, "IC_MARGIN_BUFFER_MULT", 2.0, raising=False)
-    assert strat._pre_entry_margin_ok(100, 65, 10, 650, 18) is False

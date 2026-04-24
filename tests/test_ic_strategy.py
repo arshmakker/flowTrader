@@ -25,6 +25,7 @@ def mock_om():
     }
     # No tracker for these unit tests — BUG-03/BUG-04 unwind paths skip when None.
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     return om
 
 @pytest.fixture

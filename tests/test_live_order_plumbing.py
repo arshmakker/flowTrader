@@ -141,6 +141,7 @@ class TestEntryStateMachine:
         # entry loop's status == "COMPLETE" branch is taken for every leg.
         om.place_order.return_value = _complete(qty=650)
         om.tracker = None
+        om.get_available_margin.return_value = float("inf")
         return om
 
     def test_all_complete_entry_succeeds(self, mock_md, sr_mgr):
@@ -161,6 +162,7 @@ class TestEntryStateMachine:
             _complete(side="SELL"),       # rollback of leg 1
         ]
         om.tracker = None
+        om.get_available_margin.return_value = float("inf")
 
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
@@ -186,6 +188,7 @@ class TestEntryStateMachine:
             _complete(),                      # rollback leg 1
         ]
         om.tracker = None
+        om.get_available_margin.return_value = float("inf")
 
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
@@ -209,6 +212,7 @@ class TestEntryStateMachine:
             _complete(qty=650, side="BUY"),
         ]
         om.tracker = None
+        om.get_available_margin.return_value = float("inf")
 
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
@@ -240,6 +244,7 @@ class TestExitStateMachine:
             _make_order("REJECTED", 0, 650, side="BUY"),
         ]
         om.tracker = None
+        om.get_available_margin.return_value = float("inf")
 
         ic = _make_ic(om, md)
         sr_mgr_m = MagicMock()

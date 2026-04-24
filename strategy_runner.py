@@ -306,27 +306,15 @@ def _muhurat_window_for_date(d) -> Optional["tuple[datetime, datetime]"]:
     return None
 
 
-def is_tradable_now(
-    symbol: Optional[str] = None,
-    now: Optional[datetime] = None,
-    broker_halt_flag: Optional[bool] = None,
-) -> "tuple[bool, str]":
+def is_tradable_now(now: Optional[datetime] = None) -> "tuple[bool, str]":
     """LIVE-18: single authority for whether a new entry may be placed right now.
 
     Returns ``(is_tradable, reason)`` where ``reason`` is a short tag safe to
     log or include in structured IC_REJECT records. The regular session is the
     only tradable window on a normal trading day; pre-open, post-close,
     weekends, holidays, and muhurat-date-outside-window all refuse.
-
-    A ``broker_halt_flag=True`` override refuses regardless of the clock —
-    this is the plumbing hook for a future broker-reported circuit-halt
-    feed. ``symbol`` is accepted for API forwards-compatibility (per-symbol
-    halt flags); today it does not affect the result.
     """
     dt = get_now_ist() if now is None else now
-
-    if broker_halt_flag is True:
-        return (False, "broker_halt")
 
     muhurat = _muhurat_window_for_date(dt.date())
     if muhurat is not None:

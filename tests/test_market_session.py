@@ -161,30 +161,6 @@ def test_malformed_muhurat_entry_is_skipped(monkeypatch):
     assert reason == "regular"
 
 
-# ── Broker halt hook ───────────────────────────────────────────────────
-
-def test_broker_halt_flag_refuses_even_mid_session():
-    """Circuit halt during regular hours: plumbing hook for a future live
-    broker feed. A True halt flag dominates every other state."""
-    ok, reason = is_tradable_now(
-        now=_ist(2026, 4, 22, 11, 0),
-        broker_halt_flag=True,
-    )
-    assert ok is False
-    assert reason == "broker_halt"
-
-
-def test_broker_halt_none_is_ignored():
-    """None = unknown = pass through to clock/calendar checks. Only a
-    positive True flag refuses."""
-    ok, reason = is_tradable_now(
-        now=_ist(2026, 4, 22, 11, 0),
-        broker_halt_flag=None,
-    )
-    assert ok is True
-    assert reason == "regular"
-
-
 # ── RegimeFilter integration — tradability is the FIRST gate ───────────
 
 class _StubApi:
@@ -235,19 +211,3 @@ def test_regime_gate_passes_when_tradable(monkeypatch):
         lambda *a, **kw: (True, "regular"),
     )
     assert rf.get_regime_gate("RANGING") is True
-
-
-def test_regime_gate_forwards_broker_halt_flag(monkeypatch):
-    """The broker_halt_flag kwarg must reach is_tradable_now so a future
-    live caller can refuse entries on a broker circuit-halt signal without
-    needing to rewrite the gate."""
-    rf = _ready_filter(vix_value=18.0)
-    captured = {}
-
-    def _spy(*args, **kwargs):
-        captured["broker_halt_flag"] = kwargs.get("broker_halt_flag")
-        return (False, "broker_halt")
-
-    monkeypatch.setattr("strategy_runner.is_tradable_now", _spy)
-    assert rf.get_regime_gate("RANGING", broker_halt_flag=True) is False
-    assert captured["broker_halt_flag"] is True

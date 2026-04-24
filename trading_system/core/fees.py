@@ -26,50 +26,24 @@ from typing import Dict
 from trading_system.config import settings
 
 
-def _is_option(symbol: str) -> bool:
-    core = symbol.split("|")[-1]
-    tail = core[-6:]
-    return ("C" in tail) or ("P" in tail)
-
-
-def _is_sell(side: str) -> bool:
-    return side in ("SELL", "S")
-
-
-def _is_buy(side: str) -> bool:
-    return side in ("BUY", "B")
-
-
 def compute_taxes_and_fees(
     symbol: str, side: str, price: float, qty: int
 ) -> Dict[str, float]:
-    """Return the full six-component cost breakdown for a single leg-side.
+    """Return the full six-component cost breakdown for a single options leg.
 
     Returns a dict with keys ``brokerage, stt, exch_txn, sebi, stamp, gst, total``.
     All values are rupees rounded to paise. The ``total`` key is the sum of the
     other six — callers should use it rather than re-summing to avoid drift.
-
-    Paper system is IC-only (options) per axioms. Futures arrive here only in
-    future expansions; until then we treat them defensively: brokerage +
-    exch_txn + sebi + gst apply, but STT and stamp rates are currently
-    unpinned for futures so we zero them rather than guess.
     """
     rates = settings.FEES_NIFTY_OPT
-    turnover = max(price, 0.0) * max(qty, 0)
+    turnover = price * qty
+    is_sell = side in ("SELL", "S")
 
     brokerage = rates["brokerage_per_order"] if turnover > 0 else 0.0
     exch_txn = turnover * rates["exch_txn_pct"]
     sebi = turnover * rates["sebi_pct"]
-
-    if _is_option(symbol):
-        stt = turnover * rates["stt_sell_pct"] if _is_sell(side) else 0.0
-        stamp = turnover * rates["stamp_buy_pct"] if _is_buy(side) else 0.0
-    else:
-        # Futures path — STT/stamp rates not pinned. Safer to zero and surface
-        # via reconciliation than ship a wrong guess.
-        stt = 0.0
-        stamp = 0.0
-
+    stt = turnover * rates["stt_sell_pct"] if is_sell else 0.0
+    stamp = turnover * rates["stamp_buy_pct"] if not is_sell else 0.0
     gst = (brokerage + exch_txn + sebi) * rates["gst_pct"]
 
     brokerage_r = round(brokerage, 2)

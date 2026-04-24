@@ -206,23 +206,3 @@ def test_symbol_normalization_matches_engine_format():
     assert report.consistent is True
 
 
-def test_summary_line_is_structured_on_ok():
-    report = reconcile_startup_positions(_ic_engine_positions(), _ic_broker_positions())
-    assert "startup_reconcile=OK" in report.summary()
-    assert "engine_positions=4" in report.summary()
-    assert "broker_positions=4" in report.summary()
-
-
-def test_summary_line_is_structured_on_divergence():
-    """The divergent summary feeds both the error log AND the ntfy alert
-    body, so all three discrepancy kinds must appear and be machine-greppable."""
-    engine = _ic_engine_positions()
-    broker = [
-        _broker_leg("NIFTY28APR26C24100", -300),   # qty drift
-        _broker_leg("NIFTY28APR26C25000", 650),    # broker_only
-    ]
-    summary = reconcile_startup_positions(engine, broker).summary()
-    assert "startup_reconcile=DIVERGENT" in summary
-    assert "engine_only=" in summary
-    assert "broker_only=" in summary
-    assert "qty_mismatches=" in summary

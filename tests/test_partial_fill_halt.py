@@ -94,6 +94,7 @@ def test_legacy_partial_fill_escalates_halt_on_clean_reversal(tmp_path, monkeypa
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     om.place_order.side_effect = [
         _complete(qty=650, side="SELL"),                    # leg 1 SC full
         _canceled_partial(fill_qty=300, qty=650, side="BUY"),  # leg 2 LC partial
@@ -127,6 +128,7 @@ def test_legacy_partial_fill_reversal_incomplete_still_escalates(tmp_path, monke
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     om.place_order.side_effect = [
         _complete(qty=650, side="SELL"),
         _canceled_partial(fill_qty=300, qty=650, side="BUY"),
@@ -155,11 +157,11 @@ def test_hedgefirst_phase5b_partial_short_unwound_by_fill_qty(tmp_path, monkeypa
     instead of FILL qty = net LONG exposure on the short strike. Fix must
     pass the actual fill_qty to the reversing BUY."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
-    monkeypatch.setattr(settings, "IC_MARGIN_CHECK_ENABLED", False, raising=False)
 
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     # Wings fill at 5 (book ask=20 but test controls fill price), shorts would
     # fill at 18 → credit 18+18-5-5 = 26 > IC_MIN_CREDIT=18.
     om.place_order.side_effect = [
@@ -195,11 +197,11 @@ def test_hedgefirst_phase5b_partial_short_escalates_halt(tmp_path, monkeypatch):
     as legacy enter's partial-fill branch). Without this, next cycle tries
     again into the same stressed book."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
-    monkeypatch.setattr(settings, "IC_MARGIN_CHECK_ENABLED", False, raising=False)
 
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     om.place_order.side_effect = [
         _complete(qty=650, side="BUY", fill_price=5.0),          # LC wing
         _complete(qty=650, side="BUY", fill_price=5.0),          # LP wing
@@ -232,11 +234,11 @@ def test_hedgefirst_phase5b_no_partial_does_not_escalate_halt(tmp_path, monkeypa
     wings unwind cleanly, but no halt escalation is needed. The strategy
     would simply try again next cycle."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
-    monkeypatch.setattr(settings, "IC_MARGIN_CHECK_ENABLED", False, raising=False)
 
     om = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
     om.tracker = None
+    om.get_available_margin.return_value = float("inf")
     om.place_order.side_effect = [
         _complete(qty=650, side="BUY", symbol="LC"),
         _complete(qty=650, side="BUY", symbol="LP"),

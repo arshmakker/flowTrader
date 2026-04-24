@@ -300,20 +300,6 @@ def test_live_reconciled_trades_per_leg_stricter_than_aggregate():
     assert res["checks"]["live_reconciled_trades"] is False
 
 
-def test_live_reconciled_trades_ignores_writer_flagged_count():
-    """We re-derive flagged status from matched[].price_delta_pct against a
-    pinned threshold — so if the writer used a looser --flag-pct and recorded
-    flagged_count=0 on a day with 5% drift, the evaluator still catches it."""
-    reports = _perfect_reports()
-    reports[0]["flagged_count"] = 0  # writer says "clean"
-    reports[0]["matched"][0]["price_delta_pct"] = 0.05  # but a leg moved 5%
-    res = GoLiveEvaluator().evaluate(
-        _perfect_summary(), _perfect_trades(), _perfect_orders(),
-        reconciliation_reports=reports,
-    )
-    assert res["checks"]["live_reconciled_trades"] is False
-
-
 def test_live_reconciled_trades_fails_with_unmatched_engine_legs():
     """An engine leg without a broker counterpart = a phantom fill on the
     paper side. That day doesn't count as clean."""

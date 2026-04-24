@@ -260,19 +260,15 @@ class IronCondorStrategy:
         net_credit_unit: float,
     ) -> bool:
         """LIVE-10: reject entry upfront when broker's available margin
-        falls below the IC's max-loss × buffer. The whole point is to
-        prevent a leg-3/leg-4 mid-entry margin rejection that would
-        cascade into LIVE-03's rollback path. Paper mode's order manager
-        reports float('inf') so the check is a no-op there."""
-        if not getattr(settings, "IC_MARGIN_CHECK_ENABLED", True):
-            return True
-        buffer_mult = getattr(settings, "IC_MARGIN_BUFFER_MULT", 1.2)
+        falls below the IC's max-loss × buffer. Prevents a leg-3/leg-4
+        mid-entry rejection that would cascade into LIVE-03's rollback
+        path. Paper mode's order manager reports float('inf') so the
+        check is a no-op there."""
         required = estimate_ic_required_margin(
             wing_width=wing_width,
             lot_size=lot_size,
             lots=lots,
             net_credit_unit=net_credit_unit,
-            buffer=buffer_mult,
         )
         try:
             available = self.om.get_available_margin()
@@ -282,18 +278,11 @@ class IronCondorStrategy:
                 self.instrument,
             )
             return False
-        # Both paper (float('inf')) and live (float) order managers return
-        # numeric. Tests using MagicMock get a mock back — treat non-numeric
-        # as unknown and skip the check rather than crash on the comparison.
-        # Production paths never hit this branch.
-        if not isinstance(available, (int, float)) or isinstance(available, bool):
-            return True
         if available < required:
             logger.error(
                 "IC_REJECT reason=INSUFFICIENT_MARGIN instrument=%s required=%.2f "
-                "available=%.2f buffer=%.2fx wing_width=%.2f credit=%.2f "
-                "qty=%d lots=%d lot_size=%d",
-                self.instrument, required, available, buffer_mult,
+                "available=%.2f wing_width=%.2f credit=%.2f qty=%d lots=%d lot_size=%d",
+                self.instrument, required, available,
                 wing_width, net_credit_unit, qty, lots, lot_size,
             )
             return False
