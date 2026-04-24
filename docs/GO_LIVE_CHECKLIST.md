@@ -6,12 +6,12 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**11 of 23 addressed.** Fully: LIVE-08, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 and LIVE-05 have paper-side stubs; live-side emerges with full hedge-first rollout. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**15 of 23 addressed.** Fully: LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 has a live-side implementation in `trading_system/live/live_order_manager.py`; the main.py wiring to select it when `PAPER_TRADE_MODE=False` is still pending. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
 
 | Priority | Open | Addressed |
 |---|---|---|
-| P0 | LIVE-01, 07, 10, 21 | LIVE-02, LIVE-03, LIVE-06, LIVE-13, LIVE-19, LIVE-20, LIVE-22, LIVE-25 |
-| P1 | LIVE-04, 05, 11, 12, 14, 18 | LIVE-08, LIVE-23, LIVE-24 |
+| P0 | LIVE-01 (wiring) | LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
+| P1 | LIVE-04, 05, 11, 14 | LIVE-08, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
 | P2 | LIVE-09, 17 | — |
 
 Severity scale:
@@ -189,7 +189,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 ## Category 4 — Economics
 
 ### LIVE-10 · No pre-entry margin check
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — `trading_system/core/margin.py::estimate_ic_required_margin(wing_width, lot_size, lots, net_credit_unit, buffer=1.2)` returns the max-loss × buffer upper bound. `get_available_margin()` added to both order managers: `PaperOrderManager` returns `float('inf')` (no-op in paper); `LiveOrderManager` wraps `api.get_limits()` and computes `cash - marginused`, failing-closed to `0.0` on any exception / malformed / non-numeric response. `IronCondorStrategy._pre_entry_margin_ok` consults it right after the FREEZE_QTY guard in BOTH `enter()` (legacy sequential) and `enter_hedge_first()` (LIVE-25 default) paths; refuses with `IC_REJECT reason=INSUFFICIENT_MARGIN instrument=... required=... available=... buffer=...x ...` structured log. Settings: `IC_MARGIN_CHECK_ENABLED=True` + `IC_MARGIN_BUFFER_MULT=1.2`. 15 regression tests in `tests/test_margin_check.py` pin the pure-function arithmetic, both order-manager flavours' happy / error / malformed paths, the structured IC_REJECT log, the query-exception → refuse behavior, the feature flag off-switch, and buffer-multiplier sensitivity.
 - **Severity:** High
 - **Severity reason:** The exact scenario rollback was built for (leg-3 rejected mid-entry) is the one easiest to prevent upfront with a `get_limits()` call.
 - **Priority:** P0

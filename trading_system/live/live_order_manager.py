@@ -134,6 +134,28 @@ class LiveOrderManager:
         )
         return order
 
+    def get_available_margin(self) -> float:
+        """LIVE-10: query Shoonya ``get_limits()`` and return available margin
+        as ``cash - marginused``. Fails closed — any error or malformed
+        response returns 0.0, which guarantees the pre-entry margin check
+        refuses entry. Safety over continuity (Axiom 3).
+        """
+        try:
+            limits = self.api.get_limits()
+        except Exception:
+            logger.exception("LIVE margin query get_limits() failed; reporting 0 available")
+            return 0.0
+        if not isinstance(limits, dict):
+            logger.error("LIVE margin query returned non-dict: %r", type(limits).__name__)
+            return 0.0
+        try:
+            cash = float(limits.get("cash", 0) or 0)
+            used = float(limits.get("marginused", 0) or 0)
+        except (TypeError, ValueError):
+            logger.error("LIVE margin response malformed: %r", limits)
+            return 0.0
+        return max(cash - used, 0.0)
+
     @staticmethod
     def build_option_symbol(
         symbol: str, expiry: str, strike: float, opt_type: str

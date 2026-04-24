@@ -88,6 +88,13 @@ class PaperOrderManager:
         core = tradingsymbol.split("|")[-1]
         return ("C" in core[-6:]) or ("P" in core[-6:])
 
+    def get_available_margin(self) -> float:
+        """LIVE-10: paper mode has no broker margin constraint. Returns
+        infinity so the pre-entry check in IronCondorStrategy.enter is a
+        no-op in paper. Tests that want to exercise the insufficient-margin
+        branch monkeypatch this to a small number."""
+        return float("inf")
+
     @staticmethod
     def build_option_symbol(
         symbol: str, expiry: str, strike: float, opt_type: str

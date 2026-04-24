@@ -183,6 +183,14 @@ PID_FILE = "data/regimetrader.pid"
 FREEZE_QTY_NIFTY = 1800
 FREEZE_QTY_BANKNIFTY = 900
 
+# LIVE-10: pre-entry margin check. Enabled by default. The strategy refuses
+# entry when broker-reported available margin is below the IC's max-loss
+# upper bound × IC_MARGIN_BUFFER_MULT. Lower the buffer with care: at 1.0x
+# an intraday SPAN re-price mid-entry can reject leg 3 or 4 and cascade
+# into LIVE-03 rollback, which is what LIVE-10 is designed to prevent.
+IC_MARGIN_CHECK_ENABLED = True
+IC_MARGIN_BUFFER_MULT = 1.2
+
 # ══ LIVE-23: OPERATOR ALERTS ═════════════════════════════════════════
 # Enabled 2026-04-24 after the end-to-end ntfy smoke test passed. If
 # cred.yml's ALERTS_NTFY_TOPIC_URL is missing or empty, build_channel

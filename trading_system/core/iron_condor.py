@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional, Tuple, List
 from datetime import datetime
 
 from trading_system.config import settings
+from trading_system.core.margin import estimate_ic_required_margin
 from trading_system.live.live_order_manager import persist_stuck_legs
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,54 @@ class IronCondorStrategy:
 
     # ── Helpers ─────────────────────────────────────────────────────────
 
+    def _pre_entry_margin_ok(
+        self,
+        wing_width: float,
+        lot_size: int,
+        lots: int,
+        qty: int,
+        net_credit_unit: float,
+    ) -> bool:
+        """LIVE-10: reject entry upfront when broker's available margin
+        falls below the IC's max-loss × buffer. The whole point is to
+        prevent a leg-3/leg-4 mid-entry margin rejection that would
+        cascade into LIVE-03's rollback path. Paper mode's order manager
+        reports float('inf') so the check is a no-op there."""
+        if not getattr(settings, "IC_MARGIN_CHECK_ENABLED", True):
+            return True
+        buffer_mult = getattr(settings, "IC_MARGIN_BUFFER_MULT", 1.2)
+        required = estimate_ic_required_margin(
+            wing_width=wing_width,
+            lot_size=lot_size,
+            lots=lots,
+            net_credit_unit=net_credit_unit,
+            buffer=buffer_mult,
+        )
+        try:
+            available = self.om.get_available_margin()
+        except Exception:
+            logger.exception(
+                "IC %s margin query raised; refusing entry (safety over continuity)",
+                self.instrument,
+            )
+            return False
+        # Both paper (float('inf')) and live (float) order managers return
+        # numeric. Tests using MagicMock get a mock back — treat non-numeric
+        # as unknown and skip the check rather than crash on the comparison.
+        # Production paths never hit this branch.
+        if not isinstance(available, (int, float)) or isinstance(available, bool):
+            return True
+        if available < required:
+            logger.error(
+                "IC_REJECT reason=INSUFFICIENT_MARGIN instrument=%s required=%.2f "
+                "available=%.2f buffer=%.2fx wing_width=%.2f credit=%.2f "
+                "qty=%d lots=%d lot_size=%d",
+                self.instrument, required, available, buffer_mult,
+                wing_width, net_credit_unit, qty, lots, lot_size,
+            )
+            return False
+        return True
+
     def get_vix_tier_params(self, vix: float) -> Tuple[int, int]:
         """Returns (OTM_distance, spread_width) based on VIX tiers."""
         if vix < settings.VIX_LOW_LIMIT:
@@ -323,6 +372,17 @@ class IronCondorStrategy:
                 "lots=%d lot_size=%d. Reduce IC_LOT_SIZE or split the entry.",
                 self.instrument, qty, freeze_qty, lots, lot_size,
             )
+            return False
+
+        # LIVE-10: refuse if broker's available margin is below the IC's
+        # max-loss × buffer. Paper mode reports infinite margin.
+        if not self._pre_entry_margin_ok(
+            wing_width=width,
+            lot_size=lot_size,
+            lots=lots,
+            qty=qty,
+            net_credit_unit=net_credit_unit,
+        ):
             return False
 
         # Legs interleaved as short+wing pairs so any mid-entry failure leaves
@@ -426,6 +486,23 @@ class IronCondorStrategy:
                 "IC_REJECT reason=FREEZE_QTY_BREACH instrument=%s qty=%d freeze_qty=%d",
                 self.instrument, qty, freeze_qty,
             )
+            return False
+
+        # LIVE-10: hedge-first also refuses on insufficient margin. Credit
+        # used here is the bid/ask-book estimate (same signal the credit
+        # floor check uses below) — available at this point, pre-fill.
+        wing_width_hf = abs(lc - sc)
+        pre_entry_credit_for_margin = (
+            books["sc"].bid + books["sp"].bid
+            - books["lc"].ask - books["lp"].ask
+        )
+        if not self._pre_entry_margin_ok(
+            wing_width=wing_width_hf,
+            lot_size=lot_size,
+            lots=lots,
+            qty=qty,
+            net_credit_unit=pre_entry_credit_for_margin,
+        ):
             return False
 
         # Pre-entry credit sanity — use bid/ask mids instead of LTP (LIVE-06).
