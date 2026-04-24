@@ -35,6 +35,7 @@ from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
 from trading_system.auth import shoonya_selenium_auth
 from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
+from trading_system.ops.startup_reconcile import reconcile_startup_positions
 
 if settings.PAPER_TRADE_MODE:
     from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
@@ -713,6 +714,47 @@ def run():
         risk.halted = True
         risk.stop_hit_at = datetime.now()
         return
+
+    # LIVE-07: broker is the authoritative source of open exposure in live
+    # mode. A crash between leg-2 fill and leg-3 send leaves the engine's
+    # JSON stale (0 legs on disk, 2 at broker) or phantom (JSON says 4,
+    # broker squared off overnight). Reconcile against get_positions BEFORE
+    # entering the loop; any divergence halts startup until operator clears.
+    # Skipped in paper mode — no broker counterpart to compare against.
+    if not settings.PAPER_TRADE_MODE:
+        try:
+            broker_positions = api.get_positions() or []
+        except Exception:
+            log.exception("HALTED at startup: get_positions() call failed; cannot verify broker state")
+            if alerts is not None:
+                alerts.send(Alert(
+                    event="startup_reconcile_failed",
+                    severity="critical",
+                    title="RegimeTrader startup halted - broker query failed",
+                    body="get_positions() raised; engine cannot verify broker state. Inspect and clear.",
+                ))
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
+
+        engine_positions = getattr(pos_mgr, "_positions", {}) or {}
+        report = reconcile_startup_positions(engine_positions, broker_positions)
+        log.info(report.summary())
+        if not report.consistent:
+            log.error(
+                "HALTED at startup: engine and broker positions diverge. %s",
+                report.summary(),
+            )
+            if alerts is not None:
+                alerts.send(Alert(
+                    event="startup_reconcile_divergent",
+                    severity="critical",
+                    title="RegimeTrader startup halted - broker/engine divergence",
+                    body=report.summary(),
+                ))
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
 
     day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False

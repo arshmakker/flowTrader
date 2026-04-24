@@ -151,7 +151,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 ## Category 3 — State vs broker truth
 
 ### LIVE-07 · No startup reconciliation against broker positions / order book
-- **Status:** Open
+- **Status:** Addressed 2026-04-24 — `trading_system/ops/startup_reconcile.py` provides `reconcile_startup_positions(engine_positions, broker_positions) -> StartupReconciliationReport`, a pure function that surfaces every divergence kind (engine_only / broker_only / qty mismatch) in one structured report. Wired into `main.py` between the abnormal-exit guard and the main loop: in live mode only (gated on `not settings.PAPER_TRADE_MODE`), calls `api.get_positions()`, reconciles against `PaperPositionTracker._positions`, and on any divergence halts the process with `risk.halted=True` and fires a `startup_reconcile_divergent` critical alert via the LIVE-23 channel. Broker query exception is itself a halt condition (`startup_reconcile_failed`). Zero-qty Shoonya rows filtered as day-flat; malformed rows (missing `tsym`/`exch`, non-numeric `netqty`, non-dict) skipped defensively. Regression: 14 tests in `tests/test_startup_reconcile.py` covering phantom/hidden/partial-fill divergence, multi-discrepancy aggregation, zero-qty filter, malformed-row safety, and structured-summary grep tags. Open-order-book side of the spec deferred — positions are the dominant live-exposure risk; orders can follow once live shake-down surfaces a concrete need.
 - **Severity:** High
 - **Severity reason:** Today's startup restores state from `data/open_positions.json` and treats that as truth. In live, the broker is the only authoritative source. A crash between leg-2 fill and leg-3 send leaves the broker with 2 legs and the JSON with 0.
 - **Priority:** P0
