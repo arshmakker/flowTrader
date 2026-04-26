@@ -44,6 +44,30 @@ Real token savings come from avoiding **command output** flooding the context, n
 
 **Output pattern when delegating:** finish the work, then say "Run this when you're ready: `<command>`" — single line, copy-pasteable. Numbered if multi-step. No permission-prompt ceremony; the operator already knows the drill. If you need the output back to proceed, say so explicitly so the operator knows to paste it.
 
+## Engineering axiom — code earns its existence
+
+Every line, parameter, branch, flag, test, and abstraction must be justified by a concrete failure mode it prevents. Default to **not** writing it. When unsure, smaller code wins; if the same bug recurs, abstract then.
+
+This axiom governs every engineering and architectural decision in this repo. It overrides "completeness," "consistency with similar code elsewhere," "future-proofing," and any urge to add a knob "just in case." If a proposal can't name the concrete failure mode it prevents — cite the line and the scenario — it doesn't ship.
+
+**Rejected by default:**
+- Defensive branches against inputs that cannot occur — validate only at system boundaries (broker API responses, `cred.yml`, operator input). Trust internal call-sites.
+- Feature flags or settings toggles for safety controls — a disable-able P0 is not P0. Hard-code the gate; let the test suite be the toggle.
+- Speculative parameters for hypothetical future consumers (`symbol=None, broker_halt_flag=None` with no current caller).
+- Dead branches: paths no production code reaches (e.g. a futures branch in an IC-only system).
+- `getattr(settings, "X", default)` when we own `settings.X` — use direct access. The fallback hides config-drift bugs.
+- Test-compat branches in production code — e.g. `isinstance(x, (int, float))` added so a `MagicMock` test doesn't crash. Fix the test, not the production code.
+- Tests that pin log-string format, kwarg-vs-positional call shape, or which internal field was consulted — they break on valid refactors that preserve user-visible behavior.
+- Comments restating what well-named code already says. Comments earn their existence too: only when the *why* is non-obvious (hidden constraint, subtle invariant, workaround for a specific upstream bug).
+- Backwards-compat shims, `_unused` renames of removed symbols, "// removed for X" markers when the code is simply gone. `git log` is the history.
+
+**Required:**
+- Each bug fix ships with a regression test that fails without the fix and passes with it.
+- Pure-deletion fixes are verified by the suite staying green — call that out explicitly in the response, don't skip the verification statement silently.
+- The 5 trading-system axioms in `docs/axioms.md` are sacrosanct. Never propose an amendment unprompted; if a design conflicts with one, flag the conflict and stop.
+
+**Enforcement:** the unprompted 4-question post-session audit per commit (see `memory/feedback_post_session_audit.md`). The audit asks per commit: (1) what concrete bug does this prevent, (2) is any part overbuilt, (3) any dead branches or implementation-pinning tests, (4) does the regression test actually exercise the bug. If a commit can't pass all four, it shouldn't have shipped — and the audit is the mechanism that catches it before the next batch compounds it.
+
 ## What is this project
 
 RegimeTrader is a Python-based automated trading system for NIFTY derivatives (options/futures) on the Indian stock market. It classifies trading days by regime (ranging vs trending), applies VIX-based filters, and executes **Iron Condor** strategies in paper-trading mode via the **Shoonya (Noren) broker API**.
