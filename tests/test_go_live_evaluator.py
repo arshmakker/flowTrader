@@ -36,12 +36,13 @@ def _perfect_trades():
     """Trades DataFrame that passes every trade-level check."""
     rows = []
     for i in range(60):  # 60 trades over 15 days
+        instrument = "NIFTY" if i % 2 else "BANKNIFTY"
         rows.append({
             "date": f"2026-03-{(i % 15) + 1:02d}",
             "time_exit": "14:00:00",
-            "instrument": "NIFTY" if i % 2 else "BANKNIFTY",
+            "instrument": instrument,
             "net_pnl": 1500.0 if i % 4 else -500.0,   # 75% win rate, ratio ~3
-            "entry_credit": settings.IC_MIN_CREDIT + 5,
+            "entry_credit": settings.IC_MIN_CREDIT_BY_INSTRUMENT[instrument] + 5,
             "exit_reason": "PROFIT_HARVEST" if i < 30 else "TARGET_HIT",
             "vix_entry": 15.0,
             "day_type": "RANGING",
@@ -107,7 +108,9 @@ def test_all_green_verdict_is_reachable():
 
 def test_credit_rule_compliance_fails_when_any_trade_below_min_credit():
     df = _perfect_trades().copy()
-    df.loc[0, "entry_credit"] = settings.IC_MIN_CREDIT - 1  # one violation
+    # Drop row 0 below its instrument's per-instrument floor.
+    inst0 = df.loc[0, "instrument"]
+    df.loc[0, "entry_credit"] = settings.IC_MIN_CREDIT_BY_INSTRUMENT[inst0] - 1
     res = GoLiveEvaluator().evaluate(_perfect_summary(), df, _perfect_orders())
     assert res["checks"]["credit_rule_compliance"] is False
 

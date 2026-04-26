@@ -43,8 +43,12 @@ IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
 IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry
 IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
-IC_CREDIT_WIDTH_PCT = 0.25 # Legacy - now using IC_MIN_CREDIT
-IC_MIN_CREDIT = 18.0  # Minimum ₹18 credit per lot (lowered for more entries)
+# Per-instrument minimum net credit per lot. Calibrated against the LIVE-12
+# cost stack (see docs/calibration_2026_04_26.md):
+#   NIFTY     wide-IC break-even ≈ ₹17.38 → 18 leaves ₹0.62 margin
+#   BANKNIFTY wide-IC break-even ≈ ₹23.92 → 30 leaves slippage headroom
+# A single floor was structurally too low for BANKNIFTY across every IC shape.
+IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 30.0}
 
 # ══ LIVE-25: HEDGE-FIRST ENTRY SEQUENCING ════════════════════════════
 # 'hedge_first' (default on this branch) routes IronCondorStrategy.enter()

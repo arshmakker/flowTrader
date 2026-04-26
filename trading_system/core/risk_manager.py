@@ -69,7 +69,7 @@ class RiskManager:
             if total_unrealized <= stop_limit:
                 prev_streak = self._stop_breach_streak
                 self._stop_breach_streak += 1
-                required = max(1, int(getattr(settings, "IC_HARD_STOP_CONFIRM_TICKS", 1)))
+                required = max(1, int(settings.IC_HARD_STOP_CONFIRM_TICKS))
                 # Log only on entering a breach (0 → 1) and on confirmation —
                 # per-tick logging during a sustained breach window fills the
                 # log with non-state-transition noise at 5–60s cadence.

@@ -103,12 +103,14 @@ class GoLiveEvaluator:
 
     @staticmethod
     def _credit_compliant(df: pd.DataFrame) -> bool:
-        if df.empty or "entry_credit" not in df.columns:
+        if df.empty or "entry_credit" not in df.columns or "instrument" not in df.columns:
             return True
-        credits = pd.to_numeric(df["entry_credit"], errors="coerce").dropna()
-        if credits.empty:
+        credits = pd.to_numeric(df["entry_credit"], errors="coerce")
+        floors = df["instrument"].map(settings.IC_MIN_CREDIT_BY_INSTRUMENT)
+        mask = credits.notna() & floors.notna()
+        if not mask.any():
             return True
-        return bool((credits >= settings.IC_MIN_CREDIT).all())
+        return bool((credits[mask] >= floors[mask]).all())
 
     @staticmethod
     def _plausible_win_rate(summary: Dict) -> bool:

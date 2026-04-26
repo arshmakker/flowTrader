@@ -41,8 +41,7 @@ class SRManager:
             dt = datetime.strptime(date_str, '%Y%m%d').date()
             if dt.weekday() >= 5:
                 return False
-            holidays = getattr(settings, 'TRADING_HOLIDAYS_IST', set()) or set()
-            return dt.isoformat() not in set(holidays)
+            return dt.isoformat() not in settings.TRADING_HOLIDAYS_IST
         except Exception:
             # If parsing fails, keep legacy behaviour (do not drop data).
             return True

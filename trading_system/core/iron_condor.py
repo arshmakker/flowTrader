@@ -80,11 +80,23 @@ class IronCondorStrategy:
         # BUG-05: legs whose rollback reverse-orders failed; drained by main.py after enter().
         self._last_rollback_stuck_legs: List[Dict] = []
         # SHAKEDOWN: per-(instrument, IST date) successful-entry counter, used
-        # only when settings.SHAKEDOWN_MODE=True. In-memory only; a process
-        # restart resets the count, which is acceptable since a restart on the
-        # same trading day during shakedown is itself an operator decision.
+        # only when settings.SHAKEDOWN_MODE=True. In-memory only; a planned
+        # restart resets the count (operator decision), but a *crash* restart
+        # mid-session silently rebudgets the cap — surface that on every start
+        # so the operator sees the rebudget when scanning logs after a crash.
         self._entries_today_count = 0
         self._entries_today_date = ""
+        if settings.SHAKEDOWN_MODE:
+            logger.info(
+                "SHAKEDOWN: %s entry counter reset to 0 (in-memory; cap=%d/day). "
+                "A crash-restart mid-session rebudgets this cap silently.",
+                self.instrument, settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN,
+            )
+
+    def _min_credit(self) -> float:
+        """Per-instrument minimum net credit per lot, calibrated against the
+        LIVE-12 cost stack (see docs/calibration_2026_04_26.md)."""
+        return settings.IC_MIN_CREDIT_BY_INSTRUMENT[self.instrument]
 
     def is_active(self) -> bool:
         return self._position is not None
@@ -367,7 +379,7 @@ class IronCondorStrategy:
         # to route through enter_hedge_first (wings-as-MKT then shorts-as-LMT).
         # Default stays 'sequential' (the legacy path) until the proving period
         # validates the new path on real money.
-        if getattr(settings, "IC_ENTRY_MODE", "sequential") == "hedge_first":
+        if settings.IC_ENTRY_MODE == "hedge_first":
             return self.enter_hedge_first(spot, vix, sr_high, sr_low, sr_manager, expiry, lots)
 
         # SHAKEDOWN: refuse new entries beyond the per-session cap.
@@ -397,9 +409,10 @@ class IronCondorStrategy:
         # For IC, max profit = (Collected Premium) * LotSize
         net_credit_unit = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
         
-        # Credit Rule: net_credit >= IC_MIN_CREDIT
+        # Credit Rule: net_credit >= per-instrument min credit floor
         width = abs(lc - sc)
-        if net_credit_unit < settings.IC_MIN_CREDIT:
+        min_credit = self._min_credit()
+        if net_credit_unit < min_credit:
             lot_size = self.md.get_lot_size(sc_sym)
             self._log_credit_rejection(
                 expiry=expiry,
@@ -409,11 +422,11 @@ class IronCondorStrategy:
                 symbols=(sc_sym, sp_sym, lc_sym, lp_sym),
                 prices=prices,
                 net_credit_unit=net_credit_unit,
-                min_credit=settings.IC_MIN_CREDIT,
+                min_credit=min_credit,
                 lots=lots,
                 lot_size=lot_size,
             )
-            logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < Min {settings.IC_MIN_CREDIT})")
+            logger.info(f"IC {self.instrument}: FAILED Credit Rule (Credit {net_credit_unit:.2f} < Min {min_credit})")
             return False
 
         # Get actual lot size from master via market data
@@ -578,11 +591,12 @@ class IronCondorStrategy:
             books["sc"].bid + books["sp"].bid
             - books["lc"].ask - books["lp"].ask
         )
-        if pre_entry_credit_unit < settings.IC_MIN_CREDIT:
+        min_credit = self._min_credit()
+        if pre_entry_credit_unit < min_credit:
             logger.info(
-                "IC %s hedge-first: pre-entry book credit %.2f < IC_MIN_CREDIT %.2f "
+                "IC %s hedge-first: pre-entry book credit %.2f < min_credit %.2f "
                 "(SC_bid=%.2f SP_bid=%.2f LC_ask=%.2f LP_ask=%.2f)",
-                self.instrument, pre_entry_credit_unit, settings.IC_MIN_CREDIT,
+                self.instrument, pre_entry_credit_unit, min_credit,
                 books["sc"].bid, books["sp"].bid, books["lc"].ask, books["lp"].ask,
             )
             return False
@@ -654,13 +668,13 @@ class IronCondorStrategy:
         sp_limit = round((books["sp"].bid + offset) / tick) * tick
 
         # Feasibility: given wings already filled, can the shorts at these limits
-        # still clear IC_MIN_CREDIT?
+        # still clear min_credit?
         projected_net_credit_unit = sc_limit + sp_limit - lc_fill - lp_fill
-        if projected_net_credit_unit < settings.IC_MIN_CREDIT:
+        if projected_net_credit_unit < min_credit:
             logger.error(
-                "IC %s Phase 3: projected credit %.2f < IC_MIN_CREDIT %.2f after wings filled "
+                "IC %s Phase 3: projected credit %.2f < min_credit %.2f after wings filled "
                 "at LC=%.2f LP=%.2f with SC_limit=%.2f SP_limit=%.2f — fallback=%s; unwinding wings",
-                self.instrument, projected_net_credit_unit, settings.IC_MIN_CREDIT,
+                self.instrument, projected_net_credit_unit, min_credit,
                 lc_fill, lp_fill, sc_limit, sp_limit, settings.IC_PHASE3_FALLBACK,
             )
             # 'refuse' is the only implemented fallback. 'widen' / 'accept'
@@ -743,11 +757,11 @@ class IronCondorStrategy:
 
         # ── Phase 5a: post-fill credit re-check (LIVE-02 absorbed here) ──
         actual_net_credit_unit = sc_fill + sp_fill - lc_fill - lp_fill
-        if actual_net_credit_unit < settings.IC_MIN_CREDIT:
+        if actual_net_credit_unit < min_credit:
             logger.error(
-                "IC %s Phase 5a: post-fill credit %.2f < IC_MIN_CREDIT %.2f "
+                "IC %s Phase 5a: post-fill credit %.2f < min_credit %.2f "
                 "(SC=%.2f SP=%.2f LC=%.2f LP=%.2f); unwinding all 4 legs",
-                self.instrument, actual_net_credit_unit, settings.IC_MIN_CREDIT,
+                self.instrument, actual_net_credit_unit, min_credit,
                 sc_fill, sp_fill, lc_fill, lp_fill,
             )
             self.om.place_order(sc_sym, "BUY", qty)

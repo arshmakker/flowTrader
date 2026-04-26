@@ -76,7 +76,7 @@ def _acquire_pid_lock() -> None:
     """
     pid_path = settings.PID_FILE
     snapshot_path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
-    freshness_timeout = getattr(settings, "PID_FRESHNESS_TIMEOUT_SEC", 600)
+    freshness_timeout = settings.PID_FRESHNESS_TIMEOUT_SEC
 
     os.makedirs(os.path.dirname(pid_path), exist_ok=True)
     if os.path.exists(pid_path):
@@ -230,7 +230,7 @@ def _halt_on_exception(exc, risk, log, alerts=None):
 def _build_alert_channel(log) -> AlertChannel:
     """LIVE-23: build the operator alert channel at startup, honoring the
     settings master switch and pulling the ntfy topic URL from cred.yml."""
-    if not getattr(settings, "ALERTS_ENABLED", False):
+    if not settings.ALERTS_ENABLED:
         return NullAlertChannel()
     topic_url = None
     try:
@@ -241,7 +241,7 @@ def _build_alert_channel(log) -> AlertChannel:
         pass
     channel = build_channel(
         enabled=True,
-        channel_type=getattr(settings, "ALERTS_CHANNEL", "log"),
+        channel_type=settings.ALERTS_CHANNEL,
         ntfy_topic_url=topic_url,
     )
     log.info("Alert channel built: %s", type(channel).__name__)

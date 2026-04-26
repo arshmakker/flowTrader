@@ -24,9 +24,7 @@ logger = logging.getLogger(__name__)
 
 _TERMINAL_STATUSES = {"COMPLETE", "REJECTED", "CANCELED"}
 
-_STUCK_LEGS_PATH = os.path.join(
-    getattr(settings, "DATA_DIR", "data"), "stuck_legs.json"
-)
+_STUCK_LEGS_PATH = os.path.join(settings.DATA_DIR, "stuck_legs.json")
 
 
 class OrderPollingAbandoned(Exception):
