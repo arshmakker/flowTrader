@@ -15,7 +15,7 @@ from datetime import datetime
 
 from trading_system.config import settings
 from trading_system.core.margin import estimate_ic_required_margin
-from trading_system.live.live_order_manager import persist_stuck_legs
+from trading_system.live.live_order_manager import OrderPollingAbandoned, persist_stuck_legs
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +79,52 @@ class IronCondorStrategy:
         self._position: Optional[IC_Position] = None
         # BUG-05: legs whose rollback reverse-orders failed; drained by main.py after enter().
         self._last_rollback_stuck_legs: List[Dict] = []
+        # SHAKEDOWN: per-(instrument, IST date) successful-entry counter, used
+        # only when settings.SHAKEDOWN_MODE=True. In-memory only; a process
+        # restart resets the count, which is acceptable since a restart on the
+        # same trading day during shakedown is itself an operator decision.
+        self._entries_today_count = 0
+        self._entries_today_date = ""
 
     def is_active(self) -> bool:
         return self._position is not None
+
+    def _roll_daily_entry_counter(self) -> str:
+        """Reset the entry counter on IST date rollover; return today's date string."""
+        today = datetime.now().date().isoformat()
+        if today != self._entries_today_date:
+            self._entries_today_date = today
+            self._entries_today_count = 0
+        return today
+
+    def _check_session_entry_cap(self) -> bool:
+        """SHAKEDOWN: returns True if a new entry is allowed under the per-session cap.
+
+        Counts successful entries per (instrument, IST date). Active only when
+        settings.SHAKEDOWN_MODE=True; otherwise always returns True. Once the
+        cap is hit, further enter()/enter_hedge_first() calls (including
+        harvest re-entries) are refused for the remainder of the trading day —
+        intentional Axiom 3 non-participation during the proving period.
+        """
+        if not settings.SHAKEDOWN_MODE:
+            return True
+        today = self._roll_daily_entry_counter()
+        cap = settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN
+        if self._entries_today_count >= cap:
+            logger.info(
+                "IC_REJECT reason=SHAKEDOWN_ENTRY_CAP instrument=%s count=%d cap=%d "
+                "date=%s — proving-period cap reached; refusing entry until tomorrow.",
+                self.instrument, self._entries_today_count, cap, today,
+            )
+            return False
+        return True
+
+    def _record_session_entry(self) -> None:
+        """SHAKEDOWN: increment the per-session entry counter on a successful entry."""
+        if not settings.SHAKEDOWN_MODE:
+            return
+        self._roll_daily_entry_counter()
+        self._entries_today_count += 1
 
     @staticmethod
     def _opposite_side(side: str) -> str:
@@ -327,6 +370,10 @@ class IronCondorStrategy:
         if getattr(settings, "IC_ENTRY_MODE", "sequential") == "hedge_first":
             return self.enter_hedge_first(spot, vix, sr_high, sr_low, sr_manager, expiry, lots)
 
+        # SHAKEDOWN: refuse new entries beyond the per-session cap.
+        if not self._check_session_entry_cap():
+            return False
+
         sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
 
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
@@ -450,6 +497,7 @@ class IronCondorStrategy:
             entry_date=now.strftime("%Y-%m-%d"),
         )
         logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
+        self._record_session_entry()
         return True
 
     # ── LIVE-25: Hedge-first entry ──────────────────────────────────────
@@ -467,6 +515,10 @@ class IronCondorStrategy:
         failed, Phase 3 credit-infeasible, shorts didn't fill, or post-fill
         credit under floor). Unwinds cleanly in every failure path.
         """
+        # SHAKEDOWN: refuse new entries beyond the per-session cap.
+        if not self._check_session_entry_cap():
+            return False
+
         sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
         sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
@@ -536,8 +588,31 @@ class IronCondorStrategy:
             return False
 
         # ── Phase 1: submit wings as MKT ─────────────────────────────
-        lc_order = self.om.place_order(lc_sym, "BUY", qty)
-        lp_order = self.om.place_order(lp_sym, "BUY", qty)
+        # OrderPollingAbandoned (from LiveOrderManager.await_terminal_status
+        # giving up after MAX_POLL_ERRORS) means we can't determine fill
+        # status. Persist stuck-legs metadata so startup-reconcile (LIVE-07)
+        # picks up whatever the broker actually has on next start, then let
+        # the exception propagate to main.py's cycle handler for halt+alert.
+        lc_order = None
+        lp_order = None
+        try:
+            lc_order = self.om.place_order(lc_sym, "BUY", qty)
+            lp_order = self.om.place_order(lp_sym, "BUY", qty)
+        except OrderPollingAbandoned as exc:
+            stuck = []
+            if lc_order is None:
+                stuck.append({"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned_pre_status"})
+            else:
+                stuck.append({"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned_after_lc_returned", "lc_status": lc_order.get("status")})
+            stuck.append({"symbol": lp_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned"})
+            persist_stuck_legs(stuck)
+            self._last_rollback_stuck_legs = stuck
+            logger.critical(
+                "IC %s Phase 1 OrderPollingAbandoned: in-flight wings (LC,LP). "
+                "Stuck-legs persisted for startup reconcile. exc=%s",
+                self.instrument, exc,
+            )
+            raise
 
         def _filled(o: Dict) -> bool:
             return o.get("status") == "COMPLETE" and int(o.get("fill_qty", 0)) == qty
@@ -595,8 +670,33 @@ class IronCondorStrategy:
             return False
 
         # ── Phase 4: submit shorts as LMT ────────────────────────────
-        sc_order = self.om.place_order(sc_sym, "SELL", qty, price_type="LMT", price=sc_limit)
-        sp_order = self.om.place_order(sp_sym, "SELL", qty, price_type="LMT", price=sp_limit)
+        # OrderPollingAbandoned here is more dangerous than Phase 1 — wings
+        # are already filled, so abandoning leaves the wings on at broker
+        # plus an indeterminate short. Persist stuck-legs including the
+        # filled wings so the operator can flatten manually; main.py halts.
+        sc_order = None
+        sp_order = None
+        try:
+            sc_order = self.om.place_order(sc_sym, "SELL", qty, price_type="LMT", price=sc_limit)
+            sp_order = self.om.place_order(sp_sym, "SELL", qty, price_type="LMT", price=sp_limit)
+        except OrderPollingAbandoned as exc:
+            stuck = [
+                {"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "4_shorts_abandoned", "reason": "filled_wing_to_unwind", "fill_price": lc_fill},
+                {"symbol": lp_sym, "side": "BUY", "qty": qty, "phase": "4_shorts_abandoned", "reason": "filled_wing_to_unwind", "fill_price": lp_fill},
+            ]
+            if sc_order is None:
+                stuck.append({"symbol": sc_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned_pre_status", "limit_price": sc_limit})
+            else:
+                stuck.append({"symbol": sc_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned_after_sc_returned", "sc_status": sc_order.get("status"), "limit_price": sc_limit})
+            stuck.append({"symbol": sp_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned", "limit_price": sp_limit})
+            persist_stuck_legs(stuck)
+            self._last_rollback_stuck_legs = stuck
+            logger.critical(
+                "IC %s Phase 4 OrderPollingAbandoned: wings filled + shorts in-flight. "
+                "Stuck-legs persisted (4 legs) for manual reconcile. exc=%s",
+                self.instrument, exc,
+            )
+            raise
 
         sc_filled = _filled(sc_order)
         sp_filled = _filled(sp_order)
@@ -676,6 +776,7 @@ class IronCondorStrategy:
             "IC %s ENTERED (hedge-first): SC=%s SP=%s LC=%s LP=%s | Credit=%.2f | Lots=%d (LotSize=%d)",
             self.instrument, sc, sp, lc, lp, actual_net_credit_unit, lots, lot_size,
         )
+        self._record_session_entry()
         return True
 
     # ── Monitor ─────────────────────────────────────────────────────────

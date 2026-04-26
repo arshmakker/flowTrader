@@ -6,13 +6,13 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**18 of 23 addressed.** Fully: LIVE-01, LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 live-side implementation in `trading_system/live/live_order_manager.py` is now wired into `main.py`; flipping `PAPER_TRADE_MODE=False` selects it at construction time. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16).
+**18 of 21 in-scope items addressed.** Fully: LIVE-01, LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 live-side implementation in `trading_system/live/live_order_manager.py` is now wired into `main.py`; flipping `PAPER_TRADE_MODE=False` selects it at construction time. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16). LIVE-09 and LIVE-17 deferred 2026-04-26 — see "Explicitly deferred" below.
 
-| Priority | Open | Addressed |
-|---|---|---|
-| P0 | — | LIVE-01, LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 |
-| P1 | LIVE-04, 14 | LIVE-05, LIVE-08, LIVE-11, LIVE-12, LIVE-18, LIVE-23, LIVE-24 |
-| P2 | LIVE-09, 17 | — |
+| Priority | Open | Addressed | Deferred |
+|---|---|---|---|
+| P0 | — | LIVE-01, LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 | — |
+| P1 | LIVE-04, 14 | LIVE-05, LIVE-08, LIVE-11, LIVE-12, LIVE-18, LIVE-23, LIVE-24 | — |
+| P2 | — | — | LIVE-09, LIVE-17 |
 
 Severity scale:
 - **High** — can create uncontrolled exposure, silently wrong P&L in live, or block the go-live decision itself.
@@ -175,7 +175,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Add a post-session script `tools/reconcile_trades.py` that pulls Shoonya contract notes for the day, joins by `(symbol, side, time±window)` to `paper_trades.csv`, and writes `data/reconciliation_YYYYMMDD.json` with per-trade deltas in price, qty, and realised P&L. Any `|delta_pnl| / |expected_pnl| > 2%` flagged. Regression test: contract-note fixture + CSV fixture, assert reconciliation diff matches expected deltas.
 
 ### LIVE-09 · Order tag IDs collide across process restarts
-- **Status:** Open
+- **Status:** Deferred 2026-04-26 — out of go-live blocker scope. Tag collisions only complicate hand-reading of `paper_orders.csv` across restarts; LIVE-08 reconciliation matches on `(symbol, side, time±window)` and does not consume the tag. No safety property depends on this. Revisit opportunistically post-shakedown if reconciliation ergonomics warrant it.
 - **Severity:** Low
 - **Severity reason:** `PaperOrderManager._id_counter = itertools.count(1)` resets each run. `PAPER_1` can refer to different orders across sessions. In paper this muddies audit trail; in live it complicates broker-tag-based reconciliation.
 - **Priority:** P2
@@ -252,7 +252,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 ## Category 6 — Operational
 
 ### LIVE-17 · Shoonya rate-limit pressure under harvest churn
-- **Status:** Open
+- **Status:** Deferred 2026-04-26 — out of go-live blocker scope. The rate-limit pressure scenario assumes both instruments harvesting concurrently at full lot size; the planned shakedown caps `IC_MAX_ENTRIES_PER_SESSION=1`, which keeps at most 1 IC open and ~4 legs to monitor, well under the existing 10/sec throttle headroom. Revisit before scaling past `IC_MAX_ENTRIES_PER_SESSION=1` or before enabling both instruments concurrently in live.
 - **Severity:** Medium
 - **Severity reason:** `api_helper.py` has a 10 calls/sec cap. Simultaneous harvest on both NIFTY and BANKNIFTY (4 exit + 4 entry legs each = 16 order calls in rapid succession) plus per-cycle LTP polling can saturate the lane.
 - **Priority:** P2
@@ -329,6 +329,38 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Impact:** A dead process between 09:15 and 15:10 with open ICs is the same as LIVE-23 silent halt but with no halt action taken.
 - **Suggested approach:** `launchd` job on the same Mac that checks `mtime` of `data/pnl_snapshot.json` every 5 min during market hours (09:15–15:30 IST). If stale > 3 min, ping the LIVE-23 alert channel. Regression test: freeze `mtime` on the snapshot and invoke the check script; assert alert fires.
 
+## Category 6.5 — Shakedown mode (proving-period controls)
+
+Safety triad layered on top of the steady-state safety controls (LIVE-19/20/22),
+applied during the first ~10 trading days of live operation while the LIVE-21
+reconciliation gate builds a verifiable track record. Operator flips
+`settings.SHAKEDOWN_MODE = True` before the first live session and clears it
+once reconciliation passes. Has zero effect in paper mode.
+
+### SHAKEDOWN-01 · LIVE_ACK operator handshake
+- **Status:** Addressed 2026-04-26 — `main._require_live_ack()` runs immediately after `_acquire_pid_lock()`. In live mode (`PAPER_TRADE_MODE=False`), startup refuses to proceed unless `settings.LIVE_ACK_FILE` (default `data/LIVE_ACK`) exists; paper mode bypasses the gate entirely. File contents are not parsed — presence alone is the signal. Blocks the failure mode where `PAPER_TRADE_MODE` is flipped to False without a deliberate operator decision (config drift, bad rebase, accidental edit). 3 regression tests in `tests/test_safety_controls.py::TestLiveAck` pin paper-bypass / live-without-ack-exits / live-with-ack-proceeds.
+- **Severity:** High — protects against silently going live with stale config.
+- **Priority:** P0-shakedown
+- **Operator runbook:** `touch data/LIVE_ACK` after confirming OAuth freshness, calibration acceptance, and SHAKEDOWN_MODE=True. File persists across restarts.
+
+### SHAKEDOWN-02 · Tighter daily-loss cap during proving period
+- **Status:** Addressed 2026-04-26 — `RiskManager.check_daily_loss_cap()` now reads `settings.DAILY_MAX_LOSS_SHAKEDOWN` (default ₹10k) when `settings.SHAKEDOWN_MODE=True`, otherwise falls back to `DAILY_MAX_LOSS` (₹50k). Sized for proving-period blast radius (1 IC × 10 lots, max loss ≈ ₹32k on a 50pt-wing NIFTY). Critical alert body references the actual cap that fired (not the steady-state default) so the operator knows which threshold tripped. 4 regression tests in `tests/test_safety_controls.py::TestShakedownDailyLossCap`.
+- **Severity:** High
+- **Priority:** P0-shakedown
+
+### SHAKEDOWN-03 · Per-(instrument, IST date) entry cap
+- **Status:** Addressed 2026-04-26 — `IronCondorStrategy._check_session_entry_cap()` returns False once `_entries_today_count` reaches `settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN` (default 1). Counter is per-strategy-instance, resets on IST date rollover. Active only when `SHAKEDOWN_MODE=True`; in paper, always returns True so paper data collection is never capped. Hooked at the top of both `enter()` (sequential path) and `enter_hedge_first()` (LIVE-25 default), before strikes calc. Successful entries call `_record_session_entry()` from the position-set success path; unsuccessful attempts do not consume the cap. Once hit, refusal is logged as `IC_REJECT reason=SHAKEDOWN_ENTRY_CAP …` — Axiom 3 non-participation during the proving period. 7 regression tests in `tests/test_safety_controls.py::TestShakedownEntryCap` including two wiring pins that fail if the cap-check is removed from either `enter()` or `enter_hedge_first()`.
+- **Severity:** Medium
+- **Priority:** P1-shakedown
+
+### Pre-flip blockers (must resolve BEFORE setting SHAKEDOWN_MODE=True)
+
+The shakedown triad is committable as-is because `SHAKEDOWN_MODE` defaults to False — none of the controls fire in paper or in steady-state live. Two issues were intentionally left for explicit operator decision before the flip:
+
+- **SHAKEDOWN-03a · Counter persistence across crash-restart.** The entry counter is in-memory only. A planned restart during shakedown is an operator decision (counter reset is fine), but a *crash* restart at 11:30 with the cap exhausted would silently rebudget — the system would then enter a 2nd IC after a crash where the cap should have blocked it. Two acceptable resolutions: persist `_entries_today_count` via `position_persistence.save/load` (matches the daily-loss-state pattern), or — minimum — emit a startup log line `SHAKEDOWN: entry counters reset (in-memory only)` so the operator can spot the rebudget after a crash.
+
+- **SHAKEDOWN-03b · Harvest semantics ratification.** The shipped reading caps *all* entries including harvest re-entries — i.e., 1 IC opens, harvests once, then sits flat for the day. This is the most conservative interpretation of "max 1 entry/day." The alternative reading is "1 fresh entry, unlimited harvest re-entries," which preserves the harvest-and-re-enter revenue model. The conservative reading constitutes Axiom 3 non-participation for most of the trading day during shakedown; the operator should ratify this trade-off explicitly before flipping the mode, since it changes what the strategy does on a normal trading day.
+
 ## Category 7 — Meta
 
 ### LIVE-21 · Go-live evaluator grades paper-optimistic numbers
@@ -363,7 +395,7 @@ Prioritised by exposure prevention first, then decision-quality:
 12. **LIVE-05** — partials. Finish category 2 before proving period.
 13. **LIVE-14** — WS + latency-bound stop. Substantial work; parallelisable with proving period.
 14. **LIVE-11, LIVE-18, BUG-07** — peak margin, market anomalies, mid-session auth recovery. Robustness layer.
-15. **LIVE-09, LIVE-17** — opportunistic cleanup.
+15. ~~**LIVE-09, LIVE-17**~~ — deferred 2026-04-26 (see "Explicitly deferred" below).
 
 ---
 
@@ -400,6 +432,8 @@ These are behaviour rules for the operator, not code items.
 - Secret vaults — `cred.yml` is adequate for a single operator.
 - Chaos/fault-injection testing — proving period is your fault injection.
 - SEBI algo-trading registration — check with broker if the request rate triggers their threshold; likely fine at this frequency.
+- **LIVE-09 (tag collisions)** — deferred 2026-04-26. Hygiene only; reconciliation does not depend on the tag. Revisit post-shakedown if hand-reading `paper_orders.csv` across restarts becomes painful.
+- **LIVE-17 (rate-limit pressure)** — deferred 2026-04-26. Pressure scenario requires concurrent dual-instrument harvest at full size; shakedown's `IC_MAX_ENTRIES_PER_SESSION=1` cap keeps load nowhere near the 10/sec throttle. Revisit before lifting that cap or enabling both instruments concurrently in live.
 
 # Open questions to decide before coding
 

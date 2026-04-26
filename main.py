@@ -11,6 +11,7 @@ import logging
 import threading
 import time as _time
 import re
+import shlex
 import subprocess
 import urllib.parse
 import yaml
@@ -63,19 +64,47 @@ def _build_order_stack(api, md, trade_logger):
 
 
 def _acquire_pid_lock() -> None:
-    """LIVE-20: Refuse to start if another instance is already running."""
+    """LIVE-20: Refuse to start if another instance is already running.
+
+    Single-laptop reality: macOS sleep / SIGSTOP / a frozen Python process
+    leaves the PID alive but non-trading. A pure existence check would block
+    a legitimate restart in that case. Combine PID liveness with snapshot
+    freshness — if the snapshot is older than PID_FRESHNESS_TIMEOUT_SEC,
+    the existing process is presumed unresponsive and the PID file is
+    overwritten. The existing LIVE-24 heartbeat is the authoritative
+    silent-death signal; this is just the start-time corollary.
+    """
     pid_path = settings.PID_FILE
+    snapshot_path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
+    freshness_timeout = getattr(settings, "PID_FRESHNESS_TIMEOUT_SEC", 600)
+
     os.makedirs(os.path.dirname(pid_path), exist_ok=True)
     if os.path.exists(pid_path):
         try:
             existing_pid = int(open(pid_path).read().strip())
             os.kill(existing_pid, 0)   # signal 0 = check existence only
-            print(
-                f"ERROR: RegimeTrader already running (PID {existing_pid}). "
-                f"If the process is dead, delete {pid_path} and retry.",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+            # Process exists. Check if it is still trading by snapshot age.
+            snapshot_age = None
+            if os.path.exists(snapshot_path):
+                snapshot_age = _time.time() - os.path.getmtime(snapshot_path)
+            if snapshot_age is not None and snapshot_age > freshness_timeout:
+                print(
+                    f"WARNING: PID {existing_pid} exists but pnl_snapshot.json is "
+                    f"{snapshot_age:.0f}s old (> {freshness_timeout}s). Treating "
+                    f"as a frozen / suspended process and overwriting the PID file.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"ERROR: RegimeTrader already running (PID {existing_pid}, "
+                    f"snapshot age {snapshot_age:.0f}s). If the process is dead, "
+                    f"delete {pid_path} and retry."
+                    if snapshot_age is not None
+                    else f"ERROR: RegimeTrader already running (PID {existing_pid}). "
+                         f"If the process is dead, delete {pid_path} and retry.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
         except (ValueError, ProcessLookupError, PermissionError):
             pass  # stale PID file — overwrite below
 
@@ -90,6 +119,48 @@ def _release_pid_lock() -> None:
         os.remove(settings.PID_FILE)
     except FileNotFoundError:
         pass
+
+
+def _log_holiday_calendar(log) -> None:
+    """Surface the loaded NSE holiday calendar at startup.
+
+    The calendar lives in settings.TRADING_HOLIDAYS_IST as a hardcoded set;
+    NSE adds muhurat sessions and extended-break dates throughout the year
+    that won't appear here unless the operator updates the file. Logging the
+    next few entries on every startup makes a stale calendar visible — if
+    "next 3 holidays" looks wrong against the current date, the calendar is
+    out of date and weekend-flatten / is_trading_day_ist may pass through
+    a holiday silently.
+    """
+    today = datetime.now().date().isoformat()
+    holidays = sorted(h for h in settings.TRADING_HOLIDAYS_IST if h >= today)
+    log.info(
+        "Holiday calendar loaded: %d total entries, %d upcoming (next: %s).",
+        len(settings.TRADING_HOLIDAYS_IST),
+        len(holidays),
+        ", ".join(holidays[:3]) if holidays else "none — verify settings.TRADING_HOLIDAYS_IST",
+    )
+
+
+def _require_live_ack() -> None:
+    """SHAKEDOWN: refuse to start in live mode without an explicit operator handshake.
+
+    Paper mode bypasses this gate. In live, the operator must explicitly
+    create settings.LIVE_ACK_FILE (e.g. `touch data/LIVE_ACK`) to bless the
+    session; contents are not parsed, presence alone is the signal. Blocks
+    the failure mode where PAPER_TRADE_MODE is flipped to False without a
+    deliberate operator decision (config drift, bad rebase, accidental edit).
+    """
+    if settings.PAPER_TRADE_MODE:
+        return
+    if not os.path.exists(settings.LIVE_ACK_FILE):
+        print(
+            f"ERROR: PAPER_TRADE_MODE=False but {settings.LIVE_ACK_FILE} not found. "
+            f"Live trading requires an explicit operator handshake. "
+            f"Create the file (e.g. `touch {settings.LIVE_ACK_FILE}`) to proceed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
 
 def _check_kill_switch(strats, pnl_engine, risk, log, alerts=None) -> bool:
@@ -309,6 +380,10 @@ def _load_creds(path="cred.yml"):
 def _save_creds(creds, path="cred.yml"):
     with open(path, "w") as f:
         yaml.safe_dump(creds, f, sort_keys=False)
+    # Restrict to owner-only — file holds OAuth token + Secret_Code; default
+    # umask leaves it world-readable, exposing trade-placement credentials to
+    # any local read (backup process, log scrape, container layer).
+    os.chmod(path, 0o600)
 
 def _mask_secret(value):
     s = str(value or "")
@@ -356,11 +431,24 @@ def _fetch_auth_code_from_command(creds, log):
     except ValueError:
         timeout = 180
 
+    # Tokenize so we can run without a shell — shell=True would interpret
+    # any metacharacter in cmd (potentially injected via cred.yml drift or
+    # SHOONYA_AUTH_CODE_CMD env). _resolve_auth_code_cmd returns either the
+    # operator's exact string or `python3 "<DEFAULT_AUTH_CODE_SCRIPT>"`, both
+    # of which split cleanly under POSIX rules.
+    try:
+        argv = shlex.split(cmd)
+    except ValueError as exc:
+        log.warning("Auth code command unparseable (%s): %s", exc, cmd)
+        return ""
+    if not argv:
+        return ""
+
     log.info("Attempting auth code via command: %s", cmd)
     try:
         process = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -603,7 +691,9 @@ def run():
     setup_logging()
     log = logging.getLogger("main")
     _acquire_pid_lock()   # LIVE-20: fail fast if already running
+    _require_live_ack()   # SHAKEDOWN: live mode requires explicit operator handshake
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
+    _log_holiday_calendar(log)
 
     # LIVE-23: build alert channel before API init so OAuth failures surface.
     alerts = _build_alert_channel(log)

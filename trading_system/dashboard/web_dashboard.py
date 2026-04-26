@@ -265,7 +265,10 @@ class WebDashboard:
 
         return app
 
-    def run(self, host: str = "0.0.0.0", port: int = 5050) -> None:
+    def run(self, host: str = "127.0.0.1", port: int = 5050) -> None:
+        # Default to loopback only — single-laptop deployment has no use for
+        # LAN-exposed live PnL / signals. Caller must explicitly pass a public
+        # host to override.
         self._app = self._create_app()
         if self._app is None:
             return

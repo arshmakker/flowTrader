@@ -67,12 +67,17 @@ class RiskManager:
         if total_max_profit > 0:
             stop_limit = -total_max_profit * settings.IC_STOP_LOSS_MULT
             if total_unrealized <= stop_limit:
+                prev_streak = self._stop_breach_streak
                 self._stop_breach_streak += 1
                 required = max(1, int(getattr(settings, "IC_HARD_STOP_CONFIRM_TICKS", 1)))
-                logger.warning(
-                    "Hard-stop breach %d/%d: Combined PnL %.2f <= Limit %.2f",
-                    self._stop_breach_streak, required, total_unrealized, stop_limit
-                )
+                # Log only on entering a breach (0 → 1) and on confirmation —
+                # per-tick logging during a sustained breach window fills the
+                # log with non-state-transition noise at 5–60s cadence.
+                if prev_streak == 0:
+                    logger.warning(
+                        "Hard-stop breach started (1/%d): Combined PnL %.2f <= Limit %.2f",
+                        required, total_unrealized, stop_limit
+                    )
                 if self._stop_breach_streak >= required:
                     logger.critical(f"HARD STOP HIT: Combined PnL {total_unrealized:.2f} <= Limit {stop_limit:.2f}")
                     self.halted = True
@@ -94,14 +99,23 @@ class RiskManager:
         return False
 
     def check_daily_loss_cap(self, pnl_engine: Any) -> bool:
-        """LIVE-22: returns True and halts if daily P&L is below -DAILY_MAX_LOSS."""
+        """LIVE-22: returns True and halts if daily P&L breaches the loss cap.
+
+        Effective cap is settings.DAILY_MAX_LOSS_SHAKEDOWN when SHAKEDOWN_MODE
+        is True (proving-period tighter ceiling), else settings.DAILY_MAX_LOSS.
+        """
         if self.halted:
             return True
+        cap = (
+            settings.DAILY_MAX_LOSS_SHAKEDOWN
+            if settings.SHAKEDOWN_MODE
+            else settings.DAILY_MAX_LOSS
+        )
         daily = pnl_engine.daily_realised_pnl + pnl_engine.unrealised_pnl
-        if daily < -settings.DAILY_MAX_LOSS:
+        if daily < -cap:
             logger.critical(
-                "DAILY LOSS CAP HIT: daily_pnl=%.2f < -%.0f. Halting entries and flattening.",
-                daily, settings.DAILY_MAX_LOSS,
+                "DAILY LOSS CAP HIT: daily_pnl=%.2f < -%.0f (shakedown=%s). Halting entries and flattening.",
+                daily, cap, settings.SHAKEDOWN_MODE,
             )
             self.halted = True
             self.stop_hit_at = datetime.now()
@@ -110,7 +124,7 @@ class RiskManager:
                 severity="critical",
                 title="RegimeTrader: daily loss cap hit",
                 body=(
-                    f"Daily P&L ₹{daily:,.0f} breached cap ₹{-settings.DAILY_MAX_LOSS:,.0f}. "
+                    f"Daily P&L ₹{daily:,.0f} breached cap ₹{-cap:,.0f}. "
                     "Halting entries and flattening."
                 ),
             ))

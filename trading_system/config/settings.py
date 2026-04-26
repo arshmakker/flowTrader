@@ -58,11 +58,6 @@ IC_ENTRY_MODE = "hedge_first"
 # wing fills. Converts the worst-case entry failure from unbounded naked
 # short to bounded premium-at-risk.
 #
-# Max time Phase 4 waits for both shorts to fill before aborting the entry
-# and unwinding the wings. 600s = patient with 0-tick-above-bid fills; the
-# wings pay theta (~₹50-200 at 10 lots NIFTY weekly) during the wait window,
-# which is the acceptable price of not accepting worse fills.
-IC_SHORT_LIMIT_TIMEOUT_SEC = 600
 # Ticks above the top-of-book bid for the short-leg limit price. 0 = at bid
 # (safest, highest probability of fill); 1-2 ticks adds credit at the cost of
 # more Phase 5b aborts. After proving-period data, this is tunable upward.
@@ -175,6 +170,32 @@ DAILY_MAX_LOSS = 50_000
 HALT_FILE = "data/HALT"
 # LIVE-20: PID lock file preventing duplicate process instances.
 PID_FILE = "data/regimetrader.pid"
+# Solo-laptop reality: macOS sleep / SIGSTOP can leave a PID alive but frozen.
+# If pnl_snapshot.json is older than this when a fresh start tries to acquire
+# the lock, the existing process is presumed unresponsive and we overwrite.
+PID_FRESHNESS_TIMEOUT_SEC = 600
+
+# ══ SHAKEDOWN MODE (proving-period controls) ══════════════════════════
+# Tighter caps applied during the first ~10 trading days of live operation
+# while LIVE-21 reconciliation builds a verifiable track record. Operator
+# flips SHAKEDOWN_MODE to True before the first live session and to False
+# after the reconciliation gate clears. No effect in paper mode.
+SHAKEDOWN_MODE = False
+# Daily loss ceiling used in place of DAILY_MAX_LOSS while SHAKEDOWN_MODE=True.
+# Sized for the proving-period blast radius (1 IC × 10 lots, 50pt wing
+# ≈ ₹32k max loss on NIFTY). ₹10k absorbs the harvest-cycle slippage budget
+# without funding a full max-loss event.
+DAILY_MAX_LOSS_SHAKEDOWN = 10_000
+# Cap on new entries per (instrument, IST date) while SHAKEDOWN_MODE=True.
+# 1 = at most one IC per instrument per day, including harvest re-entries.
+# Triggers Axiom 3 non-participation (refuse new entries) once hit.
+IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN = 1
+# LIVE handshake: live mode refuses to start unless this file exists. Paper
+# mode ignores the gate. Operator creates with `touch data/LIVE_ACK` after
+# blessing the run; contents are not parsed, presence is the signal. Blocks
+# the failure mode where PAPER_TRADE_MODE is flipped to False without a
+# deliberate operator decision (config drift, bad rebase, accidental edit).
+LIVE_ACK_FILE = "data/LIVE_ACK"
 
 # LIVE-13: NSE per-order freeze quantity for index F&O. Breaching these triggers
 # an exchange-side rejection mid-entry which cascades into rollback (LIVE-03).
