@@ -276,7 +276,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Add `is_tradable_now(symbol)` consulting session window, holiday calendar, and any broker-reported halt flag. Refuse entries outside tradable windows. Regression test: fake broker returning a halt flag for NIFTY; assert entry is refused.
 
 ### LIVE-19 · No kill-switch file
-- **Status:** Open
+- **Status:** Addressed 2026-04-22 — `main._check_kill_switch()` runs at the top of every main-loop iteration (`main.py:166`). When `settings.HALT_FILE` (default `data/HALT`) exists, force-exits all active strategies, persists state, fires a `kill_switch_activated` LIVE-23 critical alert, removes the HALT file, and exits cleanly. The operator drops the file from anywhere — another terminal, ssh, even iCloud Drive — and the next cycle picks it up. Regression: `tests/test_safety_controls.py::TestKillSwitch` pins file-absent / file-present-flatten / file-present-exit / file-removed-after-handle.
 - **Severity:** High
 - **Severity reason:** Today's only halt paths are programmatic (combined stop, rollback escalation). No operator-initiated emergency stop works without access to the terminal running the process.
 - **Priority:** P0
@@ -286,7 +286,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** Top of the main loop: `if os.path.exists('data/HALT'): force_exit_all; save_state; sys.exit(0)`. Regression test: drop the file and run one loop iteration; assert force-exit is called and process exits.
 
 ### LIVE-20 · No single-instance guard (PID file)
-- **Status:** Open
+- **Status:** Addressed 2026-04-22, hardened 2026-04-26 — `main._acquire_pid_lock()` (`main.py:66`) writes our PID to `settings.PID_FILE` (default `data/regimetrader.pid`) at startup and refuses to start if the file holds a still-alive PID. Saturday's hardening: the liveness check is `os.kill(pid, 0)` *combined with* the freshness of `data/pnl_snapshot.json` — a stale PID from a macOS-sleep-killed process or an `os.kill`-resilient SIGSTOP'd process no longer blocks legitimate restarts. PID file is removed on clean shutdown. Regression: `tests/test_safety_controls.py::TestPidLock`.
 - **Severity:** High
 - **Severity reason:** A second accidental `./start.sh` would place duplicate orders against the same account. No guard prevents this.
 - **Priority:** P0
@@ -298,7 +298,7 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Suggested approach:** At startup, check `data/regimetrader.pid`. If present and PID is alive (`os.kill(pid, 0)` returns without error), refuse to start. Write our PID on start; delete on clean shutdown. Regression test: fork two processes; assert second exits with a structured "already running" error.
 
 ### LIVE-22 · No daily rupee loss cap
-- **Status:** Open
+- **Status:** Addressed 2026-04-22, shakedown-tightened 2026-04-26 — `RiskManager.check_daily_loss_cap(pnl_engine)` (`risk_manager.py:101`) consulted once per main-loop cycle (`main.py:980`). Effective cap is `settings.DAILY_MAX_LOSS_SHAKEDOWN` (₹10k) when `SHAKEDOWN_MODE=True`, else `settings.DAILY_MAX_LOSS` (₹50k). On breach: halt entries, force-exit-all, fire `daily_loss_cap_breached` LIVE-23 critical alert with the actual cap that fired in the body. Cap reads `pnl_engine.daily_realised_pnl + pnl_engine.unrealised_pnl` so an open IC's mark-to-market mid-day breach trips it without waiting for harvest. Regression: `tests/test_safety_controls.py::TestDailyLossCap` (steady-state) + `TestShakedownDailyLossCap` (proving-period).
 - **Severity:** High
 - **Severity reason:** The only current loss limiter is the per-IC `IC_STOP_LOSS_MULT=3.0` multi-leg combined stop. There is no absolute rupee cap per day. A streak of losing ICs can exceed personal tolerance long before a combined 3× stop fires.
 - **Priority:** P0
@@ -355,11 +355,13 @@ once reconciliation passes. Has zero effect in paper mode.
 
 ### Pre-flip blockers (must resolve BEFORE setting SHAKEDOWN_MODE=True)
 
-The shakedown triad is committable as-is because `SHAKEDOWN_MODE` defaults to False — none of the controls fire in paper or in steady-state live. Two issues were intentionally left for explicit operator decision before the flip:
+The shakedown triad is committable as-is because `SHAKEDOWN_MODE` defaults to False — none of the controls fire in paper or in steady-state live. One blocker resolved 2026-04-26; one remains as an operator-decision item.
 
-- **SHAKEDOWN-03a · Counter persistence across crash-restart.** The entry counter is in-memory only. A planned restart during shakedown is an operator decision (counter reset is fine), but a *crash* restart at 11:30 with the cap exhausted would silently rebudget — the system would then enter a 2nd IC after a crash where the cap should have blocked it. Two acceptable resolutions: persist `_entries_today_count` via `position_persistence.save/load` (matches the daily-loss-state pattern), or — minimum — emit a startup log line `SHAKEDOWN: entry counters reset (in-memory only)` so the operator can spot the rebudget after a crash.
+- **SHAKEDOWN-03a · Counter persistence across crash-restart.** Addressed 2026-04-26. `IronCondorStrategy.save_state` / `restore_state` now wrap `{"position": ..., "entries_today_count": int, "entries_today_date": ISO_DATE}` and the persistence layer saves a strategy entry whenever EITHER a position OR a non-zero shakedown counter exists (so post-harvest flat state still persists the consumed budget). Restore re-keys on the IST date — same-day crash-restart preserves the count, next-day restart resets cleanly. Fail-closed posture for shakedown: operator-intent (across-day) resets are correct; crash-class (same-day) resets are blocked. Regression: 5 tests in `tests/test_safety_controls.py::TestShakedownCounterPersistence` covering save-when-flat omission for paper, save-includes-counter when shakedown-exhausted-and-flat, same-IST-date round-trip, IST-date-rollover reset, and combined position+counter round-trip.
 
-- **SHAKEDOWN-03b · Harvest semantics ratification.** The shipped reading caps *all* entries including harvest re-entries — i.e., 1 IC opens, harvests once, then sits flat for the day. This is the most conservative interpretation of "max 1 entry/day." The alternative reading is "1 fresh entry, unlimited harvest re-entries," which preserves the harvest-and-re-enter revenue model. The conservative reading constitutes Axiom 3 non-participation for most of the trading day during shakedown; the operator should ratify this trade-off explicitly before flipping the mode, since it changes what the strategy does on a normal trading day.
+- **SHAKEDOWN-03b · Harvest semantics — loose, ratified 2026-04-26.** The cap counts only fresh entries; same-day `PROFIT_HARVEST` and `ADJUSTMENT_REQUIRED` re-entries bypass the cap so the harvest-and-re-enter loop runs at full cadence during the proving period. `FORCE_EXIT` and any future stop-loss reason are intentionally excluded — once a session is halted, no further entries that day. `DAILY_MAX_LOSS_SHAKEDOWN`=₹10k bounds the downside of unlimited harvest churn.
+
+  Implementation: `IronCondorStrategy._is_re_entry()` returns True when `_last_exit_reason` is in `_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED")` AND `_last_exit_date == today`. `exit()` stamps both fields just before returning. `_check_session_entry_cap` short-circuits to True on a re-entry; `_record_session_entry` skips the bump on a re-entry. The sentinel is persisted alongside the counter (gated on same-IST-date) so a crash between `exit()` and the next `enter()` doesn't lose the harvest signal. Regression: 8 tests in `tests/test_safety_controls.py::TestShakedownLooseHarvestSemantics` covering the exit-stamping wiring, harvest/adjustment bypass, force-exit non-bypass, 100-iteration unbounded harvest cycle, IST-date isolation, and the crash-between-exit-and-reentry round-trip.
 
 ## Category 7 — Meta
 

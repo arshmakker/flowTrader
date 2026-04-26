@@ -519,3 +519,339 @@ class TestShakedownEntryCap:
         assert result is False
         strat.md.get_ltp.assert_not_called()
         strat.md.get_quote_book.assert_not_called()
+
+
+# ── SHAKEDOWN-03a: counter persistence across crash-restart ──────────────────
+
+class TestShakedownCounterPersistence:
+    """Failure mode prevented: SHAKEDOWN_MODE=True, cap=1 exhausted at 09:45,
+    crash at 11:30, restart at 11:35 — without persistence, counter resets and
+    a 2nd IC opens where the cap should have blocked it. With persistence,
+    the counter survives the restart on the same IST date and resets cleanly
+    when the IST date advances."""
+
+    def _make_strategy(self):
+        from trading_system.core.iron_condor import IronCondorStrategy
+        return IronCondorStrategy(order_manager=MagicMock(), market_data=MagicMock(), instrument="NIFTY")
+
+    def test_save_returns_none_when_flat_and_no_counter_state(self):
+        """Non-shakedown flat state must continue to omit the strategy from
+        the persisted payload (schema unchanged for paper days)."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", False):
+            assert strat.save_state() is None
+
+    def test_save_includes_counter_when_shakedown_exhausted_but_flat(self):
+        """Post-harvest in shakedown: position is None but the cap is consumed.
+        save_state must return a payload so restore can rebuild the budget."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._record_session_entry()
+            payload = strat.save_state()
+        assert payload is not None
+        assert "position" not in payload
+        assert payload["entries_today_count"] == 1
+        assert payload["entries_today_date"] == datetime.now().date().isoformat()
+
+    def test_counter_survives_crash_restart_same_ist_date(self):
+        """Round-trip: save in strategy A, restore into strategy B — same IST
+        date — and the cap on B must already be exhausted."""
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat_a = self._make_strategy()
+            strat_a._record_session_entry()
+            assert strat_a._check_session_entry_cap() is False
+            payload = strat_a.save_state()
+
+            strat_b = self._make_strategy()
+            assert strat_b._check_session_entry_cap() is True  # fresh init
+            strat_b.restore_state(payload)
+            assert strat_b._check_session_entry_cap() is False  # cap restored
+
+    def test_counter_resets_when_restart_crosses_ist_date(self):
+        """Save on Day 1, restore on Day 2 — the counter must NOT carry over."""
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat_a = self._make_strategy()
+            with patch("trading_system.core.iron_condor.datetime") as mock_dt:
+                mock_dt.now.return_value = datetime(2026, 4, 27, 11, 30)
+                mock_dt.strptime = datetime.strptime
+                strat_a._record_session_entry()
+                payload = strat_a.save_state()
+
+            strat_b = self._make_strategy()
+            with patch("trading_system.core.iron_condor.datetime") as mock_dt:
+                mock_dt.now.return_value = datetime(2026, 4, 28, 9, 30)
+                mock_dt.strptime = datetime.strptime
+                strat_b.restore_state(payload)
+                assert strat_b._check_session_entry_cap() is True  # fresh day
+
+    def test_position_and_counter_round_trip_together(self):
+        """A live IC plus a non-zero counter must both round-trip in one payload."""
+        from trading_system.core.iron_condor import IC_Position
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 2):
+            strat_a = self._make_strategy()
+            strat_a._position = IC_Position(
+                instrument="NIFTY",
+                sc_sym="NFO|NIFTY29MAY26C24500", sp_sym="NFO|NIFTY29MAY26P23500",
+                lc_sym="NFO|NIFTY29MAY26C24600", lp_sym="NFO|NIFTY29MAY26P23400",
+                sc_strike=24500, sp_strike=23500, lc_strike=24600, lp_strike=23400,
+                max_profit=10000.0, entry_credit=20.0, lots=10,
+                entry_time="10:15:00", peak_pnl=0.0,
+                expiry_date="2026-05-29",
+            )
+            strat_a._record_session_entry()
+            payload = strat_a.save_state()
+
+            strat_b = self._make_strategy()
+            strat_b.restore_state(payload)
+            assert strat_b.is_active()
+            assert strat_b._position.sc_sym == "NFO|NIFTY29MAY26C24500"
+            assert strat_b._entries_today_count == 1
+            assert strat_b._check_session_entry_cap() is True  # cap=2, count=1, room left
+            strat_b._record_session_entry()
+            assert strat_b._check_session_entry_cap() is False
+
+    def test_position_only_no_counter_keys_in_payload_when_shakedown_off(self):
+        """Steady-state paper / live: active position, no shakedown. The
+        persisted payload must contain only the position — no counter keys
+        leaking into a non-shakedown JSON would otherwise be dead schema noise."""
+        from trading_system.core.iron_condor import IC_Position
+        strat = self._make_strategy()
+        strat._position = IC_Position(
+            instrument="NIFTY",
+            sc_sym="NFO|NIFTY29MAY26C24500", sp_sym="NFO|NIFTY29MAY26P23500",
+            lc_sym="NFO|NIFTY29MAY26C24600", lp_sym="NFO|NIFTY29MAY26P23400",
+            sc_strike=24500, sp_strike=23500, lc_strike=24600, lp_strike=23400,
+            max_profit=10000.0, entry_credit=20.0, lots=10,
+            entry_time="10:15:00", peak_pnl=0.0,
+            expiry_date="2026-05-29",
+        )
+        with patch.object(settings, "SHAKEDOWN_MODE", False):
+            payload = strat.save_state()
+        assert payload is not None
+        assert "position" in payload
+        assert "entries_today_count" not in payload
+        assert "entries_today_date" not in payload
+
+    def test_persistence_layer_integration_round_trip(self, tmp_path):
+        """End-to-end pin: position + counter survive an actual
+        position_persistence.save → load round-trip on disk. Catches schema
+        drift between save_state's wrapper and the persistence layer's payload
+        construction (the failure mode advisor flagged: unit tests can pass
+        while the prod code path that goes through json+disk silently drops
+        the new keys)."""
+        from trading_system.core.iron_condor import IC_Position
+        from trading_system.core import position_persistence
+
+        state_file = str(tmp_path / "open_positions.json")
+        with patch.object(position_persistence, "STATE_FILE", state_file), \
+             patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 2):
+            strat_a = self._make_strategy()
+            strat_a._position = IC_Position(
+                instrument="NIFTY",
+                sc_sym="NFO|NIFTY29MAY26C24500", sp_sym="NFO|NIFTY29MAY26P23500",
+                lc_sym="NFO|NIFTY29MAY26C24600", lp_sym="NFO|NIFTY29MAY26P23400",
+                sc_strike=24500, sp_strike=23500, lc_strike=24600, lp_strike=23400,
+                max_profit=10000.0, entry_credit=20.0, lots=10,
+                entry_time="10:15:00", peak_pnl=0.0,
+                expiry_date="2026-05-29",
+            )
+            strat_a._record_session_entry()
+
+            tracker = MagicMock()
+            tracker._positions = {}
+            position_persistence.save({"NIFTY": strat_a}, tracker)
+            assert os.path.exists(state_file)
+
+            strat_b = self._make_strategy()
+            tracker_b = MagicMock()
+            tracker_b._positions = {}
+            position_persistence.load({"NIFTY": strat_b}, tracker_b)
+            assert strat_b.is_active()
+            assert strat_b._position.sc_sym == "NFO|NIFTY29MAY26C24500"
+            assert strat_b._entries_today_count == 1
+            assert strat_b._check_session_entry_cap() is True  # cap=2, count=1
+            strat_b._record_session_entry()
+            assert strat_b._check_session_entry_cap() is False
+
+
+# ── SHAKEDOWN-03b (loose): harvest/adjustment re-entries bypass the cap ──────
+
+class TestShakedownLooseHarvestSemantics:
+    """Loose reading of "max 1 entry/day": the per-session cap counts only
+    FRESH entries — same-day harvest and adjustment re-entries are continuations
+    of the current trading session and don't consume the budget. Stop-loss and
+    FORCE_EXIT are excluded so a halted session can't accidentally re-enter
+    via the same bypass."""
+
+    def _make_strategy(self):
+        from trading_system.core.iron_condor import IronCondorStrategy
+        return IronCondorStrategy(order_manager=MagicMock(), market_data=MagicMock(), instrument="NIFTY")
+
+    def _make_strategy_with_position(self):
+        """Strategy with a real PaperOrderManager-shaped OM so exit() can run."""
+        from trading_system.core.iron_condor import IronCondorStrategy, IC_Position
+        om = MagicMock()
+        om.place_order.return_value = {
+            "status": "COMPLETE", "fill_qty": 65, "fill_price": 10.0,
+        }
+        om.tracker = None
+        md = MagicMock()
+        md.get_lot_size.return_value = 65
+        strat = IronCondorStrategy(order_manager=om, market_data=md, instrument="NIFTY")
+        strat._position = IC_Position(
+            instrument="NIFTY",
+            sc_sym="NFO|NIFTY29MAY26C24500", sp_sym="NFO|NIFTY29MAY26P23500",
+            lc_sym="NFO|NIFTY29MAY26C24600", lp_sym="NFO|NIFTY29MAY26P23400",
+            sc_strike=24500, sp_strike=23500, lc_strike=24600, lp_strike=23400,
+            max_profit=10000.0, entry_credit=20.0, lots=1,
+            entry_time="10:15:00", peak_pnl=0.0, expiry_date="2026-05-29",
+        )
+        return strat
+
+    def test_exit_stamps_sentinel_for_harvest(self):
+        """Wiring pin: exit('PROFIT_HARVEST', ...) sets _last_exit_reason
+        and _last_exit_date so the next enter() call detects the re-entry."""
+        strat = self._make_strategy_with_position()
+        strat.exit("PROFIT_HARVEST", 100.0)
+        assert strat._last_exit_reason == "PROFIT_HARVEST"
+        assert strat._last_exit_date == datetime.now().date().isoformat()
+
+    def test_exit_stamps_sentinel_for_force_exit_too(self):
+        """FORCE_EXIT also stamps the sentinel, but it is not in the re-entry
+        allow-list — _is_re_entry() must return False, so a halted session
+        cannot re-enter via this bypass."""
+        strat = self._make_strategy_with_position()
+        strat.exit("FORCE_EXIT", 0.0)
+        assert strat._last_exit_reason == "FORCE_EXIT"
+        assert strat._is_re_entry() is False
+
+    def test_harvest_re_entry_bypasses_cap_under_loose(self):
+        """Cap=1 is exhausted by the fresh entry. After a same-day harvest
+        exit, the re-entry attempt must pass the cap check AND not bump the
+        counter."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._record_session_entry()  # fresh entry: count=1
+            assert strat._check_session_entry_cap() is False  # cap exhausted
+            today = datetime.now().date().isoformat()
+            strat._last_exit_reason = "PROFIT_HARVEST"
+            strat._last_exit_date = today
+            assert strat._check_session_entry_cap() is True  # re-entry allowed
+            strat._record_session_entry()
+            assert strat._entries_today_count == 1  # harvest re-entry must NOT bump
+
+    def test_adjustment_re_entry_bypasses_cap_under_loose(self):
+        """Same pin for ADJUSTMENT_REQUIRED — close-and-roll is a re-entry."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._record_session_entry()
+            today = datetime.now().date().isoformat()
+            strat._last_exit_reason = "ADJUSTMENT_REQUIRED"
+            strat._last_exit_date = today
+            assert strat._check_session_entry_cap() is True
+            strat._record_session_entry()
+            assert strat._entries_today_count == 1
+
+    def test_force_exit_does_not_enable_re_entry_bypass(self):
+        """After a FORCE_EXIT (EOD, hard stop, kill switch), the cap MUST
+        refuse further entries on the same day. This is the safety boundary
+        that distinguishes loose semantics from "the cap does nothing." """
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._record_session_entry()  # fresh entry: count=1
+            today = datetime.now().date().isoformat()
+            strat._last_exit_reason = "FORCE_EXIT"
+            strat._last_exit_date = today
+            assert strat._check_session_entry_cap() is False  # halted, no bypass
+
+    def test_unlimited_harvest_re_entries_in_one_day(self):
+        """100 harvest cycles: 1 fresh entry + 99 harvest re-entries — all
+        permitted, count stays at 1. The harvest revenue model is preserved
+        end-to-end during shakedown."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._record_session_entry()  # fresh entry
+            today = datetime.now().date().isoformat()
+            for _ in range(99):
+                strat._last_exit_reason = "PROFIT_HARVEST"
+                strat._last_exit_date = today
+                assert strat._check_session_entry_cap() is True
+                strat._record_session_entry()
+            assert strat._entries_today_count == 1
+
+    def test_re_entry_signal_does_not_carry_across_ist_date(self):
+        """Yesterday's harvest exit must NOT enable a re-entry bypass today.
+        The date-keyed _is_re_entry guard catches it; persistence layer also
+        wipes the sentinel on date mismatch via restore_state."""
+        strat = self._make_strategy()
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat._last_exit_reason = "PROFIT_HARVEST"
+            strat._last_exit_date = "2026-04-25"  # yesterday
+            with patch("trading_system.core.iron_condor.datetime") as mock_dt:
+                mock_dt.now.return_value = datetime(2026, 4, 26, 10, 0)
+                mock_dt.strptime = datetime.strptime
+                assert strat._is_re_entry() is False
+                # Today's first entry is FRESH and consumes the cap normally.
+                strat._record_session_entry()
+                assert strat._entries_today_count == 1
+
+    def test_re_entry_sentinel_round_trips_through_persistence(self):
+        """Crash mid-harvest-cycle: exit completes, sentinel set, process
+        crashes BEFORE the next enter() runs. After restart, the sentinel
+        must be restored so the re-entry attempt still gets the bypass."""
+        with patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat_a = self._make_strategy()
+            strat_a._record_session_entry()  # fresh entry
+            today = datetime.now().date().isoformat()
+            strat_a._last_exit_reason = "PROFIT_HARVEST"
+            strat_a._last_exit_date = today
+            payload = strat_a.save_state()
+            assert payload["last_exit_reason"] == "PROFIT_HARVEST"
+            assert payload["last_exit_date"] == today
+
+            strat_b = self._make_strategy()
+            strat_b.restore_state(payload)
+            assert strat_b._last_exit_reason == "PROFIT_HARVEST"
+            assert strat_b._is_re_entry() is True
+            assert strat_b._check_session_entry_cap() is True  # re-entry survives crash
+
+    def test_sentinel_persistence_layer_integration_round_trip(self, tmp_path):
+        """End-to-end on-disk pin: the sentinel survives the actual
+        position_persistence.save → JSON → load path that runs in prod.
+        Catches drift between save_state's wrapper and the persistence layer's
+        json.dump/load cycle."""
+        from trading_system.core import position_persistence
+
+        state_file = str(tmp_path / "open_positions.json")
+        with patch.object(position_persistence, "STATE_FILE", state_file), \
+             patch.object(settings, "SHAKEDOWN_MODE", True), \
+             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1):
+            strat_a = self._make_strategy()
+            strat_a._record_session_entry()
+            today = datetime.now().date().isoformat()
+            strat_a._last_exit_reason = "PROFIT_HARVEST"
+            strat_a._last_exit_date = today
+
+            tracker = MagicMock()
+            tracker._positions = {}
+            position_persistence.save({"NIFTY": strat_a}, tracker)
+
+            strat_b = self._make_strategy()
+            tracker_b = MagicMock()
+            tracker_b._positions = {}
+            position_persistence.load({"NIFTY": strat_b}, tracker_b)
+            assert strat_b._last_exit_reason == "PROFIT_HARVEST"
+            assert strat_b._last_exit_date == today
+            assert strat_b._is_re_entry() is True
+            assert strat_b._check_session_entry_cap() is True

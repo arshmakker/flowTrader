@@ -19,6 +19,14 @@ from trading_system.live.live_order_manager import OrderPollingAbandoned, persis
 
 logger = logging.getLogger(__name__)
 
+# SHAKEDOWN-03b (loose semantics): exit reasons that mark the next enter()
+# call as a continuation of the current trading session (a "re-entry"), not
+# a fresh session start. Re-entries do not consume the per-session entry cap,
+# so the harvest-and-re-enter loop can run unlimited within a single day.
+# FORCE_EXIT and any future stop-loss reason are intentionally excluded —
+# entries after those should be refused if the cap is consumed.
+_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED")
+
 _EXPIRY_RE = re.compile(r'(\d{2})([A-Z]{3})(\d{2})', re.IGNORECASE)
 _MONTH_MAP = {
     "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
@@ -79,17 +87,21 @@ class IronCondorStrategy:
         self._position: Optional[IC_Position] = None
         # BUG-05: legs whose rollback reverse-orders failed; drained by main.py after enter().
         self._last_rollback_stuck_legs: List[Dict] = []
-        # SHAKEDOWN: per-(instrument, IST date) successful-entry counter, used
-        # only when settings.SHAKEDOWN_MODE=True. In-memory only; a planned
-        # restart resets the count (operator decision), but a *crash* restart
-        # mid-session silently rebudgets the cap — surface that on every start
-        # so the operator sees the rebudget when scanning logs after a crash.
+        # SHAKEDOWN-03a: per-(instrument, IST date) successful-entry counter,
+        # used only when settings.SHAKEDOWN_MODE=True. Persisted via
+        # save_state/restore_state and re-keyed on IST date so a crash-restart
+        # mid-session preserves the budget; a next-day restart resets it.
         self._entries_today_count = 0
         self._entries_today_date = ""
+        # SHAKEDOWN-03b (loose): exit reason + IST date of the most recent
+        # close, used to identify whether the next enter() is a fresh session
+        # start (consumes the cap) or a harvest/adjustment re-entry (does not).
+        self._last_exit_reason = ""
+        self._last_exit_date = ""
         if settings.SHAKEDOWN_MODE:
             logger.info(
-                "SHAKEDOWN: %s entry counter reset to 0 (in-memory; cap=%d/day). "
-                "A crash-restart mid-session rebudgets this cap silently.",
+                "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
+                "harvest/adjustment re-entries unlimited; persisted across crash-restart).",
                 self.instrument, settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN,
             )
 
@@ -109,33 +121,53 @@ class IronCondorStrategy:
             self._entries_today_count = 0
         return today
 
+    def _is_re_entry(self) -> bool:
+        """SHAKEDOWN-03b (loose): True if the next enter() call follows a same-day
+        harvest or adjustment exit — i.e., a continuation of the current trading
+        session that should not consume the daily fresh-entry cap. False after a
+        stop-loss / FORCE_EXIT / no-prior-exit, in which case the cap rules normally."""
+        if not self._last_exit_reason or not self._last_exit_date:
+            return False
+        today = datetime.now().date().isoformat()
+        if self._last_exit_date != today:
+            return False
+        return self._last_exit_reason in _RE_ENTRY_EXIT_REASONS
+
     def _check_session_entry_cap(self) -> bool:
         """SHAKEDOWN: returns True if a new entry is allowed under the per-session cap.
 
-        Counts successful entries per (instrument, IST date). Active only when
-        settings.SHAKEDOWN_MODE=True; otherwise always returns True. Once the
-        cap is hit, further enter()/enter_hedge_first() calls (including
-        harvest re-entries) are refused for the remainder of the trading day —
-        intentional Axiom 3 non-participation during the proving period.
+        Active only when settings.SHAKEDOWN_MODE=True; otherwise always True.
+        Loose semantics (SHAKEDOWN-03b): the cap counts FRESH entries only.
+        Same-day harvest or adjustment re-entries bypass the cap so the
+        harvest-and-re-enter loop runs as in steady state. Once the fresh-entry
+        cap is hit and no qualifying re-entry signal is set, further entries
+        are refused for the rest of the IST day.
         """
         if not settings.SHAKEDOWN_MODE:
             return True
         today = self._roll_daily_entry_counter()
+        if self._is_re_entry():
+            return True
         cap = settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN
         if self._entries_today_count >= cap:
             logger.info(
                 "IC_REJECT reason=SHAKEDOWN_ENTRY_CAP instrument=%s count=%d cap=%d "
-                "date=%s — proving-period cap reached; refusing entry until tomorrow.",
+                "date=%s last_exit=%s — proving-period fresh-entry cap reached; "
+                "no qualifying harvest/adjustment re-entry signal.",
                 self.instrument, self._entries_today_count, cap, today,
+                self._last_exit_reason or "(none)",
             )
             return False
         return True
 
     def _record_session_entry(self) -> None:
-        """SHAKEDOWN: increment the per-session entry counter on a successful entry."""
+        """SHAKEDOWN: increment the fresh-entry counter on a successful entry.
+        Loose semantics: harvest/adjustment re-entries do not bump the counter."""
         if not settings.SHAKEDOWN_MODE:
             return
         self._roll_daily_entry_counter()
+        if self._is_re_entry():
+            return
         self._entries_today_count += 1
 
     @staticmethod
@@ -931,6 +963,10 @@ class IronCondorStrategy:
             "peak_pnl": round(pos.peak_pnl, 2),
         }
         self._position = None
+        # SHAKEDOWN-03b: stamp the exit reason + IST date so the next enter()
+        # call can detect whether it's a same-day harvest/adjustment re-entry.
+        self._last_exit_reason = reason
+        self._last_exit_date = datetime.now().date().isoformat()
         return result
 
     def force_exit(self) -> Optional[Dict]:
@@ -940,13 +976,50 @@ class IronCondorStrategy:
         return self.exit("FORCE_EXIT", pnl)
 
     def save_state(self) -> Optional[Dict]:
+        # SHAKEDOWN-03a: counter persists alongside the position so a same-day
+        # crash-restart cannot silently rebudget an exhausted entry cap.
+        has_counter_state = bool(
+            settings.SHAKEDOWN_MODE
+            and self._entries_today_date
+            and self._entries_today_count > 0
+        )
+        if not self._position and not has_counter_state:
+            return None
+        payload: Dict[str, Any] = {}
         if self._position:
-            return self._position.to_dict()
-        return None
+            payload["position"] = self._position.to_dict()
+        if has_counter_state:
+            payload["entries_today_count"] = self._entries_today_count
+            payload["entries_today_date"] = self._entries_today_date
+            # SHAKEDOWN-03b: persist the re-entry sentinel so a crash between
+            # exit() and the next enter() preserves the loose-mode signal.
+            if self._last_exit_reason and self._last_exit_date == self._entries_today_date:
+                payload["last_exit_reason"] = self._last_exit_reason
+                payload["last_exit_date"] = self._last_exit_date
+        return payload
 
     def restore_state(self, state: Optional[Dict]) -> None:
-        if state:
-            self._position = IC_Position.from_dict(state)
-            logger.info(f"Restored {self.instrument} active position: {self._position.sc_sym} ...")
-        else:
+        if not state:
             self._position = None
+            return
+        pos_data = state.get("position")
+        self._position = IC_Position.from_dict(pos_data) if pos_data else None
+        if self._position:
+            logger.info(f"Restored {self.instrument} active position: {self._position.sc_sym} ...")
+        # SHAKEDOWN-03a/-03b: only honor the persisted counter and re-entry
+        # sentinel if the trading day matches; otherwise fall through to init
+        # defaults (count=0, last_exit_reason="").
+        persisted_date = state.get("entries_today_date", "")
+        today = datetime.now().date().isoformat()
+        if persisted_date == today:
+            self._entries_today_date = persisted_date
+            self._entries_today_count = int(state.get("entries_today_count", 0))
+            self._last_exit_reason = state.get("last_exit_reason", "")
+            self._last_exit_date = state.get("last_exit_date", "")
+            if settings.SHAKEDOWN_MODE and self._entries_today_count > 0:
+                logger.info(
+                    "SHAKEDOWN: %s entry counter restored: count=%d/%d date=%s last_exit=%s",
+                    self.instrument, self._entries_today_count,
+                    settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN, today,
+                    self._last_exit_reason or "(none)",
+                )
