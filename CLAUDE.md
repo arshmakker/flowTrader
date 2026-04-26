@@ -24,6 +24,26 @@ Run `date` and `TZ=Asia/Kolkata date` (IST is the trading timezone). Never hardc
 
 This block keeps the operator oriented without needing to read the memory file themselves.
 
+## Delegate verbose-output commands to the operator
+
+Real token savings come from avoiding **command output** flooding the context, not from avoiding permission prompts (those are UI, not tokens). Delegate only when output is genuinely verbose:
+
+**Delegate — print the command and ask operator to run it:**
+- `pip install` / `pip uninstall` / `brew install` / `npm install` (hundreds of lines of dependency resolution)
+- Any long-running build/compile step
+- Anything requiring sudo or interactive input
+
+**Confirm first, then run via Bash** (destructive, short output — safety matters more than tokens):
+- `rm` / `rm -rf` / `mv` (state the target, get explicit OK, then run)
+- `kill` / `pkill` (state the PID and what's being killed)
+
+**Run freely via Bash** (already allowlisted in `.claude/settings.local.json`, output is small):
+- `git status` / `git diff` / `git log` / `git show` / `git add` / `git commit` / `git push` / `git checkout` / `git merge` / `git stash`
+- `pytest`, `python *`, `ls`, `grep`, `find`, `date`
+- Anything purely informational
+
+**Output pattern when delegating:** finish the work, then say "Run this when you're ready: `<command>`" — single line, copy-pasteable. Numbered if multi-step. No permission-prompt ceremony; the operator already knows the drill. If you need the output back to proceed, say so explicitly so the operator knows to paste it.
+
 ## What is this project
 
 RegimeTrader is a Python-based automated trading system for NIFTY derivatives (options/futures) on the Indian stock market. It classifies trading days by regime (ranging vs trending), applies VIX-based filters, and executes **Iron Condor** strategies in paper-trading mode via the **Shoonya (Noren) broker API**.
