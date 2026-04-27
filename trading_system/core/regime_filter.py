@@ -11,9 +11,8 @@ from trading_system.config import settings
 logger = logging.getLogger(__name__)
 
 class RegimeFilter:
-    def __init__(self, api: Any, quote_stream: Any = None):
+    def __init__(self, api: Any):
         self.api = api
-        self.quote_stream = quote_stream
         self._vix_cache: Optional[Tuple[float, float]] = None
         self._vix_history: List[Tuple[float, float]] = [] # (timestamp, vix_value)
 
@@ -25,17 +24,7 @@ class RegimeFilter:
                 return v
 
         try:
-            q = None
-            if self.quote_stream is not None:
-                q = self.quote_stream.get_quote(
-                    exchange=settings.NIFTY_SPOT_EXCHANGE,
-                    token=settings.INDIA_VIX_TOKEN,
-                    max_age_sec=settings.WS_VIX_MAX_AGE_SEC,
-                )
-                if q is None and settings.WS_STRICT_MODE:
-                    return 0.0
-            if q is None:
-                q = self.api.get_quotes(settings.NIFTY_SPOT_EXCHANGE, settings.INDIA_VIX_TOKEN)
+            q = self.api.get_quotes(settings.NIFTY_SPOT_EXCHANGE, settings.INDIA_VIX_TOKEN)
             v = float((q or {}).get("lp") or 0.0)
         except Exception as e:
             logger.error(f"Error fetching VIX: {e}")
@@ -64,15 +53,6 @@ class RegimeFilter:
         if not is_stable:
             logger.debug(f"VIX unstable: range {v_max - v_min:.2f} > band {settings.IC_VIX_STABLE_BAND}")
         return is_stable
-
-    def is_vix_falling(self) -> bool:
-        """Checks if VIX is currently in a downward trend."""
-        if len(self._vix_history) < 10:
-            return False
-        
-        recent = [val for t, val in self._vix_history[-10:]]
-        # Simple check: last value < average of previous 9
-        return recent[-1] < (sum(recent[:-1]) / len(recent[:-1]))
 
     def get_regime_gate(self, day_type: str) -> bool:
         """

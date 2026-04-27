@@ -418,82 +418,6 @@ class SymbolManager:
             
         return symbols
 
-    def get_index_futures_all_expiries(self, index_name: str = 'NIFTY'):
-        """
-        Get all available futures contracts for a specific index, sorted by expiry.
-        
-        Args:
-            index_name: Index to get futures for (NIFTY, BANKNIFTY, FINNIFTY)
-            
-        Returns:
-            List of futures contracts sorted by expiry date (nearest first)
-            Each entry contains: symbol, token, exchange, lot_size, index_name, expiry, instrument, days_to_expiry
-        """
-        if self.nse_fo is None:
-            self.logger.error("NFO symbols not loaded. Call load_symbol_files() first.")
-            return []
-            
-        try:
-            # Filter for index futures
-            futures_df = self.nse_fo[
-                (self.nse_fo['instrument'] == 'FUTIDX') &
-                (self.nse_fo['optiontype'] == 'XX')
-            ].copy()
-            
-            if futures_df.empty:
-                self.logger.error("No index futures found in NFO file")
-                return []
-            
-            # Convert expiry to datetime for sorting
-            futures_df['expiry_date'] = pd.to_datetime(futures_df['expiry'], format='%d-%b-%Y')
-            
-            # Filter out expired contracts
-            today = datetime.now().date()
-            futures_df = futures_df[futures_df['expiry_date'].dt.date >= today]
-            
-            if futures_df.empty:
-                self.logger.warning("No active futures contracts found (all expired)")
-                return []
-            
-            # Filter for the specific index
-            index_futures = futures_df[futures_df['symbol'].str.strip() == index_name]
-            
-            if index_futures.empty:
-                self.logger.warning(f"No active futures found for {index_name}")
-                return []
-            
-            # Sort by expiry date
-            index_futures = index_futures.sort_values('expiry_date')
-            
-            # Build list of all available contracts
-            contracts = []
-            for _, row in index_futures.iterrows():
-                expiry_date = row['expiry_date'].date()
-                days_to_expiry = (expiry_date - today).days
-                
-                contracts.append({
-                    'symbol': row['tradingsymbol'],
-                    'token': str(row['token']),
-                    'exchange': 'NFO',
-                    'lot_size': int(row['lotsize']),
-                    'index_name': index_name,
-                    'expiry': row['expiry'],
-                    'expiry_date': expiry_date,
-                    'instrument': 'FUTIDX',
-                    'days_to_expiry': days_to_expiry
-                })
-            
-            self.logger.info(
-                f"Found {len(contracts)} futures contracts for {index_name}: "
-                f"{[c['symbol'] + ' (' + str(c['days_to_expiry']) + 'd)' for c in contracts]}"
-            )
-            
-            return contracts
-            
-        except Exception as e:
-            self.logger.error(f"Error getting all futures expiries for {index_name}: {str(e)}")
-            return []
-
     def get_index_options(self, index_name=None, expiry=None, strike_range=5):
         """Get list of index options
         Args:
@@ -724,41 +648,6 @@ class SymbolManager:
             f"Options: {len(derivatives) - len(futures)})"
         )
         return derivatives
-
-    def get_active_symbols(self, exchange=None, criteria=None):
-        """Get list of active symbols based on criteria"""
-        try:
-            if exchange == 'NFO':
-                if self.nse_fo is None:
-                    self.logger.error("NFO symbols not loaded")
-                    return []
-                    
-                df = self.nse_fo
-            else:
-                self.logger.error(f"Unsupported exchange: {exchange}")
-                return []
-                
-            self.logger.debug(f"Available columns for filtering: {list(df.columns)}")
-            
-            # Apply filters based on criteria
-            if criteria:
-                for key, value in criteria.items():
-                    if key in df.columns:
-                        df = df[df[key] == value]
-                    else:
-                        self.logger.warning(f"Column {key} not found in symbol file")
-            
-            # Convert to list of dictionaries
-            symbols = df.to_dict('records')
-            self.logger.info(f"Found {len(symbols)} symbols matching criteria in {exchange}")
-            if symbols:
-                self.logger.debug(f"Sample symbol: {symbols[0]}")
-                
-            return symbols
-            
-        except Exception as e:
-            self.logger.error(f"Error getting active symbols: {str(e)}")
-            return []
 
     # NSE master uses "Nifty 50", "Nifty Bank", "Nifty Fin Services" in Symbol; tradingsymbol has "NIFTY INDEX", "NIFTY BANK", "FINNIFTY".
     NSE_INDEX_SYMBOL_MAP = {"NIFTY": "Nifty 50", "BANKNIFTY": "Nifty Bank", "FINNIFTY": "Nifty Fin Services"}

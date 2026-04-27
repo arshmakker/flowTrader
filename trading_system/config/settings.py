@@ -24,14 +24,9 @@ INDIA_VIX_KEY = "NSE|India VIX"
 NIFTY_SPOT_EXCHANGE = "NSE"
 
 # ══ SESSION ═════════════════════════════════════════════════════════
-TRADE_START = "10:00"
 CLASSIFY_TIME = "10:30"
 TRADE_END = "14:15"  # Hard close ALL positions (per CLAUDE.md axiom; 75 min buffer before 15:30 expiry settlement)
 SIGNAL_RECHECK_SEC = 60
-PRE_MARKET_SLEEP_SEC = 30
-MONITORING_SLEEP_SEC = 60
-PNL_LOG_INTERVAL_SEC = 300  # periodic P&L summary every 5 minutes
-VIX_HISTORY_WINDOW_SEC = 3600  # keep last 60 min of VIX readings
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
 IC_LOT_SIZE = 10  # 10 lots per instrument for greater absolute profit
@@ -130,10 +125,6 @@ TREND_MOVE_THRESHOLD = 0.015  # 1.5% from open = trending
 VWAP_TREND_DISTANCE = 0.003  # 0.3% from VWAP = trending
 TREND_HIGH_CONFIDENCE = 0.02  # >2% move => HIGH confidence trending
 
-
-# ══ RISK MANAGEMENT ══════════════════════════════════════════════════
-CAPITAL = 1_000_000  # ₹10L base
-RECOVERY_DEADLINE = "13:00" # Single-sided recovery only before 1 PM
 
 # ══ PAPER TRADING SIMULATION ═════════════════════════════════════════
 PRICE_TICK = 0.05
@@ -243,7 +234,6 @@ GL_RECONCILED_PRICE_DRIFT_PCT = 0.02
 
 # ══ DATA PATHS ═══════════════════════════════════════════════════════
 DATA_DIR = "data"
-WEB_DASHBOARD_PORT = 5050
 
 # ══ LOGGING ══════════════════════════════════════════════════════════
 LOG_DIR = "logs"
