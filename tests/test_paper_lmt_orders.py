@@ -113,41 +113,65 @@ def test_lmt_cancel_does_not_create_position(tmp_path):
     assert tracker._positions == {}  # no phantom position
 
 
-# ── Fallback-LTP LMT path (incident 2026-04-27) ─────────────────────────────
-# When market_data returns 0 (suspicious-quote rejection chain exhausted) but
-# the caller supplied a price, the order manager substitutes ltp ← price. The
-# pre-fix LMT check then synthesised a book around the substituted ltp:
-# paper_bid = price - slip, paper_ask = price + slip — mathematically
-# guaranteeing both SELL@price and BUY@price would fail. One bad quote during
-# a hedge-first IC entry → atomic-entry halt for the day. The fix: in the
-# fallback path, fill at the caller's price (no synthetic spread).
+# ── Boundary case: limit == LTP must fill (incidents 2026-04-27) ────────────
+# The IC entry code at iron_condor.py:695-700 submits SELL @ real_bid (offset=0
+# ticks). Under selling pressure the broker prints LTP at the bid-touch, so
+# `limit == real_bid == LTP` is the COMMON case for IC short-leg submission,
+# not an edge case. The pre-fix synthetic-book check (paper_bid = LTP - slip)
+# was strictly narrower than the real bid — `limit == LTP` deterministically
+# canceled, breaking atomic-entry. Two incidents on 2026-04-27:
+#   10:35:54 — limit=166.60, ltp=0 (suspicious-quote fallback chain) → cancel
+#   10:59:19 — limit=147.50, ltp=147.50 (real) → cancel
+# Both same root: paper_bid was below the limit by exactly `slip`. Fix: gate
+# fills on `price` vs `LTP` directly; slip applies only to fill price.
 
-def test_sell_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
-    """SELL LMT @ X with get_ltp=0: caller's price is the only signal — fill at X."""
-    om = _om(tmp_path, {"NFO|X": 0.0})  # get_ltp returns 0 → fallback path
-    order = om.place_order("NFO|X", "SELL", 300, price_type="LMT", price=166.60)
+def test_sell_lmt_at_ltp_fills(tmp_path):
+    """SELL @ LTP must fill at LTP. This is what the IC short-leg code submits
+    every entry (limit = real_bid; LTP often == real_bid)."""
+    om = _om(tmp_path, {"NFO|X": 147.50})
+    order = om.place_order("NFO|X", "SELL", 300, price_type="LMT", price=147.50)
     assert order["status"] == "COMPLETE"
     assert order["fill_qty"] == 300
+    assert order["fill_price"] == 147.50
+
+
+def test_buy_lmt_at_ltp_fills(tmp_path):
+    """BUY @ LTP must fill at LTP — symmetric to SELL boundary case."""
+    om = _om(tmp_path, {"NFO|X": 147.50})
+    order = om.place_order("NFO|X", "BUY", 300, price_type="LMT", price=147.50)
+    assert order["status"] == "COMPLETE"
+    assert order["fill_qty"] == 300
+    assert order["fill_price"] == 147.50
+
+
+def test_sell_lmt_one_tick_above_ltp_cancels(tmp_path):
+    """Boundary integrity: SELL one tick above LTP still cancels — we haven't
+    broken the cancel path, just lifted the threshold from `LTP - slip` to LTP."""
+    om = _om(tmp_path, {"NFO|X": 147.50})
+    order = om.place_order("NFO|X", "SELL", 300, price_type="LMT", price=147.55)
+    assert order["status"] == "CANCELED"
+
+
+def test_buy_lmt_one_tick_below_ltp_cancels(tmp_path):
+    """Symmetric: BUY one tick below LTP cancels."""
+    om = _om(tmp_path, {"NFO|X": 147.50})
+    order = om.place_order("NFO|X", "BUY", 300, price_type="LMT", price=147.45)
+    assert order["status"] == "CANCELED"
+
+
+def test_sell_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
+    """SELL LMT @ X with get_ltp=0: substitution sets ltp ← price, so
+    price <= ltp holds and fill goes at price. Subsumed by general gate but
+    kept as an explicit regression for the 10:35:54 incident path."""
+    om = _om(tmp_path, {"NFO|X": 0.0})
+    order = om.place_order("NFO|X", "SELL", 300, price_type="LMT", price=166.60)
+    assert order["status"] == "COMPLETE"
     assert order["fill_price"] == 166.60
 
 
 def test_buy_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
-    """BUY LMT @ X with get_ltp=0: same fallback semantic — fill at X."""
+    """BUY LMT @ X with get_ltp=0: symmetric to SELL fallback."""
     om = _om(tmp_path, {"NFO|X": 0.0})
     order = om.place_order("NFO|X", "BUY", 300, price_type="LMT", price=166.60)
     assert order["status"] == "COMPLETE"
-    assert order["fill_qty"] == 300
     assert order["fill_price"] == 166.60
-
-
-def test_lmt_normal_path_unchanged_by_fallback_fix(tmp_path):
-    """When get_ltp returns a real value, synthetic-book LMT semantics are
-    preserved — fallback-fill is gated on ltp_was_fallback."""
-    om = _om(tmp_path, {"NFO|X": 18.0})
-    # SELL @ 19 with bid ~17.75 → still cancels (limit above bid)
-    cancel = om.place_order("NFO|X", "SELL", 65, price_type="LMT", price=19.0)
-    assert cancel["status"] == "CANCELED"
-    # SELL @ 16 with bid ~17.75 → still fills at the bid (favourable)
-    fill = om.place_order("NFO|X", "SELL", 65, price_type="LMT", price=16.0)
-    assert fill["status"] == "COMPLETE"
-    assert fill["fill_price"] >= 16.0

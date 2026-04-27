@@ -156,11 +156,9 @@ class PaperOrderManager:
     ) -> Dict:
         ltp = self.md.get_ltp(tradingsymbol)
         is_option = self._is_option_symbol(tradingsymbol)
-        ltp_was_fallback = False
         if ltp <= 0:
             if price > 0:
                 ltp = price
-                ltp_was_fallback = True
                 logger.warning("Paper LTP=0 for %s; using explicit fallback %.2f", tradingsymbol, ltp)
             else:
                 logger.error("Paper order rejected for %s: missing LTP and no fallback price", tradingsymbol)
@@ -210,11 +208,15 @@ class PaperOrderManager:
         else:
             slip = max(ltp * settings.SLIPPAGE_PCT, settings.SLIPPAGE_MIN_ABS)
 
-        # LIVE-25: paper-side LMT support. The paper "book" is modeled as
-        # ask=ltp+slip, bid=ltp-slip. A BUY LMT fills only if the limit is at
-        # or above the ask; a SELL LMT only if at or below the bid. Otherwise
-        # the order is CANCELED (paper's equivalent of "timed out without fill").
-        # MKT flow is unchanged — ignores price entirely.
+        # LIVE-25: paper-side LMT support. Fill gate is `price` vs `LTP` — i.e.
+        # marketable-against-last-trade. The IC code submits SELL @ real-bid
+        # (iron_condor.py:695-700) and the broker prints LTP at the bid-touch
+        # under selling pressure, so `limit == LTP` must fill — that's the
+        # contract paper has to honor. Slippage is applied to the fill price
+        # (worst-case execution penalty) but is NOT a fill-gate threshold —
+        # using slip as the gate caused incident 2026-04-27 10:59:19 (BANKNIFTY
+        # P51000 limit=147.50 ltp=147.50, paper_bid=147.25, deterministic
+        # cancel → atomic-entry halt). MKT flow is unchanged.
         if price_type == "LMT":
             if price <= 0:
                 logger.error("Paper LMT order for %s rejected: no price provided", tradingsymbol)
@@ -230,31 +232,16 @@ class PaperOrderManager:
                 self._append_order_csv(rejected)
                 return rejected
 
-            if ltp_was_fallback:
-                # No real market reference — caller's price IS the only price
-                # signal we have. Fill at it. Synthesizing a book around the
-                # fallback (paper_bid = price - slip, paper_ask = price + slip)
-                # would mathematically guarantee SELL@price and BUY@price both
-                # fail, turning every transient bad-quote into an atomic-entry
-                # halt. See incident 2026-04-27 10:35:54 BANKNIFTY P51000.
-                fill = price
-                logger.info(
-                    "PAPER LMT fallback-fill %s %s @ %.2f (no live LTP available)",
-                    buy_or_sell, tradingsymbol, fill,
-                )
-            else:
-                paper_ask = ltp + slip
-                paper_bid = ltp - slip
-                if buy_or_sell in ("BUY", "B"):
-                    if price >= paper_ask:
-                        fill = min(price, paper_ask)
-                    else:
-                        return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+            if buy_or_sell in ("BUY", "B"):
+                if price >= ltp:
+                    fill = min(price, ltp + slip)
                 else:
-                    if price <= paper_bid:
-                        fill = max(price, paper_bid)
-                    else:
-                        return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+            else:
+                if price <= ltp:
+                    fill = max(price, ltp - slip)
+                else:
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
         else:  # MKT (default)
             if buy_or_sell in ("BUY", "B"):
                 fill = ltp + slip
