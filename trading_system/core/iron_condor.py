@@ -98,6 +98,13 @@ class IronCondorStrategy:
         # start (consumes the cap) or a harvest/adjustment re-entry (does not).
         self._last_exit_reason = ""
         self._last_exit_date = ""
+        # Incident 2026-04-27 12:00:32: harvest re-entry partial-fill from
+        # normal bid drift halted the session. Fresh-entry partial-fill is
+        # still a halt (signal of liquidity stress); harvest re-entry partial-
+        # fill increments this counter instead. Reset on a successful entry.
+        # Cap → halt with a distinct reason so post-mortem can tell the two
+        # apart.
+        self._consecutive_harvest_partial_fails = 0
         if settings.SHAKEDOWN_MODE:
             logger.info(
                 "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
@@ -774,20 +781,57 @@ class IronCondorStrategy:
                 self.om.place_order(sp_sym, "BUY", sp_fill_qty, price=float(sp_order["fill_price"]))
             self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
             self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
-            # LIVE-05: a partial-fill Phase-5b is a liquidity-stress signal —
-            # halt new entries until operator clears, same as legacy enter()'s
-            # _handle_partial_fill_halt.
+            # LIVE-05: a partial-fill Phase-5b is a liquidity-stress signal on
+            # FRESH entries — halt and let the operator reconcile.
+            #
+            # Incident 2026-04-27 12:00:32: a harvest re-entry partial-fill is
+            # not the same signal. The bid moved by 1.65 in 1.3s during the
+            # immediate-re-enter cycle and the SC SELL @ stale-bid couldn't
+            # cross. That's normal market noise during high-frequency cycling,
+            # not broken liquidity. Halting the day cost ~₹1,200 of unwind
+            # plus all forward expected value. Policy: fresh-entry partial-
+            # fill halts (unchanged); harvest/adjustment re-entry partial-fill
+            # increments _consecutive_harvest_partial_fails and skips the
+            # cycle. Cap (settings.IC_HARVEST_PARTIAL_FAIL_CAP) → halt with a
+            # distinct reason so the post-mortem can tell drift from stress.
             if sc_fill_qty > 0 or sp_fill_qty > 0:
-                self._last_rollback_stuck_legs = [{
-                    "symbol": "(entry-partial-fill-event)",
-                    "reason": "partial_fill_during_hedge_first_entry",
-                    "partial_legs": [
-                        {"symbol": sc_sym, "side": "SELL", "fill_qty": sc_fill_qty, "requested_qty": qty},
-                        {"symbol": sp_sym, "side": "SELL", "fill_qty": sp_fill_qty, "requested_qty": qty},
-                    ],
-                    "reversal_incomplete_count": 0,
-                }]
-                persist_stuck_legs(self._last_rollback_stuck_legs)
+                partial_legs = [
+                    {"symbol": sc_sym, "side": "SELL", "fill_qty": sc_fill_qty, "requested_qty": qty},
+                    {"symbol": sp_sym, "side": "SELL", "fill_qty": sp_fill_qty, "requested_qty": qty},
+                ]
+                if self._is_re_entry():
+                    self._consecutive_harvest_partial_fails += 1
+                    cap = settings.IC_HARVEST_PARTIAL_FAIL_CAP
+                    if self._consecutive_harvest_partial_fails >= cap:
+                        logger.critical(
+                            "IC %s harvest re-entry partial-fill cap reached "
+                            "(%d consecutive ≥ cap %d) — escalating to halt.",
+                            self.instrument,
+                            self._consecutive_harvest_partial_fails, cap,
+                        )
+                        self._last_rollback_stuck_legs = [{
+                            "symbol": "(harvest-reentry-partial-fill-cap)",
+                            "reason": "consecutive_harvest_partial_fail_cap_reached",
+                            "consecutive_count": self._consecutive_harvest_partial_fails,
+                            "partial_legs": partial_legs,
+                            "reversal_incomplete_count": 0,
+                        }]
+                        persist_stuck_legs(self._last_rollback_stuck_legs)
+                    else:
+                        logger.warning(
+                            "IC %s harvest re-entry partial-fill (%d/%d) — "
+                            "skipping this cycle, will retry on next signal.",
+                            self.instrument,
+                            self._consecutive_harvest_partial_fails, cap,
+                        )
+                else:
+                    self._last_rollback_stuck_legs = [{
+                        "symbol": "(entry-partial-fill-event)",
+                        "reason": "partial_fill_during_hedge_first_entry",
+                        "partial_legs": partial_legs,
+                        "reversal_incomplete_count": 0,
+                    }]
+                    persist_stuck_legs(self._last_rollback_stuck_legs)
             return False
 
         sc_fill = float(sc_order["fill_price"])
@@ -809,6 +853,8 @@ class IronCondorStrategy:
             return False
 
         # Entry successful — construct IC_Position mirroring legacy enter().
+        # Reset the consecutive harvest-fail counter: liquidity is fine again.
+        self._consecutive_harvest_partial_fails = 0
         max_profit = actual_net_credit_unit * qty
         try:
             expiry_iso = datetime.strptime(str(expiry).strip(), "%d-%b-%Y").date().isoformat()
