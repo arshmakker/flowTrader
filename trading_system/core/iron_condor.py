@@ -1030,12 +1030,24 @@ class IronCondorStrategy:
     def save_state(self) -> Optional[Dict]:
         # SHAKEDOWN-03a: counter persists alongside the position so a same-day
         # crash-restart cannot silently rebudget an exhausted entry cap.
+        today = datetime.now().date().isoformat()
         has_counter_state = bool(
             settings.SHAKEDOWN_MODE
             and self._entries_today_date
             and self._entries_today_count > 0
         )
-        if not self._position and not has_counter_state:
+        # Incident 2026-04-27 12:32:46: with SHAKEDOWN_MODE=False the harvest
+        # re-entry sentinel was never persisted, so the first entry attempt
+        # after any restart looked like a fresh entry to the Phase-5b policy.
+        # Result: a single bid-drift cancel halted the day even though the
+        # morning had 4 successful PROFIT_HARVEST exits. Persist independently
+        # of the SHAKEDOWN gate; the date check at restore protects against
+        # stale-day carryover regardless of mode.
+        has_reentry_state = bool(
+            self._last_exit_reason
+            and self._last_exit_date == today
+        )
+        if not self._position and not has_counter_state and not has_reentry_state:
             return None
         payload: Dict[str, Any] = {}
         if self._position:
@@ -1043,11 +1055,9 @@ class IronCondorStrategy:
         if has_counter_state:
             payload["entries_today_count"] = self._entries_today_count
             payload["entries_today_date"] = self._entries_today_date
-            # SHAKEDOWN-03b: persist the re-entry sentinel so a crash between
-            # exit() and the next enter() preserves the loose-mode signal.
-            if self._last_exit_reason and self._last_exit_date == self._entries_today_date:
-                payload["last_exit_reason"] = self._last_exit_reason
-                payload["last_exit_date"] = self._last_exit_date
+        if has_reentry_state:
+            payload["last_exit_reason"] = self._last_exit_reason
+            payload["last_exit_date"] = self._last_exit_date
         return payload
 
     def restore_state(self, state: Optional[Dict]) -> None:
@@ -1058,20 +1068,27 @@ class IronCondorStrategy:
         self._position = IC_Position.from_dict(pos_data) if pos_data else None
         if self._position:
             logger.info(f"Restored {self.instrument} active position: {self._position.sc_sym} ...")
-        # SHAKEDOWN-03a/-03b: only honor the persisted counter and re-entry
-        # sentinel if the trading day matches; otherwise fall through to init
-        # defaults (count=0, last_exit_reason="").
-        persisted_date = state.get("entries_today_date", "")
+        # SHAKEDOWN-03a/-03b: counter and re-entry sentinel restore independently.
+        # Each is keyed on its own persisted date to handle the case where one
+        # is set without the other (paper mode persists re-entry but not counter).
         today = datetime.now().date().isoformat()
-        if persisted_date == today:
-            self._entries_today_date = persisted_date
+        persisted_counter_date = state.get("entries_today_date", "")
+        if persisted_counter_date == today:
+            self._entries_today_date = persisted_counter_date
             self._entries_today_count = int(state.get("entries_today_count", 0))
+        persisted_reentry_date = state.get("last_exit_date", "")
+        if persisted_reentry_date == today:
             self._last_exit_reason = state.get("last_exit_reason", "")
-            self._last_exit_date = state.get("last_exit_date", "")
-            if settings.SHAKEDOWN_MODE and self._entries_today_count > 0:
-                logger.info(
-                    "SHAKEDOWN: %s entry counter restored: count=%d/%d date=%s last_exit=%s",
-                    self.instrument, self._entries_today_count,
-                    settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN, today,
-                    self._last_exit_reason or "(none)",
-                )
+            self._last_exit_date = persisted_reentry_date
+        if settings.SHAKEDOWN_MODE and self._entries_today_count > 0:
+            logger.info(
+                "SHAKEDOWN: %s entry counter restored: count=%d/%d date=%s last_exit=%s",
+                self.instrument, self._entries_today_count,
+                settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN, today,
+                self._last_exit_reason or "(none)",
+            )
+        elif self._last_exit_reason:
+            logger.info(
+                "%s re-entry sentinel restored: last_exit=%s date=%s",
+                self.instrument, self._last_exit_reason, self._last_exit_date,
+            )
