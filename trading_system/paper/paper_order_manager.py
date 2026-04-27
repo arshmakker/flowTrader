@@ -156,9 +156,11 @@ class PaperOrderManager:
     ) -> Dict:
         ltp = self.md.get_ltp(tradingsymbol)
         is_option = self._is_option_symbol(tradingsymbol)
+        ltp_was_fallback = False
         if ltp <= 0:
             if price > 0:
                 ltp = price
+                ltp_was_fallback = True
                 logger.warning("Paper LTP=0 for %s; using explicit fallback %.2f", tradingsymbol, ltp)
             else:
                 logger.error("Paper order rejected for %s: missing LTP and no fallback price", tradingsymbol)
@@ -228,18 +230,31 @@ class PaperOrderManager:
                 self._append_order_csv(rejected)
                 return rejected
 
-            paper_ask = ltp + slip
-            paper_bid = ltp - slip
-            if buy_or_sell in ("BUY", "B"):
-                if price >= paper_ask:
-                    fill = min(price, paper_ask)
-                else:
-                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+            if ltp_was_fallback:
+                # No real market reference — caller's price IS the only price
+                # signal we have. Fill at it. Synthesizing a book around the
+                # fallback (paper_bid = price - slip, paper_ask = price + slip)
+                # would mathematically guarantee SELL@price and BUY@price both
+                # fail, turning every transient bad-quote into an atomic-entry
+                # halt. See incident 2026-04-27 10:35:54 BANKNIFTY P51000.
+                fill = price
+                logger.info(
+                    "PAPER LMT fallback-fill %s %s @ %.2f (no live LTP available)",
+                    buy_or_sell, tradingsymbol, fill,
+                )
             else:
-                if price <= paper_bid:
-                    fill = max(price, paper_bid)
+                paper_ask = ltp + slip
+                paper_bid = ltp - slip
+                if buy_or_sell in ("BUY", "B"):
+                    if price >= paper_ask:
+                        fill = min(price, paper_ask)
+                    else:
+                        return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
                 else:
-                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+                    if price <= paper_bid:
+                        fill = max(price, paper_bid)
+                    else:
+                        return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
         else:  # MKT (default)
             if buy_or_sell in ("BUY", "B"):
                 fill = ltp + slip

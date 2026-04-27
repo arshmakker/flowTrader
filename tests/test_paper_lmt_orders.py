@@ -111,3 +111,43 @@ def test_lmt_cancel_does_not_create_position(tmp_path):
     om.place_order("NFO|X", "BUY", 65, price_type="LMT", price=17.0)
 
     assert tracker._positions == {}  # no phantom position
+
+
+# ── Fallback-LTP LMT path (incident 2026-04-27) ─────────────────────────────
+# When market_data returns 0 (suspicious-quote rejection chain exhausted) but
+# the caller supplied a price, the order manager substitutes ltp ← price. The
+# pre-fix LMT check then synthesised a book around the substituted ltp:
+# paper_bid = price - slip, paper_ask = price + slip — mathematically
+# guaranteeing both SELL@price and BUY@price would fail. One bad quote during
+# a hedge-first IC entry → atomic-entry halt for the day. The fix: in the
+# fallback path, fill at the caller's price (no synthetic spread).
+
+def test_sell_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
+    """SELL LMT @ X with get_ltp=0: caller's price is the only signal — fill at X."""
+    om = _om(tmp_path, {"NFO|X": 0.0})  # get_ltp returns 0 → fallback path
+    order = om.place_order("NFO|X", "SELL", 300, price_type="LMT", price=166.60)
+    assert order["status"] == "COMPLETE"
+    assert order["fill_qty"] == 300
+    assert order["fill_price"] == 166.60
+
+
+def test_buy_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
+    """BUY LMT @ X with get_ltp=0: same fallback semantic — fill at X."""
+    om = _om(tmp_path, {"NFO|X": 0.0})
+    order = om.place_order("NFO|X", "BUY", 300, price_type="LMT", price=166.60)
+    assert order["status"] == "COMPLETE"
+    assert order["fill_qty"] == 300
+    assert order["fill_price"] == 166.60
+
+
+def test_lmt_normal_path_unchanged_by_fallback_fix(tmp_path):
+    """When get_ltp returns a real value, synthetic-book LMT semantics are
+    preserved — fallback-fill is gated on ltp_was_fallback."""
+    om = _om(tmp_path, {"NFO|X": 18.0})
+    # SELL @ 19 with bid ~17.75 → still cancels (limit above bid)
+    cancel = om.place_order("NFO|X", "SELL", 65, price_type="LMT", price=19.0)
+    assert cancel["status"] == "CANCELED"
+    # SELL @ 16 with bid ~17.75 → still fills at the bid (favourable)
+    fill = om.place_order("NFO|X", "SELL", 65, price_type="LMT", price=16.0)
+    assert fill["status"] == "COMPLETE"
+    assert fill["fill_price"] >= 16.0
