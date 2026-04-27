@@ -639,11 +639,17 @@ class IronCondorStrategy:
         # status. Persist stuck-legs metadata so startup-reconcile (LIVE-07)
         # picks up whatever the broker actually has on next start, then let
         # the exception propagate to main.py's cycle handler for halt+alert.
+        # Pass QuoteBook prices as `price=` fallback for every place_order in
+        # the entry path. paper_order_manager substitutes ltp ← price when
+        # get_ltp returns 0 (junk-quote chain exhausted). Without this, a fresh
+        # strike whose broker quote is bogus halts entry — incident 2026-04-27
+        # 11:20:19 (BANKNIFTY C57700 LTP=56130, no last-valid cache → MKT BUY
+        # rejected → Phase-2 halt). Books were validated tradable at line 580.
         lc_order = None
         lp_order = None
         try:
-            lc_order = self.om.place_order(lc_sym, "BUY", qty)
-            lp_order = self.om.place_order(lp_sym, "BUY", qty)
+            lc_order = self.om.place_order(lc_sym, "BUY", qty, price=books["lc"].ask)
+            lp_order = self.om.place_order(lp_sym, "BUY", qty, price=books["lp"].ask)
         except OrderPollingAbandoned as exc:
             stuck = []
             if lc_order is None:
@@ -675,9 +681,9 @@ class IronCondorStrategy:
 
         if not (lc_fully and lp_fully):
             if lc_qty_filled > 0:
-                self.om.place_order(lc_sym, "SELL", lc_qty_filled)
+                self.om.place_order(lc_sym, "SELL", lc_qty_filled, price=books["lc"].bid)
             if lp_qty_filled > 0:
-                self.om.place_order(lp_sym, "SELL", lp_qty_filled)
+                self.om.place_order(lp_sym, "SELL", lp_qty_filled, price=books["lp"].bid)
             logger.error(
                 "IC %s Phase 2: wings not both fully filled "
                 "(LC status=%s fill=%d/%d, LP status=%s fill=%d/%d) — "
@@ -711,8 +717,8 @@ class IronCondorStrategy:
             )
             # 'refuse' is the only implemented fallback. 'widen' / 'accept'
             # are checklist options for future tuning — they reuse this unwind.
-            self.om.place_order(lc_sym, "SELL", qty)
-            self.om.place_order(lp_sym, "SELL", qty)
+            self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
+            self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
             return False
 
         # ── Phase 4: submit shorts as LMT ────────────────────────────
@@ -763,11 +769,11 @@ class IronCondorStrategy:
                 sp_order.get("status"), sp_fill_qty, qty,
             )
             if sc_fill_qty > 0:
-                self.om.place_order(sc_sym, "BUY", sc_fill_qty)
+                self.om.place_order(sc_sym, "BUY", sc_fill_qty, price=float(sc_order["fill_price"]))
             if sp_fill_qty > 0:
-                self.om.place_order(sp_sym, "BUY", sp_fill_qty)
-            self.om.place_order(lc_sym, "SELL", qty)
-            self.om.place_order(lp_sym, "SELL", qty)
+                self.om.place_order(sp_sym, "BUY", sp_fill_qty, price=float(sp_order["fill_price"]))
+            self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
+            self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
             # LIVE-05: a partial-fill Phase-5b is a liquidity-stress signal —
             # halt new entries until operator clears, same as legacy enter()'s
             # _handle_partial_fill_halt.
@@ -796,10 +802,10 @@ class IronCondorStrategy:
                 self.instrument, actual_net_credit_unit, min_credit,
                 sc_fill, sp_fill, lc_fill, lp_fill,
             )
-            self.om.place_order(sc_sym, "BUY", qty)
-            self.om.place_order(sp_sym, "BUY", qty)
-            self.om.place_order(lc_sym, "SELL", qty)
-            self.om.place_order(lp_sym, "SELL", qty)
+            self.om.place_order(sc_sym, "BUY", qty, price=sc_fill)
+            self.om.place_order(sp_sym, "BUY", qty, price=sp_fill)
+            self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
+            self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
             return False
 
         # Entry successful — construct IC_Position mirroring legacy enter().

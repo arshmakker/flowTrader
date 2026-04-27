@@ -440,3 +440,62 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
     assert s.is_active() is False
     # LC buy + LP buy + SC LMT + SP LMT + SC buyback + SP buyback + LC sell + LP sell = 8.
     assert mock_om.place_order.call_count == 8
+
+
+# ── QuoteBook prices forwarded as `price=` fallback (incident 2026-04-27 11:20) ──
+# When a fresh strike's broker quote is bogus (e.g. C57700 LTP=56130 with no
+# last-valid cache, no valid bid-ask mid), market_data.get_ltp returns 0. Wing
+# BUYs and unwind orders are MKT and used to be called WITHOUT a `price` kwarg —
+# so paper_order_manager rejected them as `missing_ltp`, halting entry. Fix:
+# every place_order in the entry path now forwards a QuoteBook-derived price as
+# the fallback. Tests below pin the wiring at each phase boundary.
+
+def test_wing_buys_pass_book_ask_as_price_fallback(mock_om, mock_md):
+    """Phase 1: LC and LP wing BUYs must pass `price=books[*].ask` so that
+    a transient bad quote on a fresh strike doesn't reject the MKT order."""
+    _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
+
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        return _fill(price if price > 0 else 5.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    wing_buy_calls = [
+        c for c in mock_om.place_order.call_args_list
+        if ("C22200" in c.args[0] or "P21800" in c.args[0]) and c.args[1] == "BUY"
+    ]
+    assert len(wing_buy_calls) == 2, f"expected 2 wing BUYs, got {len(wing_buy_calls)}"
+    for c in wing_buy_calls:
+        # Each wing BUY must carry a positive `price=` derived from book.ask.
+        assert c.kwargs.get("price", 0) > 0, (
+            f"wing BUY {c.args[0]} missing price= fallback — bad quote on this "
+            f"strike will halt entry; got kwargs={c.kwargs}"
+        )
+
+
+def test_phase5a_unwind_passes_price_fallback_on_all_four_legs(mock_om, mock_md):
+    """Phase 5a: post-fill credit-too-low unwind. All 4 unwind orders must
+    carry a `price=` so a stale ltp on the unwind moment doesn't strand legs."""
+    _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
+
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        # Wings fill normally; shorts fill below Phase 3 projection → Phase 5a.
+        if side == "BUY" and "C22200" in symbol: return _fill(8.0, q)
+        if side == "BUY" and "P21800" in symbol: return _fill(8.0, q)
+        if side == "SELL" and price_type == "LMT": return _fill(8.0, q)
+        # Unwind orders — what we're testing. Just return a fill.
+        return _fill(price if price > 0 else 8.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    # 4 entry orders + 4 unwind orders. The last 4 are the unwind.
+    unwind_calls = mock_om.place_order.call_args_list[-4:]
+    for c in unwind_calls:
+        assert c.kwargs.get("price", 0) > 0, (
+            f"Phase 5a unwind leg {c.args[0]} {c.args[1]} missing price= fallback; "
+            f"kwargs={c.kwargs}"
+        )

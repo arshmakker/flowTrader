@@ -175,3 +175,41 @@ def test_buy_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
     order = om.place_order("NFO|X", "BUY", 300, price_type="LMT", price=166.60)
     assert order["status"] == "COMPLETE"
     assert order["fill_price"] == 166.60
+
+
+# ── MKT fallback (incident 2026-04-27 11:20:19) ─────────────────────────────
+# The IC wing BUYs and unwind orders are MKT (no price_type), and a fresh
+# strike's broker quote can be junk → market_data fallback chain exhausted →
+# get_ltp returns 0. Without a `price=` fallback to the place_order call, MKT
+# rejects with `missing_ltp` → wings not both filled → halt. Fix at the IC
+# caller side: pass `price=books[*].ask` for wing BUYs and `price=books[*].bid`
+# for wing unwinds. Tests below confirm the order manager honors the fallback
+# in MKT path the same way it does in LMT path.
+
+def test_buy_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
+    """BUY MKT with get_ltp=0 and `price=X` provided: substitution sets ltp ← X,
+    then MKT path fills at ltp + slip. Must NOT reject as missing_ltp."""
+    om = _om(tmp_path, {"NFO|X": 0.0})
+    order = om.place_order("NFO|X", "BUY", 300, price=679.50)  # MKT default
+    assert order["status"] == "COMPLETE"
+    assert order["fill_qty"] == 300
+    # Fill is the synthetic ask (price + slip), snapped to tick — strictly
+    # above price but in a sane neighborhood.
+    assert 679.50 < order["fill_price"] < 680.50
+
+
+def test_sell_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
+    """SELL MKT with get_ltp=0 and `price=X` provided: fills at ltp - slip."""
+    om = _om(tmp_path, {"NFO|X": 0.0})
+    order = om.place_order("NFO|X", "SELL", 300, price=679.50)  # MKT default
+    assert order["status"] == "COMPLETE"
+    assert 678.50 < order["fill_price"] < 679.50
+
+
+def test_mkt_without_price_when_ltp_zero_still_rejects(tmp_path):
+    """No fallback price + no live LTP = the order genuinely has no anchor.
+    Reject path stays — the IC caller is now responsible for supplying price=."""
+    om = _om(tmp_path, {"NFO|X": 0.0})
+    order = om.place_order("NFO|X", "BUY", 300)  # no price, no LTP
+    assert order["status"] == "REJECTED"
+    assert order["reason"] == "missing_ltp"
