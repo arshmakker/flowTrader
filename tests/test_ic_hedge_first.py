@@ -526,64 +526,63 @@ def _setup_phase5b_partial_fill(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
 
-def test_fresh_entry_partial_fill_halts_via_stuck_legs(mock_om, mock_md):
-    """Fresh entry path: Phase-5b partial-fill must set _last_rollback_stuck_legs
-    so main.py's drain escalates to risk_manager.halt. This is the existing
-    LIVE-05 policy and must NOT regress."""
+def test_fresh_entry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
+    """Fresh entry Phase-5b partial-fill skips the cycle (no stuck legs
+    persisted, no halt) and increments the unified consecutive-fail counter.
+    Incident 2026-04-28 10:49: a single bid-drift cancel on the day's first
+    BANKNIFTY entry halted the session — the same mechanism the harvest
+    carve-out (2026-04-27) was added to absorb. Policy unified."""
     _setup_phase5b_partial_fill(mock_om, mock_md)
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    # No prior exit → _is_re_entry() is False → fresh entry path.
+    # No prior exit → fresh entry. Under unified policy, this still skips.
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
-    assert s._last_rollback_stuck_legs, "fresh-entry partial-fill must persist stuck legs"
-    assert s._last_rollback_stuck_legs[0]["reason"] == "partial_fill_during_hedge_first_entry"
-    # Counter must NOT increment on fresh entries — it's harvest-only.
-    assert s._consecutive_harvest_partial_fails == 0
+    assert s._last_rollback_stuck_legs == [], (
+        "fresh-entry partial-fill must NOT halt the session under unified "
+        f"policy — got stuck_legs={s._last_rollback_stuck_legs}"
+    )
+    assert s._consecutive_partial_fails == 1
 
 
 def test_harvest_reentry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
-    """Harvest re-entry path: Phase-5b partial-fill skips the cycle (no stuck
-    legs persisted, no halt) and increments the consecutive-fail counter."""
+    """Harvest re-entry Phase-5b partial-fill skips the cycle (no stuck legs
+    persisted, no halt) — unchanged behavior under the unified policy."""
     _setup_phase5b_partial_fill(mock_om, mock_md)
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    # Mark the strategy as just having harvested — _is_re_entry() returns True.
     s._last_exit_reason = "PROFIT_HARVEST"
     s._last_exit_date = _dt.datetime.now().date().isoformat()
 
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
-    # CRITICAL: no stuck legs → main.py's drain doesn't see anything → no halt.
     assert s._last_rollback_stuck_legs == [], (
         "harvest re-entry partial-fill must NOT halt the session — "
         f"got stuck_legs={s._last_rollback_stuck_legs}"
     )
-    assert s._consecutive_harvest_partial_fails == 1
+    assert s._consecutive_partial_fails == 1
 
 
-def test_harvest_reentry_consecutive_cap_halts_with_distinct_reason(mock_om, mock_md):
-    """Cap reached: the Nth consecutive harvest-reentry partial-fill DOES halt,
-    but with a distinct reason code so post-mortem can tell it from fresh-
-    entry liquidity stress."""
+def test_consecutive_partial_fail_cap_halts(mock_om, mock_md):
+    """Cap reached: the Nth consecutive partial-fill (fresh OR re-entry) halts
+    with the unified reason code. Bounds the unwind-slippage tail when
+    liquidity is genuinely stressed — single events are noise, sustained
+    streaks aren't."""
     _setup_phase5b_partial_fill(mock_om, mock_md)
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    s._last_exit_reason = "PROFIT_HARVEST"
-    s._last_exit_date = _dt.datetime.now().date().isoformat()
-    # Pre-load the counter to one below the cap.
-    s._consecutive_harvest_partial_fails = settings.IC_HARVEST_PARTIAL_FAIL_CAP - 1
+    s._consecutive_partial_fails = settings.IC_PARTIAL_FAIL_CAP - 1
 
     s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert s._last_rollback_stuck_legs, "cap reached → must halt"
-    assert s._last_rollback_stuck_legs[0]["reason"] == "consecutive_harvest_partial_fail_cap_reached"
-    assert s._consecutive_harvest_partial_fails == settings.IC_HARVEST_PARTIAL_FAIL_CAP
+    assert s._last_rollback_stuck_legs[0]["reason"] == "consecutive_partial_fail_cap_reached"
+    assert s._consecutive_partial_fails == settings.IC_PARTIAL_FAIL_CAP
 
 
-def test_successful_entry_resets_harvest_fail_counter(mock_om, mock_md):
+def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
     """A clean entry signals liquidity is fine again — counter resets so a
     later isolated partial-fill doesn't compound an old streak into a halt."""
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
@@ -598,11 +597,9 @@ def test_successful_entry_resets_harvest_fail_counter(mock_om, mock_md):
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     # Pre-load a streak from earlier failures.
-    s._consecutive_harvest_partial_fails = 2
-    s._last_exit_reason = "PROFIT_HARVEST"
-    s._last_exit_date = _dt.datetime.now().date().isoformat()
+    s._consecutive_partial_fails = 2
 
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is True
-    assert s._consecutive_harvest_partial_fails == 0, "counter must reset on success"
+    assert s._consecutive_partial_fails == 0, "counter must reset on success"

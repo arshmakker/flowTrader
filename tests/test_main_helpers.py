@@ -105,6 +105,63 @@ def test_drain_rollback_failures_noop_when_clean():
     assert len(risk._rollback_failures) == 0
 
 
+# ── _evaluate_stop_checks: log/flatten gating after halt ─────────────────────
+
+def test_evaluate_stop_checks_noop_when_already_halted():
+    """Incident 2026-04-28: a Phase-5b halt at 10:49 caused both stop predicates
+    to keep returning True for the rest of the loop, re-firing CRITICAL logs
+    and _force_exit_all every cycle. The fix gates on risk.halted; this pins
+    that subsequent ticks after a halt don't re-emit either log line."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_halted")
+    risk = RiskManager()
+    risk.halted = True  # pre-set: simulates the second-tick state after a halt
+    log = MagicMock(spec=logging.Logger)
+
+    main._evaluate_stop_checks([FakeStrategy("NIFTY", 0.0)], pnl, risk, log)
+
+    log.critical.assert_not_called()
+
+
+def test_evaluate_stop_checks_flattens_and_logs_on_combined_stop_trigger():
+    """When not yet halted and combined-stop fires, the helper must flatten
+    active strategies and emit the CRITICAL log line exactly once."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_combined")
+    risk = MagicMock(spec=RiskManager)
+    risk.halted = False
+    risk.check_combined_stop_loss.return_value = True
+    risk.check_daily_loss_cap.return_value = False
+    log = MagicMock(spec=logging.Logger)
+    s = FakeStrategy("NIFTY", 100.0)
+
+    main._evaluate_stop_checks([s], pnl, risk, log)
+
+    assert s.is_active() is False, "force_exit must run when combined-stop trips"
+    log.critical.assert_called_once_with("COMBINED STOP LOSS HIT - Trading Halted.")
+
+
+def test_evaluate_stop_checks_flattens_and_logs_on_daily_cap_trigger():
+    """When the daily rupee cap trips (combined-stop clean), the helper must
+    flatten and log only the daily-cap line."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_daily")
+    risk = MagicMock(spec=RiskManager)
+    risk.halted = False
+    risk.check_combined_stop_loss.return_value = False
+    risk.check_daily_loss_cap.return_value = True
+    log = MagicMock(spec=logging.Logger)
+    s = FakeStrategy("NIFTY", 0.0)
+
+    main._evaluate_stop_checks([s], pnl, risk, log)
+
+    assert s.is_active() is False
+    log.critical.assert_called_once_with("DAILY LOSS CAP HIT - Trading Halted for the session.")
+
+
 def test_halt_on_exception_sets_halted_without_reraising():
     """BUG-19 / Axiom 3: an unhandled exception must halt trading cleanly."""
     import logging

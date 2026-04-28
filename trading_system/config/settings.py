@@ -185,12 +185,14 @@ DAILY_MAX_LOSS_SHAKEDOWN = 10_000
 # 1 = at most one IC per instrument per day, including harvest re-entries.
 # Triggers Axiom 3 non-participation (refuse new entries) once hit.
 IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN = 1
-# Cap on consecutive harvest/adjustment re-entry partial-fills before the
-# session halts. Incident 2026-04-27 12:00:32 motivated the loosened policy:
-# a single bid-drift cancel during a harvest re-entry shouldn't end the day,
-# but unbounded retries on genuinely-stressed liquidity could burn slippage
-# (~₹1,200/cycle observed). Counter resets on a successful entry.
-IC_HARVEST_PARTIAL_FAIL_CAP = 3
+# Cap on consecutive Phase-5b partial-fills (fresh OR re-entry) before the
+# session halts. Bid drift between QuoteBook fetch and order submission can
+# cancel a SELL LMT when LTP moves below the limit — normal microstructure
+# noise, not a "stressed liquidity" signal. Single events skip the cycle and
+# retry on the next signal; only a sustained streak (cap consecutive) halts,
+# bounding the unwind-slippage tail (~₹1,200/cycle observed 2026-04-27 and
+# 2026-04-28). Counter resets on a successful entry.
+IC_PARTIAL_FAIL_CAP = 3
 # LIVE handshake: live mode refuses to start unless this file exists. Paper
 # mode ignores the gate. Operator creates with `touch data/LIVE_ACK` after
 # blessing the run; contents are not parsed, presence is the signal. Blocks

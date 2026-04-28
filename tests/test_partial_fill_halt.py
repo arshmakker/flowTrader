@@ -1,16 +1,22 @@
-"""LIVE-05 — partial-fill handling + halt escalation on entry.
+"""LIVE-05 — partial-fill handling on entry.
 
-A partial-filled leg during IC entry is a liquidity-stress signal. The
-engine must:
-  1. Reverse any partially-filled quantity by that quantity (not the
-     originally requested qty — over-reversing leaves NET-WRONG-SIDE
-     exposure on a short strike).
-  2. ALWAYS escalate to halt, even when the reversal itself cleanly
-     completes. Retrying on the next cycle is what LIVE-05 is designed
-     to prevent — the book is stressed; the same partial is likely.
+A partial-filled leg during IC entry must be reversed by the actual fill
+quantity (not the originally requested qty — over-reversing leaves
+NET-WRONG-SIDE exposure on a short strike).
 
-These tests pin both paths (legacy ``enter`` and hedge-first
-``enter_hedge_first``) against representative partial-fill scenarios.
+Halt policy differs by entry path:
+
+  - Legacy ``enter`` (IC_ENTRY_MODE != "hedge_first", inactive in production):
+    a single partial-fill escalates to halt. Pinned by the legacy tests.
+
+  - Hedge-first ``enter_hedge_first`` (default, active in production):
+    a single Phase-5b partial-fill skips the cycle and increments
+    ``_consecutive_partial_fails``; only ``settings.IC_PARTIAL_FAIL_CAP``
+    consecutive partial-fills escalate to halt. Bid drift between
+    QuoteBook fetch and order submission is normal microstructure noise,
+    not stressed liquidity — incidents 2026-04-27 and 2026-04-28 both
+    showed the same mechanism, with halt-on-first costing ~₹1,200/event
+    plus all forward expected value.
 """
 import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -192,10 +198,11 @@ def test_hedgefirst_phase5b_partial_short_unwound_by_fill_qty(tmp_path, monkeypa
     assert reversed_qty == 300, f"SC partial must be reversed by fill_qty=300, got {reversed_qty}"
 
 
-def test_hedgefirst_phase5b_partial_short_escalates_halt(tmp_path, monkeypatch):
-    """Partial-fill in Phase 5b must ALSO halt new entries (same semantics
-    as legacy enter's partial-fill branch). Without this, next cycle tries
-    again into the same stressed book."""
+def test_hedgefirst_phase5b_partial_short_skips_cycle(tmp_path, monkeypatch):
+    """A single Phase-5b partial-fill skips the cycle and bumps the
+    consecutive-fail counter; it does NOT halt. Bid drift between QuoteBook
+    fetch and order submission is normal noise — only sustained streaks
+    (cap consecutive) signal real liquidity stress and halt."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
 
     om = MagicMock()
@@ -218,12 +225,46 @@ def test_hedgefirst_phase5b_partial_short_escalates_halt(tmp_path, monkeypatch):
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
         ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
 
+    assert ic._last_rollback_stuck_legs == [], (
+        "single partial-fill must NOT halt — got "
+        f"stuck_legs={ic._last_rollback_stuck_legs}"
+    )
+    assert ic._consecutive_partial_fails == 1
+
+
+def test_hedgefirst_phase5b_partial_fill_cap_reached_halts(tmp_path, monkeypatch):
+    """The Nth consecutive Phase-5b partial-fill DOES halt, with the unified
+    reason code so post-mortem can distinguish a sustained-stress halt from
+    a single-event skip."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
+
+    om = MagicMock()
+    om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
+    om.tracker = None
+    om.get_available_margin.return_value = float("inf")
+    om.place_order.side_effect = [
+        _complete(qty=650, side="BUY", fill_price=5.0),
+        _complete(qty=650, side="BUY", fill_price=5.0),
+        _canceled_partial(fill_qty=300, qty=650, side="SELL", fill_price=18.0),
+        _complete(qty=650, side="SELL", fill_price=18.0),
+        _complete(qty=300, side="BUY"),
+        _complete(qty=650, side="BUY"),
+        _complete(qty=650, side="SELL"),
+        _complete(qty=650, side="SELL"),
+    ]
+
+    ic, _ = _build_ic(om)
+    # Pre-load the counter to one below the cap — this entry will tip it over.
+    ic._consecutive_partial_fails = settings.IC_PARTIAL_FAIL_CAP - 1
+    stuck_path = tmp_path / "stuck.json"
+    with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
+        ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+
     assert len(ic._last_rollback_stuck_legs) == 1
     event = ic._last_rollback_stuck_legs[0]
-    assert event["reason"] == "partial_fill_during_hedge_first_entry"
-    # Halt sentinel captures both shorts' actual fill quantities.
+    assert event["reason"] == "consecutive_partial_fail_cap_reached"
+    assert event["consecutive_count"] == settings.IC_PARTIAL_FAIL_CAP
     partial_leg_map = {p["symbol"]: p["fill_qty"] for p in event["partial_legs"]}
-    # SC fill 300, SP fill 650 — both captured.
     assert 300 in partial_leg_map.values()
     assert 650 in partial_leg_map.values()
 

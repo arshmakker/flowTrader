@@ -197,6 +197,27 @@ def _force_exit_all(strats, pnl_engine, risk):
                 pnl_engine.record_trade(s.instrument, result['pnl'], result)
 
 
+def _evaluate_stop_checks(strats, pnl_engine, risk, log):
+    """5/5b. Combined hard stop + LIVE-22 daily rupee cap. Both check_*
+    methods short-circuit ``if self.halted: return True`` to signal "session
+    is dead" — that's correct as a predicate. The CRITICAL log + flatten
+    attempt below is a state-transition action; it must not re-fire every
+    cycle once the halt is already set, so we gate on risk.halted.
+
+    Incident 2026-04-28: a Phase-5b halt at 10:49 produced 20 redundant
+    CRITICAL lines (10× combined-stop, 10× daily-cap) in the next 11 minutes,
+    polluting the log and making grep on real triggers useless.
+    """
+    if risk.halted:
+        return
+    if risk.check_combined_stop_loss(strats):
+        _force_exit_all(strats, pnl_engine, risk)
+        log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
+    if pnl_engine and risk.check_daily_loss_cap(pnl_engine):
+        _force_exit_all(strats, pnl_engine, risk)
+        log.critical("DAILY LOSS CAP HIT - Trading Halted for the session.")
+
+
 def _drain_rollback_failures(strats, risk):
     """BUG-05: after each entry attempt, check whether rollback left stuck legs.
     Escalate to a hard halt through the risk manager and clear the flag."""
@@ -442,6 +463,24 @@ def _fetch_auth_code_from_command(creds, log):
         log.warning("Auth code command unparseable (%s): %s", exc, cmd)
         return ""
     if not argv:
+        return ""
+
+    # Runner uses shell=False, so shell control tokens (`&&`, `;`, pipes,
+    # redirects) survive shlex.split as literal argv entries — they would be
+    # passed to the binary as positional args, never interpreted. The classic
+    # case is `cd path && python script.py`: shell=False execs `cd` (a macOS
+    # shim that exits 0 ignoring the trailing args), the script never runs,
+    # and we silently fall through with no auth code. Refuse loudly instead.
+    shell_tokens = {"&&", "||", ";", "|", "&", ">", "<", ">>", "<<", ">&", "<&"}
+    leaked = [a for a in argv if a in shell_tokens]
+    if leaked:
+        log.warning(
+            "Auth code command contains shell control token(s) %s; runner uses "
+            "shell=False so they cannot be interpreted. Rewrite cred.yml's "
+            "auth_code_cmd as a single binary invocation (e.g. "
+            "'/usr/bin/python3 /abs/path/to/script.py').",
+            leaked,
+        )
         return ""
 
     log.info("Attempting auth code via command: %s", cmd)
@@ -971,15 +1010,8 @@ def run():
                     if result:
                         pnl_engine.record_trade(s.instrument, result['pnl'], result)
 
-            # 5. Combined Stop Loss
-            if risk.check_combined_stop_loss(strats):
-                _force_exit_all(strats, pnl_engine, risk)
-                log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
-
-            # 5b. LIVE-22: Daily rupee loss cap.
-            if pnl_engine and risk.check_daily_loss_cap(pnl_engine):
-                _force_exit_all(strats, pnl_engine, risk)
-                log.critical("DAILY LOSS CAP HIT - Trading Halted for the session.")
+            # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
+            _evaluate_stop_checks(strats, pnl_engine, risk, log)
 
             # 6. Entry Logic (requires per-instrument classification).
             if not risk.halted:
