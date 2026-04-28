@@ -121,11 +121,8 @@ main.py (orchestrator)
 ## Common commands
 
 ```bash
-# Run the system
+# Run the system (OAuth login is in-process; no wrapper script)
 python main.py
-
-# Run with startup script (handles auth mode detection)
-./start.sh
 
 # Run tests (fast unit tests only by default)
 pytest
