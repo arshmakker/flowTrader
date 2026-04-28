@@ -137,6 +137,16 @@ pytest tests/test_paper_trading.py
 pip install -r requirements.txt
 ```
 
+## Watch loop — paste during market hours
+
+Session-bound monitoring. Paste this after opening Claude on a trading morning; the loop fires every 10 min, reports only deltas (silent ticks if nothing moved), and self-stops at 15:35 IST.
+
+```
+/loop 10m Trading day system-watch (silent unless deltas). Each tick: (1) pgrep -f "python main.py" — process alive? (2) Scan today's IST log (logs/ic_system_<YYYYMMDD>.log) for new ERROR|HALT|BREACH|HARD_STOP|FORCE_EXIT lines since last tick. (3) Read data/pnl_snapshot.json — PnL delta vs prior tick. (4) Read data/open_positions.json — position changes. (5) Tail data/paper_trades.csv last 5 rows — new fills. Report ONLY deltas. If current IST time >= 15:35, CronList → CronDelete this job and PushNotification "Watch loop ended for today".
+```
+
+Loop is session-bound — closing this terminal stops it. For a durable cloud-resident equivalent that runs every weekday automatically, use `/schedule` instead.
+
 ## Testing
 
 Tests live in `tests/`. Fast offline unit tests run by default; integration tests requiring broker credentials are excluded via `conftest.py`.
