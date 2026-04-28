@@ -706,10 +706,34 @@ class IronCondorStrategy:
         # ── Phase 3: compute short-leg limit prices from actual wing fills ──
         # OFFSET_TICKS=0 submits exactly at the bid. Paper/live SELL LMT fills
         # only if limit ≤ bid, so limit == bid trades at bid.
+        #
+        # Re-fetch SC/SP bids before computing limits. The books fetched at
+        # top-of-function (line ~580) are now stale by the cumulative latency
+        # of Phase 1 (wings as MKT) and Phase 2 (wait for fills) — ~200-2000ms
+        # in live. In a trending market, the call/put bid drifts during that
+        # window; the resulting SELL LMT sits above the live bid and gets
+        # CANCELED on submit (incidents 2026-04-27 12:00, 2026-04-28 10:49 +
+        # 11:45 — both showed `limit > LTP` on SC by 2-7 points after wings
+        # filled). Re-fetching here shrinks the residual stale-window to just
+        # Phase-3 → Phase-4 latency (~50-200ms), proportionally dropping the
+        # partial-fail rate. Re-fetch untradable → abort and unwind wings;
+        # entering with stale data is worse than skipping a cycle.
+        fresh_sc = self.md.get_quote_book(sc_sym)
+        fresh_sp = self.md.get_quote_book(sp_sym)
+        if (fresh_sc is None or not fresh_sc.is_tradable
+                or fresh_sp is None or not fresh_sp.is_tradable):
+            logger.error(
+                "IC %s Phase 3: short-leg re-quote untradable "
+                "(sc_book=%s sp_book=%s) — unwinding wings, retry next signal",
+                self.instrument, fresh_sc, fresh_sp,
+            )
+            self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
+            self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
+            return False
         tick = settings.PRICE_TICK
         offset = settings.IC_SHORT_LIMIT_OFFSET_TICKS * tick
-        sc_limit = round((books["sc"].bid + offset) / tick) * tick
-        sp_limit = round((books["sp"].bid + offset) / tick) * tick
+        sc_limit = round((fresh_sc.bid + offset) / tick) * tick
+        sp_limit = round((fresh_sp.bid + offset) / tick) * tick
 
         # Feasibility: given wings already filled, can the shorts at these limits
         # still clear min_credit?

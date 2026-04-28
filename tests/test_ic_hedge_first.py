@@ -603,3 +603,172 @@ def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
 
     assert ok is True
     assert s._consecutive_partial_fails == 0, "counter must reset on success"
+
+
+# ── Phase 3: short-leg bid re-fetch closes the stale-window ───────────────
+#
+# Bid drift between Phase-1 wing fill and Phase-4 short submission was the
+# root cause of the 2026-04-28 10:49 + 11:45 partial-fail incidents. The
+# top-of-function `books` fetch is ~200-2000ms stale (live network) by the
+# time Phase 3 runs. Re-fetching SC/SP at Phase 3 closes the window down
+# to just Phase-3→Phase-4 latency (~50-200ms).
+
+
+def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
+    """The discriminating test: get_quote_book returns 18.0 first, then 17.50
+    on the Phase-3 re-fetch. Without the fix the SC limit is 18.0 (would
+    cancel against a 17.50 bid). With the fix the SC limit is 17.50 and
+    fills cleanly. If this test passes against unfixed code, the test is
+    wrong, not the code."""
+    sc_calls = {"n": 0}
+    sp_calls = {"n": 0}
+
+    def _gqb(sym):
+        if "C22150" in sym:
+            sc_calls["n"] += 1
+            return _book(bid=17.50 if sc_calls["n"] >= 2 else 18.0, ask=18.50, symbol=sym)
+        if "P21850" in sym:
+            sp_calls["n"] += 1
+            return _book(bid=17.80 if sp_calls["n"] >= 2 else 18.0, ask=18.50, symbol=sym)
+        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        return None
+    mock_md.get_quote_book.side_effect = _gqb
+
+    placed = {}
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        if "C22200" in symbol: return _fill(5.0, q)
+        if "P21800" in symbol: return _fill(5.0, q)
+        if "C22150" in symbol:
+            placed["sc"] = price
+            return _fill(price, q)
+        if "P21850" in symbol:
+            placed["sp"] = price
+            return _fill(price, q)
+        raise AssertionError(f"unexpected: {symbol}")
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is True
+    assert placed["sc"] == 17.50, (
+        f"SC limit must use re-fetched bid 17.50, got {placed['sc']} — "
+        "Phase-3 re-fetch not wired through to limit calc"
+    )
+    assert placed["sp"] == 17.80
+    # Each short symbol queried twice: top-of-function + Phase 3 re-fetch.
+    assert sc_calls["n"] == 2 and sp_calls["n"] == 2
+
+
+def test_phase3_refetch_above_initial_proceeds_with_higher_credit(mock_om, mock_md):
+    """Symmetric case: bid drifted UP between fetches. Fresh limit is higher
+    than initial → entry proceeds with better credit. Pins that the fix is
+    direction-agnostic, not a one-way safety knob."""
+    sc_calls = {"n": 0}
+
+    def _gqb(sym):
+        if "C22150" in sym:
+            sc_calls["n"] += 1
+            return _book(bid=18.50 if sc_calls["n"] >= 2 else 18.0, ask=19.0, symbol=sym)
+        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        return None
+    mock_md.get_quote_book.side_effect = _gqb
+
+    placed_sc = {"v": None}
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        if "C22200" in symbol or "P21800" in symbol: return _fill(5.0, q)
+        if "C22150" in symbol:
+            placed_sc["v"] = price
+            return _fill(price, q)
+        if "P21850" in symbol: return _fill(price, q)
+        raise AssertionError(f"unexpected: {symbol}")
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is True
+    assert placed_sc["v"] == 18.50, (
+        f"SC limit should be 18.50 (re-fetched, drifted UP), got {placed_sc['v']}"
+    )
+
+
+def test_phase3_refetch_untradable_aborts_and_unwinds_wings(mock_om, mock_md):
+    """Re-fetch returns untradable (broker quote outage during wing-fill
+    window) → abort cleanly. Wings round-tripped, no shorts submitted,
+    return False. Better than entering with stale data."""
+    sc_calls = {"n": 0}
+
+    def _gqb(sym):
+        if "C22150" in sym:
+            sc_calls["n"] += 1
+            # First call (top-of-function) tradable; second (Phase 3) untradable.
+            return None if sc_calls["n"] >= 2 else _book(bid=18.0, ask=18.25, symbol=sym)
+        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        return None
+    mock_md.get_quote_book.side_effect = _gqb
+
+    place_calls = []
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        place_calls.append((symbol, side))
+        return _fill(5.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is False
+    # 2 BUY wings (Phase 1) + 2 SELL wing unwinds (Phase 3 abort) = 4 calls.
+    assert len(place_calls) == 4, f"expected 4 wing-only calls, got {place_calls}"
+    # No SC/SP order should ever fire on a Phase-3 abort.
+    assert not any("C22150" in s for s, _ in place_calls)
+    assert not any("P21850" in s for s, _ in place_calls)
+    # Each wing was bought once and sold once.
+    assert sum(1 for s, sd in place_calls if "C22200" in s and sd == "BUY") == 1
+    assert sum(1 for s, sd in place_calls if "C22200" in s and sd == "SELL") == 1
+    assert sum(1 for s, sd in place_calls if "P21800" in s and sd == "BUY") == 1
+    assert sum(1 for s, sd in place_calls if "P21800" in s and sd == "SELL") == 1
+
+
+def test_phase3_refetch_below_min_credit_routes_through_existing_refuse(mock_om, mock_md):
+    """If the fresh bid drifts low enough to push projected credit below
+    `_min_credit`, the existing Phase-3 refuse-and-unwind path fires —
+    this is the conversion the advisor flagged: some 'Phase-5b partial-
+    fails' become 'Phase-3 refuses' under the fix. Same wing round-trip
+    cost, different reason code."""
+    sc_calls = {"n": 0}
+
+    def _gqb(sym):
+        if "C22150" in sym:
+            sc_calls["n"] += 1
+            # Initial bid passes pre-entry credit check; re-fetch drops below
+            # min_credit threshold once wings are factored in.
+            # Initial 18.0 passes pre-entry credit (26 > 18); re-fetch 5.0
+            # makes projected credit = (5+18)-(5+5) = 13, below 18 floor.
+            return _book(bid=5.0 if sc_calls["n"] >= 2 else 18.0, ask=18.25, symbol=sym)
+        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        return None
+    mock_md.get_quote_book.side_effect = _gqb
+
+    place_calls = []
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        place_calls.append((symbol, side))
+        return _fill(5.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is False
+    # Wings round-tripped cleanly; no shorts submitted (refuse fires before Phase 4).
+    assert not any("C22150" in s for s, _ in place_calls)
+    assert not any("P21850" in s for s, _ in place_calls)
+    assert sum(1 for s, sd in place_calls if "C22200" in s and sd == "SELL") == 1
+    assert sum(1 for s, sd in place_calls if "P21800" in s and sd == "SELL") == 1
