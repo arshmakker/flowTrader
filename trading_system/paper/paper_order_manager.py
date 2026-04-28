@@ -127,6 +127,15 @@ class PaperOrderManager:
         """LIVE-25 Phase 4: LMT order whose limit was never crossed by the book
         gets CANCELED (no fill). Mirrors Shoonya's behavior when a timeout-IOC
         limit doesn't trade through."""
+        # Fetch current bid at cancel time to distinguish paper-model artefact
+        # (bid > ltp → gate should have passed) from real fast-market move
+        # (bid <= ltp → underlying moved between Phase-3 re-fetch and place_order).
+        qb = None
+        try:
+            qb = self.md.get_quote_book(symbol)
+        except Exception:
+            pass
+        bid_at_cancel = qb.bid if qb is not None else None
         canceled = {
             "order_id": self._next_id(),
             "symbol": symbol, "side": side, "quantity": qty,
@@ -137,11 +146,13 @@ class PaperOrderManager:
             "reason": "limit_not_reached",
             "limit_price": limit_price,
             "ltp_at_submit": ltp,
+            "bid_at_cancel": bid_at_cancel,
         }
         self._append_order_csv(canceled)
+        bid_str = f"{bid_at_cancel:.2f}" if bid_at_cancel is not None else "n/a"
         logger.info(
-            "PAPER ORDER CANCELED %s %s qty=%d limit=%.2f ltp=%.2f — limit not reached",
-            side, symbol, qty, limit_price, ltp,
+            "PAPER ORDER CANCELED %s %s qty=%d limit=%.2f ltp=%.2f bid=%s — limit not reached",
+            side, symbol, qty, limit_price, ltp, bid_str,
         )
         return canceled
 
