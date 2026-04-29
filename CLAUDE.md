@@ -136,10 +136,10 @@ pip install -r requirements.txt
 
 ## Watch loop — paste during market hours
 
-Session-bound monitoring. Paste this after opening Claude on a trading morning; the loop fires every 10 min, reports only deltas (silent ticks if nothing moved), and self-stops at 15:35 IST.
+Session-bound monitoring + auto-restart. Paste this after opening Claude on a trading morning; fires every 10 min, reports only deltas, self-stops at 15:35 IST.
 
 ```
-/loop 10m Trading day system-watch (silent unless deltas). Each tick: (1) pgrep -f "python main.py" — process alive? (2) Scan today's IST log (logs/ic_system_<YYYYMMDD>.log) for new ERROR|HALT|BREACH|HARD_STOP|FORCE_EXIT lines since last tick. (3) Read data/pnl_snapshot.json — PnL delta vs prior tick. (4) Read data/open_positions.json — position changes. (5) Tail data/paper_trades.csv last 5 rows — new fills. Report ONLY deltas. If current IST time >= 15:35, CronList → CronDelete this job and PushNotification "Watch loop ended for today".
+/loop 10m Trading day system-watch. Each tick: (1) CHECK PROCESS: pgrep -f "python main.py". If dead AND IST 09:15–15:20: (a) tail last 100 lines of logs/ic_system_$(TZ=Asia/Kolkata date +%Y%m%d).log for root cause; (b) read data/open_positions.json — if risk_state.halted=true, clear it: python -c "import json; f='data/open_positions.json'; d=json.load(open(f)); d.get('risk_state',{}).update({'halted':False,'stop_hit_at':None,'rollback_failures':[]}); json.dump(d,open(f,'w'),indent=2)"; (c) restart: python main.py > logs/restart_$(TZ=Asia/Kolkata date +%Y%m%d_%H%M%S).log 2>&1 & — report PID and root cause. (2) SCAN LOGS: grep new ERROR|HALT|BREACH|HARD_STOP|FORCE_EXIT|Phase-5b|suspended lines since last tick — quote + diagnose. (3) PnL: data/pnl_snapshot.json — delta vs prior tick. (4) POSITIONS: data/open_positions.json — changes, flag halted/suspended state. (5) FILLS: tail data/paper_trades.csv last 5 rows — new entries. Report ONLY deltas (silent if nothing changed). Stop loop at IST >= 15:35.
 ```
 
 Loop is session-bound — closing this terminal stops it. For a durable cloud-resident equivalent that runs every weekday automatically, use `/schedule` instead.

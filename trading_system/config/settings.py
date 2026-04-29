@@ -61,6 +61,12 @@ IC_ENTRY_MODE = "hedge_first"
 # (safest, highest probability of fill); 1-2 ticks adds credit at the cost of
 # more Phase 5b aborts. After proving-period data, this is tunable upward.
 IC_SHORT_LIMIT_OFFSET_TICKS = 0
+# How far below the Phase-3 re-fetched bid to set the SC/SP SELL LMT price.
+# The Phase-3→4 latency window (~50-200ms live) lets the bid drift down before
+# the order reaches the broker. 2026-04-29 data: 4 cancels with gaps of
+# 0.15, 0.15, 0.50, 2.00 pts. 0.50 absorbs the first three; the 2.00-pt event
+# is a genuine stress move that should still cancel.
+IC_SHORT_LIMIT_DRIFT_TOL = 0.50
 # Phase 3 fallback when wing fills are so expensive that computed short-leg
 # limits cannot achieve IC_MIN_CREDIT: 'refuse' aborts + unwinds wings; 'widen'
 # re-runs strike calc with wider width; 'accept' lowers IC_MIN_CREDIT for this

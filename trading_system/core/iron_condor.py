@@ -744,8 +744,9 @@ class IronCondorStrategy:
             return False
         tick = settings.PRICE_TICK
         offset = settings.IC_SHORT_LIMIT_OFFSET_TICKS * tick
-        sc_limit = round((fresh_sc.bid + offset) / tick) * tick
-        sp_limit = round((fresh_sp.bid + offset) / tick) * tick
+        drift_tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
+        sc_limit = round((fresh_sc.bid - drift_tol + offset) / tick) * tick
+        sp_limit = round((fresh_sp.bid - drift_tol + offset) / tick) * tick
 
         # Feasibility: given wings already filled, can the shorts at these limits
         # still clear min_credit?

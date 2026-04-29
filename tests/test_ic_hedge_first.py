@@ -694,12 +694,13 @@ def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
+    tick = settings.PRICE_TICK
+    tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
     assert ok is True
-    assert placed["sc"] == 17.50, (
-        f"SC limit must use re-fetched bid 17.50, got {placed['sc']} — "
-        "Phase-3 re-fetch not wired through to limit calc"
+    assert placed["sc"] == round((17.50 - tol) / tick) * tick, (
+        f"SC limit must use re-fetched bid 17.50 minus drift_tol {tol}, got {placed['sc']}"
     )
-    assert placed["sp"] == 17.80
+    assert placed["sp"] == round((17.80 - tol) / tick) * tick
     # Each short symbol queried twice: top-of-function + Phase 3 re-fetch.
     assert sc_calls["n"] == 2 and sp_calls["n"] == 2
 
@@ -733,9 +734,11 @@ def test_phase3_refetch_above_initial_proceeds_with_higher_credit(mock_om, mock_
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
+    tick = settings.PRICE_TICK
+    tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
     assert ok is True
-    assert placed_sc["v"] == 18.50, (
-        f"SC limit should be 18.50 (re-fetched, drifted UP), got {placed_sc['v']}"
+    assert placed_sc["v"] == round((18.50 - tol) / tick) * tick, (
+        f"SC limit should be re-fetched bid 18.50 minus drift_tol {tol}, got {placed_sc['v']}"
     )
 
 
@@ -815,3 +818,59 @@ def test_phase3_refetch_below_min_credit_routes_through_existing_refuse(mock_om,
     assert not any("P21850" in s for s, _ in place_calls)
     assert sum(1 for s, sd in place_calls if "C22200" in s and sd == "SELL") == 1
     assert sum(1 for s, sd in place_calls if "P21800" in s and sd == "SELL") == 1
+
+
+# ── Phase 3: SC/SP limit drift tolerance ─────────────────────────────────────
+#
+# Root cause of 2026-04-29 SC cancels: 4 consecutive SELL LMT orders submitted
+# with limit=bid (OFFSET_TICKS=0). The bid drifted 0.15–0.50 pts between Phase-3
+# re-fetch and Phase-4 submission, placing limit > live_bid → CANCELED.
+# Fix: subtract IC_SHORT_LIMIT_DRIFT_TOL from the limit so normal drift is absorbed.
+
+
+def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
+    """SC/SP limits are set at bid - IC_SHORT_LIMIT_DRIFT_TOL so Phase-3→4
+    latency drift does not cancel the order.
+
+    Without fix (limit=bid=18.0): a 0.30-pt drift → bid=17.70 < limit → CANCELED.
+    With fix (limit=bid-0.50=17.50): 17.70 >= 17.50 → fills.
+    """
+    FRESH_BID = 18.0
+    DRIFTED_BID = 17.70  # 0.30-pt drift — within today's observed 0.15-0.50 range
+
+    def _gqb(sym):
+        if "C22150" in sym: return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
+        if "P21850" in sym: return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
+        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        return None
+    mock_md.get_quote_book.side_effect = _gqb
+
+    submitted = {}
+
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        if "C22200" in symbol: return _fill(5.0, q)
+        if "P21800" in symbol: return _fill(5.0, q)
+        if "C22150" in symbol:
+            submitted["sc"] = price
+            return _canceled() if price > DRIFTED_BID else _fill(DRIFTED_BID, q)
+        if "P21850" in symbol:
+            submitted["sp"] = price
+            return _canceled() if price > DRIFTED_BID else _fill(DRIFTED_BID, q)
+        return _fill(price if price > 0 else 8.0, q)
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    tick = settings.PRICE_TICK
+    drift_tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
+    expected_limit = round((FRESH_BID - drift_tol) / tick) * tick
+
+    assert ok is True, (
+        "entry must fill despite 0.30-pt bid drift — "
+        "IC_SHORT_LIMIT_DRIFT_TOL must absorb normal Phase-3→4 latency drift"
+    )
+    assert submitted.get("sc") == expected_limit, (
+        f"SC limit {submitted.get('sc')} must equal bid-drift_tol = {expected_limit}"
+    )
