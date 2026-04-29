@@ -26,12 +26,12 @@ NIFTY_SPOT_EXCHANGE = "NSE"
 # ══ SESSION ═════════════════════════════════════════════════════════
 CLASSIFY_TIME = "10:30"
 TRADE_END = "14:15"  # Hard close ALL positions (per CLAUDE.md axiom; 75 min buffer before 15:30 expiry settlement)
-SIGNAL_RECHECK_SEC = 60
+SIGNAL_RECHECK_SEC = 30
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
 IC_LOT_SIZE = 10  # 10 lots per instrument for greater absolute profit
 IC_VIX_MAX = 30.0
-IC_VIX_STABLE_MINS = 45
+IC_VIX_STABLE_MINS = 15
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
 IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
