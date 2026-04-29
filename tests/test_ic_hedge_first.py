@@ -565,11 +565,11 @@ def test_harvest_reentry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
     assert s._consecutive_partial_fails == 1
 
 
-def test_consecutive_partial_fail_cap_halts(mock_om, mock_md):
-    """Cap reached: the Nth consecutive partial-fill (fresh OR re-entry) halts
-    with the unified reason code. Bounds the unwind-slippage tail when
-    liquidity is genuinely stressed — single events are noise, sustained
-    streaks aren't."""
+def test_consecutive_partial_fail_cap_suspends_not_halts(mock_om, mock_md):
+    """Cap reached: the Nth consecutive partial-fill suspends same-day adjustment
+    re-entries but does NOT escalate to a session halt. Bounds the
+    unwind-slippage tail without killing NIFTY for the day.
+    (Regression for 2026-04-29 incident: cap → persist_stuck_legs → full halt.)"""
     _setup_phase5b_partial_fill(mock_om, mock_md)
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -577,9 +577,50 @@ def test_consecutive_partial_fail_cap_halts(mock_om, mock_md):
 
     s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
-    assert s._last_rollback_stuck_legs, "cap reached → must halt"
-    assert s._last_rollback_stuck_legs[0]["reason"] == "consecutive_partial_fail_cap_reached"
+    assert s._phase5b_suspended is True, "cap reached → adjustments suspended"
+    assert s._last_rollback_stuck_legs == [], (
+        "cap reached must NOT populate stuck_legs — that path triggers a "
+        "session halt which is reserved for 3× stop / daily-loss only"
+    )
     assert s._consecutive_partial_fails == settings.IC_PARTIAL_FAIL_CAP
+
+
+def test_phase5b_suspended_blocks_re_entry(mock_om, mock_md):
+    """Once suspended, subsequent adjustment/harvest re-entry calls return False
+    immediately without placing any orders."""
+    _setup_phase5b_partial_fill(mock_om, mock_md)
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s._phase5b_suspended = True
+    s._last_exit_reason = "ADJUSTMENT_REQUIRED"
+    s._last_exit_date = _dt.datetime.now().date().isoformat()
+
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is False
+    assert mock_om.place_order.call_count == 0, "suspended path must place no orders"
+
+
+def test_phase5b_suspended_does_not_block_fresh_entry(mock_om, mock_md):
+    """Suspension only blocks re-entries; a fresh-entry attempt on a new day
+    (no prior exit reason) still goes through normally."""
+    _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
+
+    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
+        if "C22200" in symbol: return _fill(5.0, q)
+        if "P21800" in symbol: return _fill(5.0, q)
+        if "C22150" in symbol: return _fill(18.0, q)
+        if "P21850" in symbol: return _fill(18.0, q)
+        raise AssertionError(f"unexpected: {symbol}")
+    mock_om.place_order.side_effect = place_side_effect
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s._phase5b_suspended = True
+    # No prior exit → _is_re_entry() returns False → guard does not fire.
+
+    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+
+    assert ok is True, "fresh entry must not be blocked by Phase-5b suspension"
 
 
 def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
@@ -596,13 +637,15 @@ def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    # Pre-load a streak from earlier failures.
+    # Pre-load a streak and suspension from earlier failures.
     s._consecutive_partial_fails = 2
+    s._phase5b_suspended = True
 
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is True
     assert s._consecutive_partial_fails == 0, "counter must reset on success"
+    assert s._phase5b_suspended is False, "suspension flag must reset on success"
 
 
 # ── Phase 3: short-leg bid re-fetch closes the stale-window ───────────────

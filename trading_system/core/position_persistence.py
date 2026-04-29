@@ -63,6 +63,7 @@ def save(
     pnl_engine: Any = None,
     risk_manager: Any = None,
     daily_target: Any = None,
+    regime_filter: Any = None,
     *,
     session_status: str = SESSION_ACTIVE,
     trading_date: Optional[str] = None,
@@ -85,6 +86,7 @@ def save(
         "pnl_state": {},
         "risk_state": {},
         "target_state": {},
+        "regime_state": {},
     }
 
     for key, strat in strategies.items():
@@ -101,6 +103,8 @@ def save(
         payload["risk_state"] = risk_manager.save_state()
     if daily_target is not None and hasattr(daily_target, "save_state"):
         payload["target_state"] = daily_target.save_state()
+    if regime_filter is not None and hasattr(regime_filter, "save_state"):
+        payload["regime_state"] = regime_filter.save_state()
 
     tmp = STATE_FILE + ".tmp"
     try:
@@ -117,6 +121,7 @@ def load(
     pnl_engine: Any = None,
     risk_manager: Any = None,
     daily_target: Any = None,
+    regime_filter: Any = None,
 ) -> Dict[str, Any]:
     """
     Restore positions + P&L from disk.  Returns the number of strategies restored.
@@ -200,6 +205,10 @@ def load(
     target_data = payload.get("target_state", {})
     if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
         daily_target.restore_state(target_data, reset_hit=is_stale_trading_day)
+
+    regime_data = payload.get("regime_state", {})
+    if regime_filter is not None and hasattr(regime_filter, "restore_state"):
+        regime_filter.restore_state(regime_data, reset_daily=is_stale_trading_day)
 
     return {
         "restored_strategies": restored,

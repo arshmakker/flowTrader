@@ -767,7 +767,7 @@ def run():
     strats_map = {'NIFTY': nifty_ic, 'BANKNIFTY': banknifty_ic}
 
     # Restore any carried-overnight positions + P&L state.
-    meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk)
+    meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk, regime_filter=regime)
     if meta.get("restored_strategies") or meta.get("tracker_positions"):
         log.info(
             "Restored carried state: %d strategies, %d tracker positions (saved_at=%s, trading_date=%s)",
@@ -905,7 +905,7 @@ def run():
             # LIVE-19: operator emergency stop — checked before anything else.
             if _check_kill_switch(strats, pnl_engine, risk, log, alerts=alerts):
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk,
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
                     session_status=position_persistence.SESSION_FLAT,
                     shutdown_reason="kill-switch",
                 )
@@ -982,7 +982,7 @@ def run():
                     collection_started = False
                 flat_now = position_persistence.is_flat(strats_map, pos_mgr)
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk,
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
                     session_status=(
                         position_persistence.SESSION_FLAT if flat_now
                         else position_persistence.SESSION_ACTIVE
@@ -1044,7 +1044,7 @@ def run():
 
             # Persist position + P&L state so a crash/restart can resume cleanly.
             position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk,
+                strats_map, pos_mgr, pnl_engine, risk, regime,
                 session_status=position_persistence.SESSION_ACTIVE,
             )
 
@@ -1054,7 +1054,7 @@ def run():
             _halt_on_exception(exc, risk, log, alerts=alerts)
             try:
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk,
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
                     session_status=position_persistence.SESSION_ACTIVE,
                     shutdown_reason="exception-halt",
                 )
@@ -1091,7 +1091,7 @@ def run():
         try:
             flat_now = position_persistence.is_flat(strats_map, pos_mgr)
             position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk,
+                strats_map, pos_mgr, pnl_engine, risk, regime,
                 session_status=(
                     position_persistence.SESSION_FLAT if flat_now
                     else position_persistence.SESSION_ACTIVE

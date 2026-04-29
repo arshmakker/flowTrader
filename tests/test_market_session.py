@@ -173,16 +173,17 @@ class _StubApi:
 def _ready_filter(vix_value=18.0):
     """Build a RegimeFilter with enough VIX history to pass is_vix_stable.
     is_vix_stable filters to entries within the last IC_VIX_STABLE_MINS
-    minutes; the history must sit INSIDE that window, not before it."""
+    minutes; the history must sit INSIDE that window, not before it.
+    History uses wall-clock (time.time()) so it survives process restarts."""
     import time
     rf = RegimeFilter(api=_StubApi())
-    now = time.monotonic()
-    rf._vix_cache = (vix_value, now)
+    now_wall = time.time()
+    rf._vix_cache = (vix_value, time.monotonic())
     # Spread 20 entries evenly across the last N minutes so every one of
     # them survives the stability filter.
     needed_sec = settings.IC_VIX_STABLE_MINS * 60
     step = needed_sec / 25  # leave a little headroom
-    rf._vix_history = [(now - (step * i), vix_value) for i in range(20)]
+    rf._vix_history = [(now_wall - (step * i), vix_value) for i in range(20)]
     return rf
 
 
@@ -211,3 +212,64 @@ def test_regime_gate_passes_when_tradable(monkeypatch):
         lambda *a, **kw: (True, "regular"),
     )
     assert rf.get_regime_gate("RANGING") is True
+
+
+# ── VIX history save/restore — crash-restart carries stability window ─────
+# Regression for 2026-04-29: on restart the gate blocked with
+# "VIX not stable for 45 mins" because _vix_history used time.monotonic()
+# (process-relative) and was wiped on restart. Fix: wall-clock timestamps
+# + save_state()/restore_state() wired into position_persistence.
+
+import time as _time_mod
+
+
+def test_vix_history_save_restore_carries_over():
+    """save_state → restore_state roundtrip: entries within the 45-min window
+    are preserved and is_vix_stable() immediately returns True on the
+    restored instance."""
+    rf_orig = _ready_filter(vix_value=18.0)
+    assert rf_orig.is_vix_stable() is True, "pre-condition: original filter is stable"
+
+    state = rf_orig.save_state()
+
+    rf_new = RegimeFilter(api=_StubApi())
+    assert rf_new.is_vix_stable() is False, "pre-condition: fresh filter has no history"
+
+    rf_new.restore_state(state)
+    assert rf_new.is_vix_stable() is True, (
+        "restored filter must see 45-min window as stable — "
+        "VIX history not carrying over causes gate to block for 45 min after every restart"
+    )
+
+
+def test_vix_history_restore_drops_stale_entries():
+    """Entries older than IC_VIX_STABLE_MINS + 5 min are pruned on restore."""
+    from trading_system.config import settings
+    rf = RegimeFilter(api=_StubApi())
+    now = _time_mod.time()
+    window = settings.IC_VIX_STABLE_MINS * 60
+    # Two entries inside window, one well outside.
+    rf._vix_history = [
+        (now - 60, 18.0),
+        (now - 120, 18.0),
+        (now - (window + 400), 18.0),  # too old — must be pruned
+    ]
+    state = rf.save_state()
+
+    rf2 = RegimeFilter(api=_StubApi())
+    rf2.restore_state(state)
+    assert len(rf2._vix_history) == 2, (
+        f"stale entry must be pruned on restore; got {len(rf2._vix_history)} entries"
+    )
+
+
+def test_vix_history_restore_reset_daily_clears_history():
+    """restore_state(state, reset_daily=True) drops all history — next day restart
+    must start fresh, not carry yesterday's VIX readings."""
+    rf_orig = _ready_filter(vix_value=18.0)
+    state = rf_orig.save_state()
+
+    rf_new = RegimeFilter(api=_StubApi())
+    rf_new.restore_state(state, reset_daily=True)
+    assert rf_new._vix_history == [], "next-day restore must clear VIX history"
+    assert rf_new.is_vix_stable() is False

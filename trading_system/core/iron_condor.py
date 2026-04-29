@@ -101,9 +101,14 @@ class IronCondorStrategy:
         # Phase-5b partial-fill streak counter. A single partial-fill is bid
         # drift, not a halt event — skip the cycle and retry on the next
         # signal. Only a sustained streak (settings.IC_PARTIAL_FAIL_CAP
-        # consecutive) halts, bounding unwind-slippage exposure. Reset on a
+        # consecutive) suspends same-day adjustment re-entries, bounding
+        # unwind-slippage exposure. Counter and suspension flag reset on a
         # successful entry (proves liquidity is fine again).
         self._consecutive_partial_fails = 0
+        # Set True once the partial-fail cap is hit; blocks same-day adjustment
+        # re-entries without halting the full session (only 3× stop/daily-loss
+        # halts the session per the no-halt-below-top-stop rule).
+        self._phase5b_suspended = False
         if settings.SHAKEDOWN_MODE:
             logger.info(
                 "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
@@ -570,6 +575,13 @@ class IronCondorStrategy:
         if not self._check_session_entry_cap():
             return False
 
+        if self._phase5b_suspended and self._is_re_entry():
+            logger.warning(
+                "IC %s Phase-5b adjustments suspended after cap; skipping re-entry.",
+                self.instrument,
+            )
+            return False
+
         sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
         sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
@@ -828,18 +840,11 @@ class IronCondorStrategy:
                 if self._consecutive_partial_fails >= cap:
                     logger.critical(
                         "IC %s Phase-5b partial-fill cap reached "
-                        "(%d consecutive ≥ cap %d) — escalating to halt.",
+                        "(%d consecutive ≥ cap %d) — suspending adjustments for today.",
                         self.instrument,
                         self._consecutive_partial_fails, cap,
                     )
-                    self._last_rollback_stuck_legs = [{
-                        "symbol": "(phase-5b-partial-fill-cap)",
-                        "reason": "consecutive_partial_fail_cap_reached",
-                        "consecutive_count": self._consecutive_partial_fails,
-                        "partial_legs": partial_legs,
-                        "reversal_incomplete_count": 0,
-                    }]
-                    persist_stuck_legs(self._last_rollback_stuck_legs)
+                    self._phase5b_suspended = True
                 else:
                     logger.warning(
                         "IC %s Phase-5b partial-fill (%d/%d) — skipping this "
@@ -868,8 +873,9 @@ class IronCondorStrategy:
             return False
 
         # Entry successful — construct IC_Position mirroring legacy enter().
-        # Reset the consecutive partial-fail counter: liquidity is fine again.
+        # Reset the consecutive partial-fail counter and suspension flag.
         self._consecutive_partial_fails = 0
+        self._phase5b_suspended = False
         max_profit = actual_net_credit_unit * qty
         try:
             expiry_iso = datetime.strptime(str(expiry).strip(), "%d-%b-%Y").date().isoformat()

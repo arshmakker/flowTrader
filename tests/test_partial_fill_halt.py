@@ -232,10 +232,11 @@ def test_hedgefirst_phase5b_partial_short_skips_cycle(tmp_path, monkeypatch):
     assert ic._consecutive_partial_fails == 1
 
 
-def test_hedgefirst_phase5b_partial_fill_cap_reached_halts(tmp_path, monkeypatch):
-    """The Nth consecutive Phase-5b partial-fill DOES halt, with the unified
-    reason code so post-mortem can distinguish a sustained-stress halt from
-    a single-event skip."""
+def test_hedgefirst_phase5b_partial_fill_cap_reached_suspends_not_halts(tmp_path, monkeypatch):
+    """The Nth consecutive Phase-5b partial-fill suspends same-day re-entries
+    but does NOT escalate to a session halt (2026-04-29 regression: cap used to
+    populate stuck_legs → _drain_rollback_failures → full halt, killing NIFTY
+    for the rest of the day). Only 3× stop / DAILY_MAX_LOSS halt the session."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
 
     om = MagicMock()
@@ -260,13 +261,11 @@ def test_hedgefirst_phase5b_partial_fill_cap_reached_halts(tmp_path, monkeypatch
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
         ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
 
-    assert len(ic._last_rollback_stuck_legs) == 1
-    event = ic._last_rollback_stuck_legs[0]
-    assert event["reason"] == "consecutive_partial_fail_cap_reached"
-    assert event["consecutive_count"] == settings.IC_PARTIAL_FAIL_CAP
-    partial_leg_map = {p["symbol"]: p["fill_qty"] for p in event["partial_legs"]}
-    assert 300 in partial_leg_map.values()
-    assert 650 in partial_leg_map.values()
+    assert ic._phase5b_suspended is True, "cap reached → adjustments suspended"
+    assert ic._last_rollback_stuck_legs == [], (
+        "cap reached must NOT populate stuck_legs — that triggers a session halt "
+        "reserved for 3× stop / daily-loss only"
+    )
 
 
 def test_hedgefirst_phase5b_no_partial_does_not_escalate_halt(tmp_path, monkeypatch):

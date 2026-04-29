@@ -81,11 +81,11 @@ def test_regime_filter_gates(monkeypatch):
 
     rf = RegimeFilter(api)
 
-    # Mock history for stability — stamps must fall within the rolling window
-    # that is_vix_stable() examines (monotonic clock, last IC_VIX_STABLE_MINS).
+    # Mock history for stability — stamps use wall-clock (time.time()) so they
+    # survive restarts and match is_vix_stable()'s time.time() comparisons.
     import time
-    now_mono = time.monotonic()
-    rf._vix_history = [(now_mono - i, 15.0) for i in range(10)]
+    now_wall = time.time()
+    rf._vix_history = [(now_wall - i, 15.0) for i in range(10)]
 
     # RANGING + VIX 15 + Stable = OK
     assert rf.get_regime_gate('RANGING') is True
