@@ -263,6 +263,38 @@ def test_vix_history_restore_drops_stale_entries():
     )
 
 
+def test_vix_stable_8min_window_excludes_pre_classify_volatile_data(monkeypatch):
+    """LIVE-28: 8-min stability window must exclude pre-classify volatile VIX.
+    The 15-min window looked back into the opening-hour noise (VIX swings >1.5pt)
+    and kept blocking entries until ~11:15. The 8-min window only checks
+    post-classify calm data, unblocking morning entries by ~10:38."""
+    import time
+    rf = RegimeFilter(api=_StubApi())
+    now = time.time()
+
+    # Samples from 15–9 minutes ago: volatile (opening-hour VIX swings)
+    volatile = [(now - 900 + i * 60, 12.0 + (i % 2) * 2.0) for i in range(6)]
+    # VIX alternates 12.0 and 14.0 → range = 2.0 > IC_VIX_STABLE_BAND (1.5)
+
+    # Samples from last 8 minutes: stable (post-classify calm)
+    calm = [(now - 480 + i * 60, 13.0) for i in range(9)]
+
+    rf._vix_history = volatile + calm
+    rf._vix_cache = (13.0, time.monotonic())
+
+    # 8-min window only sees the calm samples → stable
+    monkeypatch.setattr(settings, "IC_VIX_STABLE_MINS", 8)
+    assert rf.is_vix_stable() is True, (
+        "8-min window should exclude pre-classify volatile data and report stable"
+    )
+
+    # 15-min window sweeps in the volatile samples → unstable (prior blocking behavior)
+    monkeypatch.setattr(settings, "IC_VIX_STABLE_MINS", 15)
+    assert rf.is_vix_stable() is False, (
+        "15-min window included volatile pre-classify data — this was blocking morning entries"
+    )
+
+
 def test_vix_history_restore_reset_daily_clears_history():
     """restore_state(state, reset_daily=True) drops all history — next day restart
     must start fresh, not carry yesterday's VIX readings."""

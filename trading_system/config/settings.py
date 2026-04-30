@@ -32,7 +32,7 @@ SIGNAL_RECHECK_SEC = 30
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
 IC_LOT_SIZE = 10  # 10 lots per instrument for greater absolute profit
 IC_VIX_MAX = 30.0
-IC_VIX_STABLE_MINS = 15
+IC_VIX_STABLE_MINS = 8   # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
 IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
