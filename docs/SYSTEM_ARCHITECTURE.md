@@ -24,7 +24,7 @@ Responsibility: acquire, validate, and cache market data for consumers upstream.
 Responsibility: classify regime, gate entries, select strikes, monitor, and decide exits.
 
 - `day_classifier.py` — one-shot classification at 10:30 (RANGING / TRENDING_UP / TRENDING_DOWN). Locked until `reset()`.
-- `regime_filter.py` — continuous VIX gate (< 30, 45-min stability within 1.5-point band). Binary gate on `day_type`.
+- `regime_filter.py` — continuous VIX gate (< 30, 8-min stability within 1.5-pt band, NIFTY VIX floor ≥ 14). Binary gate on `day_type` and `instrument`.
 - `expiry_manager.py` — 3-DTE rolling rule; returns `DD-MMM-YYYY` expiry for new IC entries.
 - `sr_manager.py` — 20-day high/low from collected futures raw data, with 50-point buffer applied to short strikes.
 - `signal_engine.py` — VWAP (other indicators present but not used — see BUG-16).
@@ -34,16 +34,24 @@ Responsibility: classify regime, gate entries, select strikes, monitor, and deci
 
 Responsibility: place orders, track positions, record realised P&L.
 
-- `paper_order_manager.py` — simulated fills with slippage (baseline + 3× for cheap OTM), STT, flat brokerage. Option-LTP sanity gate. `track_position` flag controls whether fills hit the tracker.
+- `paper_order_manager.py` — simulated fills with full cost stack (slippage, STT, exchange, SEBI, stamp, GST via `fees.py`). Option-LTP sanity gate. `track_position` flag controls tracker writes.
+- `live_order_manager.py` — live order plumbing; `place_order` polls `single_order_history` until terminal status (`COMPLETE`/`REJECTED`/`CANCELED`). Selected at construction time when `PAPER_TRADE_MODE=False`.
 - `paper_position_tracker.py` — per-leg state keyed by option symbol. Weighted-avg price on same-side scaling.
-- `paper_pnl_engine.py` — realised (on `record_trade`) + unrealised (via tracker mark-to-market). Writes `paper_summary.json` and `pnl_snapshot.json`.
-- `trade_logger.py` — appends completed-trade rows to `paper_trades.csv` (called from `pnl_engine.record_trade`).
+- `paper_pnl_engine.py` — realised (on `record_trade`) + unrealised (via tracker mark-to-market). Writes `pnl_snapshot.json`.
+- `trade_logger.py` — appends completed-trade rows to `paper_trades.csv`.
 
 ### Orchestration and risk
 
-- `main.py` — 60-second control loop; wires the ingestion, strategy, and execution layers plus persistence and risk. Single entry point.
-- `risk_manager.py` — combined 3× max-profit stop, 2-tick confirmation, invalid-quote defense, recovery-mode gate (unwired — see BUG-15).
-- `position_persistence.py` — per-loop snapshot of strategy + tracker + P&L + risk state to `data/open_positions.json`.
+- `main.py` — 60-second control loop; wires all layers plus persistence and risk. Single entry point.
+- `risk_manager.py` — combined 3× max-profit stop, 2-tick confirmation, daily loss cap (`DAILY_MAX_LOSS`), recovery-mode gate, rollback-escalation halt.
+- `position_persistence.py` — per-loop snapshot of strategy + tracker + P&L + risk + regime state to `data/open_positions.json`.
+
+### Ops layer
+
+- `ops/alerts.py` — ntfy alert channel; async worker with dedup + flush.
+- `ops/startup_reconcile.py` — engine vs broker position check at boot (live mode only); divergence halts startup.
+- `ops/reconcile.py` — post-session engine vs broker trade-book reconciliation.
+- `ops/broker_trade_fetcher.py` — normalises Shoonya `get_trade_book()` response to reconciliation schema.
 
 ## Data flow
 
@@ -133,9 +141,4 @@ Each tick of `main.py`'s loop (`SIGNAL_RECHECK_SEC = 60`):
 
 ## Known architectural gaps
 
-These affect how layers interact today; tracked individually in `bugs_for_review.md`:
-
-- **BUG-02, BUG-03, BUG-04** — execution boundary bypasses P&L / tracker interfaces. Axiom 5 violations.
-- **BUG-05** — rollback failure at execution boundary does not propagate to orchestrator as a halt. Axiom 3 + 4 violation.
-- **BUG-07** — no mid-session auth recovery path from ingestion back to orchestrator. Axiom 3 fragility.
-- **BUG-18** — expiry-day close not enforced at the orchestrator's EOD gate. Axiom 2 carry-rule violation.
+- **BUG-07** — no mid-session auth recovery path from ingestion back to orchestrator. Axiom 3 fragility. All other previously-tracked architectural gaps (BUG-02/03/04/05/18) are resolved.

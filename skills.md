@@ -19,20 +19,23 @@ skills:
       clearance from 20-day High/Low.
 
   - name: evaluate_entry_gates
-    description: Validates all pre-entry conditions including Regime, Classification, and Credit Rule.
-    input: VIX stability (45 min), day_type (RANGING), net_credit, spread_width.
+    description: Validates all pre-entry conditions including Regime, Classification, VIX stability, and Credit Rule.
+    input: VIX stability (8 min window), day_type (RANGING), instrument, net_credit, spread_width.
     output: Boolean (True if all gates GREEN, False otherwise) + reason string.
     error_handling: >
-      Strictly enforces 'net_credit ≥ 25% of spread_width'. If classification 
-      is TRENDING, all entries are blocked regardless of other gates.
+      Blocks entry if day_type is TRENDING, VIX ≥ 30, VIX unstable (> 1.5-pt
+      range over last 8 min), or NIFTY VIX < 14. Min credit floor: NIFTY ₹18/lot,
+      BANKNIFTY ₹25/lot. All gates enforced before any leg is submitted.
 
   - name: execute_harvest_cycle
-    description: Monitors for the 1% profit harvest trigger and manages the immediate re-entry loop.
-    input: Current unrealized P&L, Max possible profit of the spread.
+    description: Monitors for the per-instrument profit harvest trigger and manages the immediate re-entry loop.
+    input: Current unrealized P&L, Max possible profit of the spread, instrument.
     output: Action (HARVEST/HOLD) and trigger for fresh entry.
     error_handling: >
-      If P&L data is stale (> 30s), skips harvest cycle to prevent execution 
-      errors. Logs every harvest and re-entry with live VIX/SR context.
+      Harvest threshold is instrument-specific: NIFTY 2% of max profit,
+      BANKNIFTY 13% of max profit. If P&L data is stale (> 30s), skips harvest
+      cycle to prevent execution errors. Logs every harvest and re-entry with
+      live VIX/SR context.
 
   - name: manage_breach_adjustments
     description: Executes rolls for tested and safe sides when a short strike is breached.

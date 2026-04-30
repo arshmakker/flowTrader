@@ -16,10 +16,13 @@ Grounded in `docs/axioms.md`. Catalogs the hard-coded safety nets, position-sizi
 |---|---|---|---|
 | Trading window | `TRADE_START ≤ now < TRADE_END` | 10:00 – 15:10 | `main.py` |
 | VIX ceiling | `vix < IC_VIX_MAX` | 30.0 | `regime_filter.py:90-92` |
-| VIX stability | 45-min range ≤ 1.5, ≥ 5 samples | `IC_VIX_STABLE_MINS = 45`, `IC_VIX_STABLE_BAND = 1.5` | `regime_filter.py:53-66` |
-| Day type | `day_type == RANGING` | — | `regime_filter.py:86-88` |
-| Risk halted | `risk_manager.halted` is `False` | — | `main.py:409` |
-| Min credit | `net_credit ≥ IC_MIN_CREDIT` | 18.0 per lot | `iron_condor.py:187-202` |
+| VIX stability | 8-min range ≤ 1.5, ≥ 5 samples | `IC_VIX_STABLE_MINS = 8`, `IC_VIX_STABLE_BAND = 1.5` | `regime_filter.py` |
+| Day type | `day_type == RANGING` | — | `regime_filter.py` |
+| NIFTY VIX floor | NIFTY: `vix ≥ IC_NIFTY_MIN_VIX = 14` | — | `regime_filter.get_regime_gate` |
+| Risk halted | `risk_manager.halted` is `False` | — | `main.py` |
+| Min credit | `net_credit ≥ IC_MIN_CREDIT_BY_INSTRUMENT` | NIFTY ₹18, BANKNIFTY ₹25 | `iron_condor.py` |
+| Margin | available margin ≥ required × 1.2 buffer | `IC_MARGIN_BUFFER_MULT = 1.2` | `iron_condor._pre_entry_margin_ok` |
+| Freeze qty | qty ≤ `FREEZE_QTY_{INSTRUMENT}` | NIFTY 1800, BANKNIFTY 900 | `iron_condor.enter` |
 | Valid leg LTPs | all 4 legs > 0 | — | `iron_condor.py:176-178` |
 | DTE | expiry ≥ 3 DTE, else rolled | `IC_DTE_THRESHOLD = 3` | `expiry_manager.py` |
 | S/R buffer | shorts ≥ 50 points from 20-day H/L | `IC_SR_BUFFER = 50` | `sr_manager.apply_buffer` |
@@ -29,7 +32,7 @@ Grounded in `docs/axioms.md`. Catalogs the hard-coded safety nets, position-sizi
 
 | Net | Trigger | Setting | Source |
 |---|---|---|---|
-| Profit harvest | `total_pnl ≥ 1% × max_profit` | `IC_HARVEST_PCT = 0.01` | `iron_condor.py:273-276` |
+| Profit harvest | `total_pnl ≥ harvest_pct × max_profit` | `IC_HARVEST_PCT_BY_INSTRUMENT`: NIFTY 2%, BANKNIFTY 13% | `iron_condor.monitor` |
 | Strike-breach adjustment (profitable only) | `spot ≥ sc_strike` or `spot ≤ sp_strike`, with `total_pnl > 0` | — | `iron_condor.py:278-286` |
 | Invalid-quote skip | any leg LTP ≤ 0 → monitor returns None | — | `iron_condor.py:257-258` |
 
@@ -45,16 +48,23 @@ Grounded in `docs/axioms.md`. Catalogs the hard-coded safety nets, position-sizi
 
 ### 4. Atomic entry + rollback (Axiom 4)
 
-- All 4 legs submitted in fixed order. If any returns non-`COMPLETE`, entry aborts.
-- `_rollback_partial_entry` sends reverse orders for already-filled legs.
+- Default: hedge-first (`IC_ENTRY_MODE = "hedge_first"`) — wings placed as MKT first, shorts as LMT second; worst-case failure is a bounded long-strangle position, not a naked short.
+- If any leg returns non-`COMPLETE`, entry aborts and `_rollback_partial_entry` sends reverse orders for already-filled legs.
 - `IC_Position` is created **only** after all 4 legs confirm.
-- ⚠ **Rollback failure is currently only logged** (BUG-05). Axiom 3 + Axiom 4 violation — the axiom requires halt + alert here.
+- Rollback failure: stuck legs are recorded; `_drain_rollback_failures` → `RiskManager.escalate_rollback_failure` halts entries and fires a LIVE-23 alert.
 
 ### 5. End-of-day safety (Axiom 2 carry rules)
 
-- At `TRADE_END = 15:10`, if next calendar day is weekend or in `TRADING_HOLIDAYS_IST`: force-flatten all active ICs.
-- If next calendar day is a trading day: carry overnight.
-- ⚠ **Expiry-day close not enforced** (BUG-18). An IC reaching its own expiry Thursday with Friday as a trading day currently carries overnight into an expired position.
+- At `TRADE_END_EXPIRY = 15:00`: positions whose `expiry_date` matches today are force-closed.
+- At `TRADE_END = 15:10`: if next calendar day is weekend or in `TRADING_HOLIDAYS_IST`, force-flatten all remaining active ICs.
+- If next calendar day is a normal trading day: carry overnight.
+
+### 6. Daily loss cap + kill switch
+
+- **Daily loss cap:** `RiskManager.check_daily_loss_cap()` — halts and flattens when `realised + unrealised < −DAILY_MAX_LOSS`. Cap is `DAILY_MAX_LOSS_SHAKEDOWN = ₹10k` during `SHAKEDOWN_MODE`; else `DAILY_MAX_LOSS = ₹50k`.
+- **Kill switch:** presence of `data/HALT` file → force-exits all positions and shuts down cleanly.
+- **PID guard:** startup refuses if another instance is alive (`data/regimetrader.pid`).
+- **Operator alerts:** ntfy channel fires on stop-loss hit, daily cap breach, rollback escalation, kill-switch activation.
 
 ## Position sizing
 
@@ -85,36 +95,23 @@ There is no volatility- or credit-based sizing; no Kelly or IV-percentile scalin
 
 ## Cost model in paper (risk-relevant)
 
-The paper execution model at `paper_order_manager.py:63-147` simulates partial costs:
+The paper execution model simulates the full F&O cost stack:
 
 - **Slippage:** `max(ltp × 0.05%, ₹0.25)`, with a **3× multiplier** for options with LTP below `SLIPPAGE_OTM_THRESHOLD = 50`.
 - **Tick rounding:** `PRICE_TICK = 0.05`.
-- **STT:** `0.05%` on options sell notional; `0.01%` on futures.
-- **Brokerage:** flat `BROKERAGE_PER_ORDER = 5.0` per leg.
-- **Not modelled:** GST (18% on brokerage + transaction charges), exchange transaction charges, SEBI turnover fees.
+- **STT:** 0.15% on options sell notional (Budget 2026 rate); 0.01% on futures.
+- **Brokerage:** flat ₹5 per leg.
+- **Exchange transaction charges:** 0.03553% (NSE options).
+- **SEBI fees:** ₹10 per crore turnover.
+- **Stamp duty:** 0.003% on BUY side.
+- **GST:** 18% on brokerage + exchange + SEBI (not on STT or stamp).
 
-Implication for risk: the paper book is **systematically optimistic** vs. live fills. Post-go-live reconciliation must account for this gap. See `bugs_for_review.md` "Out of scope" section and `GO_LIVE_CHECKLIST.md` item 12.
+Cost stack is applied on every entry leg (`fees.compute_taxes_and_fees`) and every exit leg (`PaperPositionTracker.close_position`). See `trading_system/core/fees.py` and `settings.FEES_NIFTY_OPT`.
 
 ## Known risk-framework gaps
 
-These are risk-relevant but not yet implemented. Tracked in `GO_LIVE_CHECKLIST.md` or `bugs_for_review.md`:
-
-| Gap | Axiom implication | Tracked in |
+| Gap | Axiom implication | Status |
 |---|---|---|
-| Daily rupee loss cap | Independent of 3× max-profit stop — needed for per-day bounded loss | GO_LIVE item 6 |
-| Kill switch (`data/HALT`) | Operator cannot force halt — Axiom 3 expressive gap | GO_LIVE item 7 |
-| Single-instance guard (PID file) | Two concurrent processes create untrustworthy state — Axiom 3 | GO_LIVE item 16 |
-| Mid-session OAuth recovery | Token expiry mid-session leaves ingestion in uncertain state — Axiom 3 | BUG-07 |
-| Margin pre-check | No `get_limits()` before leg 1; rejection on leg 3 depends on a currently-broken rollback path | GO_LIVE item 5 |
-| Rollback escalation | Stuck half-condor after failed reverse order — Axiom 4 clause unenforced | BUG-05 |
-| Expiry-day close | Axiom 2 clause unenforced | BUG-18 |
-| Force-exit logging | Force-exit events are not accounted for in realised P&L — Axiom 5 | BUG-02 |
+| Mid-session OAuth recovery | Token expiry mid-session leaves ingestion in uncertain state — Axiom 3 | Open (BUG-07) |
 
-## Priority ordering for risk hardening
-
-1. **BUG-05** (rollback escalation) — highest. Axiom 4 failure mode with uncontrolled live exposure implication.
-2. **BUG-02** (force-exit logging) — Axiom 5; required for any reconciliation.
-3. **BUG-03 + BUG-04** (tracker unwind) — foundational; downstream risk calculations read the tracker.
-4. **Daily loss cap + kill switch** — operator safety; low engineering effort, high protective value.
-5. **BUG-18** (expiry-day close) — Axiom 2; rare in practice due to 1% harvest but still an axiom violation.
-6. **BUG-07** (mid-session auth) — Axiom 3 fragility; matters once live.
+All other previously-tracked gaps (daily loss cap, kill switch, PID guard, margin pre-check, rollback escalation, expiry-day close, force-exit logging) are resolved. See `bugs_for_review.md` for full fix history.
