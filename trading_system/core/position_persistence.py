@@ -63,6 +63,7 @@ def save(
     pnl_engine: Any = None,
     risk_manager: Any = None,
     daily_target: Any = None,
+    regime_filter: Any = None,
     *,
     session_status: str = SESSION_ACTIVE,
     trading_date: Optional[str] = None,
@@ -85,6 +86,7 @@ def save(
         "pnl_state": {},
         "risk_state": {},
         "target_state": {},
+        "regime_state": {},
     }
 
     for key, strat in strategies.items():
@@ -101,6 +103,8 @@ def save(
         payload["risk_state"] = risk_manager.save_state()
     if daily_target is not None and hasattr(daily_target, "save_state"):
         payload["target_state"] = daily_target.save_state()
+    if regime_filter is not None and hasattr(regime_filter, "save_state"):
+        payload["regime_state"] = regime_filter.save_state()
 
     tmp = STATE_FILE + ".tmp"
     try:
@@ -117,6 +121,7 @@ def load(
     pnl_engine: Any = None,
     risk_manager: Any = None,
     daily_target: Any = None,
+    regime_filter: Any = None,
 ) -> Dict[str, Any]:
     """
     Restore positions + P&L from disk.  Returns the number of strategies restored.
@@ -156,7 +161,19 @@ def load(
         last_shutdown_reason or "unknown",
     )
     if session_status == SESSION_FLAT:
-        logger.info("Persisted session is flat; skipping restore")
+        logger.info("Persisted session is flat; skipping position restore")
+        # Daily counters (PnL, risk, target) must survive same-day flat restarts.
+        # A flat session means no open positions — not that today's trades didn't happen.
+        if not is_stale_trading_day:
+            pnl_data = payload.get("pnl_state", {})
+            if pnl_data and pnl_engine is not None and hasattr(pnl_engine, "restore_state"):
+                pnl_engine.restore_state(pnl_data, reset_daily=False)
+            risk_data = payload.get("risk_state", {})
+            if risk_data and risk_manager is not None and hasattr(risk_manager, "restore_state"):
+                risk_manager.restore_state(risk_data, reset_daily=False)
+            target_data = payload.get("target_state", {})
+            if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
+                daily_target.restore_state(target_data, reset_hit=False)
         return {
             "restored_strategies": 0,
             "tracker_positions": 0,
@@ -200,6 +217,10 @@ def load(
     target_data = payload.get("target_state", {})
     if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
         daily_target.restore_state(target_data, reset_hit=is_stale_trading_day)
+
+    regime_data = payload.get("regime_state", {})
+    if regime_filter is not None and hasattr(regime_filter, "restore_state"):
+        regime_filter.restore_state(regime_data, reset_daily=is_stale_trading_day)
 
     return {
         "restored_strategies": restored,

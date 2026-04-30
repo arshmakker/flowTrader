@@ -7,7 +7,7 @@ A failing check blocks go-live; the verdict is GO LIVE only if all checks pass.
 
 import logging
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import pandas as pd
 
 from trading_system.config import settings
@@ -21,6 +21,7 @@ class GoLiveEvaluator:
         summary: Dict,
         trades_df: Optional[pd.DataFrame] = None,
         orders_df: Optional[pd.DataFrame] = None,
+        reconciliation_reports: Optional[List[Dict]] = None,
     ) -> Dict:
         if trades_df is None or trades_df.empty:
             trades_df = pd.DataFrame()
@@ -53,6 +54,7 @@ class GoLiveEvaluator:
         c["credit_rule_compliance"] = self._credit_compliant(trades_df)
         c["hard_exit_respected"] = self._count_late_exits(trades_df) == 0
         c["plausible_win_rate"] = self._plausible_win_rate(summary)
+        c["live_reconciled_trades"] = self._live_reconciled(reconciliation_reports)
 
         days_traded = (
             trades_df["date"].nunique()
@@ -101,12 +103,14 @@ class GoLiveEvaluator:
 
     @staticmethod
     def _credit_compliant(df: pd.DataFrame) -> bool:
-        if df.empty or "entry_credit" not in df.columns:
+        if df.empty or "entry_credit" not in df.columns or "instrument" not in df.columns:
             return True
-        credits = pd.to_numeric(df["entry_credit"], errors="coerce").dropna()
-        if credits.empty:
+        credits = pd.to_numeric(df["entry_credit"], errors="coerce")
+        floors = df["instrument"].map(settings.IC_MIN_CREDIT_BY_INSTRUMENT)
+        mask = credits.notna() & floors.notna()
+        if not mask.any():
             return True
-        return bool((credits >= settings.IC_MIN_CREDIT).all())
+        return bool((credits[mask] >= floors[mask]).all())
 
     @staticmethod
     def _plausible_win_rate(summary: Dict) -> bool:
@@ -139,6 +143,50 @@ class GoLiveEvaluator:
             return True
         instruments = set(df["instrument"].dropna().astype(str).unique()) - {""}
         return instruments.issubset({"NIFTY", "BANKNIFTY"})
+
+    @staticmethod
+    def _live_reconciled(reports: Optional[List[Dict]]) -> bool:
+        # LIVE-21 gate. Paper fills are systematically optimistic (optimistic
+        # fill model, incomplete cost stack), so the evaluator cannot grade
+        # "ready for live" from paper artefacts alone. Require N days of
+        # LIVE-08 reconciliation reports against a broker contract note where
+        # every matched leg sits within the pinned drift threshold and no leg
+        # is left unmatched on either side.
+        #
+        # Note: stricter than the checklist's aggregate-PnL formulation.
+        # Per-leg catches opposing-leg drift that aggregate nets out — in an
+        # IC, +3% on one wing and -3% on the other zeroes the aggregate while
+        # still telling us the fill model is lying. We also re-derive flagged
+        # status from ``matched[].price_delta_pct`` using a pinned threshold
+        # rather than trusting the writer's ``flagged_count`` (which depends
+        # on whatever ``--flag-pct`` the operator happened to pass).
+        if not reports:
+            return False
+        threshold = settings.GL_RECONCILED_PRICE_DRIFT_PCT
+        clean_days = 0
+        for r in reports:
+            if not isinstance(r, dict):
+                continue
+            if r.get("unmatched_engine_count", 1) != 0:
+                continue
+            if r.get("unmatched_broker_count", 1) != 0:
+                continue
+            matched = r.get("matched", []) or []
+            if not matched:
+                continue
+            all_within = True
+            for pair in matched:
+                try:
+                    pct = abs(float(pair.get("price_delta_pct", 0.0)))
+                except (TypeError, ValueError):
+                    all_within = False
+                    break
+                if pct > threshold:
+                    all_within = False
+                    break
+            if all_within:
+                clean_days += 1
+        return clean_days >= settings.GL_MIN_RECONCILED_DAYS
 
     @staticmethod
     def _count_late_exits(df: pd.DataFrame) -> int:

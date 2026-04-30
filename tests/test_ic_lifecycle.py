@@ -2,9 +2,19 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import pytest
+
 from trading_system.paper.paper_order_manager import PaperOrderManager
 from trading_system.paper.paper_position_tracker import PaperPositionTracker
 from trading_system.core.iron_condor import IronCondorStrategy
+from trading_system.config import settings
+
+
+@pytest.fixture(autouse=True)
+def _force_sequential_entry(monkeypatch):
+    """Lifecycle tests cover the legacy sequential entry path. Pin it so they
+    keep exercising sequential regardless of the branch-level default."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
 
 
 class FakeMD:
@@ -136,9 +146,10 @@ def test_rollback_failure_records_stuck_legs():
 
     ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
     assert ok is False
-    # Both legs 1 and 2 (short call, short put) couldn't be reversed.
+    # Legs are now ordered [SC(SELL), LC(BUY), SP(SELL), LP(BUY)].
+    # Leg 3 (SP SELL) rejects → rollback of legs 1 (SC SELL) and 2 (LC BUY) both fail.
     assert len(strat._last_rollback_stuck_legs) == 2
+    original_sides = {leg["original_side"] for leg in strat._last_rollback_stuck_legs}
+    assert original_sides == {"SELL", "BUY"}
     for leg in strat._last_rollback_stuck_legs:
-        assert leg["original_side"] == "SELL"
-        assert leg["rollback_side"] == "BUY"
-        assert leg["qty"] == 65
+        assert leg["intended_qty"] == 65

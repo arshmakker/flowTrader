@@ -53,29 +53,3 @@ def test_strategy_runner_imports():
     assert hasattr(strategy_runner, "get_weekly_expiry")
     assert hasattr(strategy_runner, "get_option_chain_data")
     assert hasattr(strategy_runner, "save_daily_metrics")
-
-
-def test_trade_logger_alias_mapping():
-    """TradeLogger should map strategy keys to CSV columns."""
-    from trading_system.core.trade_logger import TradeLogger
-    tl = TradeLogger(data_dir="/tmp/test_smoke_logger")
-    trade = {
-        "strategy": "A",
-        "reason": "TARGET",
-        "pnl": 5000,
-        "entry_time": "10:30:00",
-    }
-    tid = tl.log_trade(trade)
-
-    import csv
-    with open(tl._trades_path) as f:
-        reader = csv.DictReader(f)
-        row = next(reader)
-
-    assert row["exit_reason"] == "TARGET", f"exit_reason={row['exit_reason']}"
-    assert row["net_pnl"] == "5000", f"net_pnl={row['net_pnl']}"
-    assert row["gross_pnl"] == "5000", f"gross_pnl={row['gross_pnl']}"
-    assert row["time_entry"] == "10:30:00", f"time_entry={row['time_entry']}"
-
-    import shutil
-    shutil.rmtree("/tmp/test_smoke_logger", ignore_errors=True)

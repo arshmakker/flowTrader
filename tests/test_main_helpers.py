@@ -105,6 +105,63 @@ def test_drain_rollback_failures_noop_when_clean():
     assert len(risk._rollback_failures) == 0
 
 
+# ── _evaluate_stop_checks: log/flatten gating after halt ─────────────────────
+
+def test_evaluate_stop_checks_noop_when_already_halted():
+    """Incident 2026-04-28: a Phase-5b halt at 10:49 caused both stop predicates
+    to keep returning True for the rest of the loop, re-firing CRITICAL logs
+    and _force_exit_all every cycle. The fix gates on risk.halted; this pins
+    that subsequent ticks after a halt don't re-emit either log line."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_halted")
+    risk = RiskManager()
+    risk.halted = True  # pre-set: simulates the second-tick state after a halt
+    log = MagicMock(spec=logging.Logger)
+
+    main._evaluate_stop_checks([FakeStrategy("NIFTY", 0.0)], pnl, risk, log)
+
+    log.critical.assert_not_called()
+
+
+def test_evaluate_stop_checks_flattens_and_logs_on_combined_stop_trigger():
+    """When not yet halted and combined-stop fires, the helper must flatten
+    active strategies and emit the CRITICAL log line exactly once."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_combined")
+    risk = MagicMock(spec=RiskManager)
+    risk.halted = False
+    risk.check_combined_stop_loss.return_value = True
+    risk.check_daily_loss_cap.return_value = False
+    log = MagicMock(spec=logging.Logger)
+    s = FakeStrategy("NIFTY", 100.0)
+
+    main._evaluate_stop_checks([s], pnl, risk, log)
+
+    assert s.is_active() is False, "force_exit must run when combined-stop trips"
+    log.critical.assert_called_once_with("COMBINED STOP LOSS HIT - Trading Halted.")
+
+
+def test_evaluate_stop_checks_flattens_and_logs_on_daily_cap_trigger():
+    """When the daily rupee cap trips (combined-stop clean), the helper must
+    flatten and log only the daily-cap line."""
+    import logging
+    from unittest.mock import MagicMock
+    pnl, _ = _build_pnl("/tmp/test_eval_stop_daily")
+    risk = MagicMock(spec=RiskManager)
+    risk.halted = False
+    risk.check_combined_stop_loss.return_value = False
+    risk.check_daily_loss_cap.return_value = True
+    log = MagicMock(spec=logging.Logger)
+    s = FakeStrategy("NIFTY", 0.0)
+
+    main._evaluate_stop_checks([s], pnl, risk, log)
+
+    assert s.is_active() is False
+    log.critical.assert_called_once_with("DAILY LOSS CAP HIT - Trading Halted for the session.")
+
+
 def test_halt_on_exception_sets_halted_without_reraising():
     """BUG-19 / Axiom 3: an unhandled exception must halt trading cleanly."""
     import logging
@@ -192,3 +249,101 @@ def test_halt_on_exception_does_not_overwrite_stop_hit_if_already_set():
     # touch stop_hit_at, which is the desired behavior.
     assert risk.halted is True
     assert risk.stop_hit_at == original
+
+
+# ── LIVE-23: alert emission from main helpers ────────────────────────────────
+
+def test_halt_on_exception_emits_alert_when_channel_provided():
+    """LIVE-23: an unhandled cycle exception must surface to the operator alert channel."""
+    import logging
+    from trading_system.ops.alerts import NullAlertChannel
+    alerts = NullAlertChannel()
+    risk = RiskManager()
+    main._halt_on_exception(
+        RuntimeError("simulated"), risk, logging.getLogger("t"), alerts=alerts,
+    )
+    assert risk.halted is True
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0].event == "unhandled_exception"
+    assert alerts.sent[0].severity == "critical"
+
+
+def test_halt_on_exception_without_alerts_still_halts():
+    """LIVE-23: alerts param is optional; existing callers that don't pass it keep working."""
+    import logging
+    risk = RiskManager()
+    main._halt_on_exception(RuntimeError("simulated"), risk, logging.getLogger("t"))
+    assert risk.halted is True  # still halts; alert channel just not notified
+
+
+def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypatch):
+    """LIVE-23: halt file detection must surface as a warning alert."""
+    import logging
+    from unittest.mock import MagicMock, patch
+    from trading_system.ops.alerts import NullAlertChannel
+    from trading_system.config import settings
+
+    alerts = NullAlertChannel()
+    halt_path = str(tmp_path / "HALT")
+    open(halt_path, "w").close()
+    strats = [MagicMock(is_active=MagicMock(return_value=False))]
+    pnl, risk, log = MagicMock(), MagicMock(), logging.getLogger("t")
+
+    with patch.object(settings, "HALT_FILE", halt_path), \
+         patch("main._force_exit_all"):
+        result = main._check_kill_switch(strats, pnl, risk, log, alerts=alerts)
+
+    assert result is True
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0].event == "halt_file_detected"
+    assert alerts.sent[0].severity == "warning"
+
+
+# ── LIVE-01: _build_order_stack ──────────────────────────────────────────────
+#
+# These pin the main.py wiring that selects LiveOrderManager vs PaperOrderManager
+# at run-time based on settings.PAPER_TRADE_MODE. The prior shape resolved the
+# import-time conditional once against the default (True), so live was
+# unreachable from the running process even with the flag flipped.
+
+def test_build_order_stack_paper_mode_uses_paper_order_manager(tmp_path):
+    from unittest.mock import MagicMock, patch
+    from trading_system.config import settings
+    from trading_system.paper.paper_order_manager import PaperOrderManager
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
+    from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+
+    api, md, tl = MagicMock(), FakeMD(), MagicMock()
+    with patch.object(settings, "PAPER_TRADE_MODE", True), \
+         patch.object(settings, "DATA_DIR", str(tmp_path)):
+        pos, om, pnl = main._build_order_stack(api, md, tl)
+
+    assert isinstance(om, PaperOrderManager)
+    assert isinstance(pos, PaperPositionTracker)
+    assert isinstance(pnl, PaperPnLEngine)
+    # Tracker threaded into the order manager so fills flow into the same state.
+    assert om.tracker is pos
+    # Paper mode must not touch the Shoonya API.
+    api.assert_not_called()
+
+
+def test_build_order_stack_live_mode_uses_live_order_manager(tmp_path):
+    from unittest.mock import MagicMock, patch
+    from trading_system.config import settings
+    from trading_system.live.live_order_manager import LiveOrderManager
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
+    from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+
+    api, md, tl = MagicMock(), FakeMD(), MagicMock()
+    with patch.object(settings, "PAPER_TRADE_MODE", False), \
+         patch.object(settings, "DATA_DIR", str(tmp_path)):
+        pos, om, pnl = main._build_order_stack(api, md, tl)
+
+    assert isinstance(om, LiveOrderManager)
+    # Tracker/PnL containers are mode-agnostic and shared.
+    assert isinstance(pos, PaperPositionTracker)
+    assert isinstance(pnl, PaperPnLEngine)
+    # LiveOrderManager must carry the api handle and the tracker.
+    assert om.api is api
+    assert om.tracker is pos
+    assert om.md is md

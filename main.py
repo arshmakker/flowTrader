@@ -4,12 +4,14 @@ Main Orchestrator — Iron Condor Trading System (agents.md).
 Wires all modules together for high-frequency Nifty/BankNifty IC trading.
 """
 
+import atexit
 import os
 import sys
 import logging
 import threading
 import time as _time
 import re
+import shlex
 import subprocess
 import urllib.parse
 import yaml
@@ -33,18 +35,153 @@ from trading_system.core.trade_logger import TradeLogger
 from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
 from trading_system.auth import shoonya_selenium_auth
+from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
+from trading_system.ops.startup_reconcile import reconcile_startup_positions
 
-if settings.PAPER_TRADE_MODE:
-    from trading_system.paper.paper_order_manager import PaperOrderManager as OrderMgr
-    from trading_system.paper.paper_position_tracker import PaperPositionTracker as PosMgr
-    from trading_system.paper.paper_pnl_engine import PaperPnLEngine as PnLEngine
-else:
-    # Live mode not yet fully integrated for this specific strategist
-    OrderMgr = None
-    PosMgr = None
-    PnLEngine = None
+from trading_system.paper.paper_order_manager import PaperOrderManager
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.live.live_order_manager import LiveOrderManager
 
 DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
+
+
+def _build_order_stack(api, md, trade_logger):
+    """LIVE-01: construct (pos_mgr, order_mgr, pnl_engine) per settings.PAPER_TRADE_MODE.
+
+    PaperPositionTracker and PaperPnLEngine are state containers — mode-agnostic
+    despite the name — so they're shared. Only the order manager swaps. The
+    tracker is threaded into whichever order manager is built, so fills flow
+    into the same in-memory position state regardless of mode.
+    """
+    pos_mgr = PaperPositionTracker()
+    if settings.PAPER_TRADE_MODE:
+        order_mgr = PaperOrderManager(md, pos_mgr)
+    else:
+        order_mgr = LiveOrderManager(api, md, pos_mgr)
+    pnl_engine = PaperPnLEngine(pos_mgr, md, trade_logger)
+    return pos_mgr, order_mgr, pnl_engine
+
+
+def _acquire_pid_lock() -> None:
+    """LIVE-20: Refuse to start if another instance is already running.
+
+    Single-laptop reality: macOS sleep / SIGSTOP / a frozen Python process
+    leaves the PID alive but non-trading. A pure existence check would block
+    a legitimate restart in that case. Combine PID liveness with snapshot
+    freshness — if the snapshot is older than PID_FRESHNESS_TIMEOUT_SEC,
+    the existing process is presumed unresponsive and the PID file is
+    overwritten. The existing LIVE-24 heartbeat is the authoritative
+    silent-death signal; this is just the start-time corollary.
+    """
+    pid_path = settings.PID_FILE
+    snapshot_path = os.path.join(settings.DATA_DIR, "pnl_snapshot.json")
+    freshness_timeout = settings.PID_FRESHNESS_TIMEOUT_SEC
+
+    os.makedirs(os.path.dirname(pid_path), exist_ok=True)
+    if os.path.exists(pid_path):
+        try:
+            existing_pid = int(open(pid_path).read().strip())
+            os.kill(existing_pid, 0)   # signal 0 = check existence only
+            # Process exists. Check if it is still trading by snapshot age.
+            snapshot_age = None
+            if os.path.exists(snapshot_path):
+                snapshot_age = _time.time() - os.path.getmtime(snapshot_path)
+            if snapshot_age is not None and snapshot_age > freshness_timeout:
+                print(
+                    f"WARNING: PID {existing_pid} exists but pnl_snapshot.json is "
+                    f"{snapshot_age:.0f}s old (> {freshness_timeout}s). Treating "
+                    f"as a frozen / suspended process and overwriting the PID file.",
+                    file=sys.stderr,
+                )
+            else:
+                print(
+                    f"ERROR: RegimeTrader already running (PID {existing_pid}, "
+                    f"snapshot age {snapshot_age:.0f}s). If the process is dead, "
+                    f"delete {pid_path} and retry."
+                    if snapshot_age is not None
+                    else f"ERROR: RegimeTrader already running (PID {existing_pid}). "
+                         f"If the process is dead, delete {pid_path} and retry.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        except (ValueError, ProcessLookupError, PermissionError):
+            pass  # stale PID file — overwrite below
+
+    with open(pid_path, "w") as f:
+        f.write(str(os.getpid()))
+    atexit.register(_release_pid_lock)
+
+
+def _release_pid_lock() -> None:
+    """LIVE-20: Remove PID file on clean shutdown."""
+    try:
+        os.remove(settings.PID_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def _log_holiday_calendar(log) -> None:
+    """Surface the loaded NSE holiday calendar at startup.
+
+    The calendar lives in settings.TRADING_HOLIDAYS_IST as a hardcoded set;
+    NSE adds muhurat sessions and extended-break dates throughout the year
+    that won't appear here unless the operator updates the file. Logging the
+    next few entries on every startup makes a stale calendar visible — if
+    "next 3 holidays" looks wrong against the current date, the calendar is
+    out of date and weekend-flatten / is_trading_day_ist may pass through
+    a holiday silently.
+    """
+    today = datetime.now().date().isoformat()
+    holidays = sorted(h for h in settings.TRADING_HOLIDAYS_IST if h >= today)
+    log.info(
+        "Holiday calendar loaded: %d total entries, %d upcoming (next: %s).",
+        len(settings.TRADING_HOLIDAYS_IST),
+        len(holidays),
+        ", ".join(holidays[:3]) if holidays else "none — verify settings.TRADING_HOLIDAYS_IST",
+    )
+
+
+def _require_live_ack() -> None:
+    """SHAKEDOWN: refuse to start in live mode without an explicit operator handshake.
+
+    Paper mode bypasses this gate. In live, the operator must explicitly
+    create settings.LIVE_ACK_FILE (e.g. `touch data/LIVE_ACK`) to bless the
+    session; contents are not parsed, presence alone is the signal. Blocks
+    the failure mode where PAPER_TRADE_MODE is flipped to False without a
+    deliberate operator decision (config drift, bad rebase, accidental edit).
+    """
+    if settings.PAPER_TRADE_MODE:
+        return
+    if not os.path.exists(settings.LIVE_ACK_FILE):
+        print(
+            f"ERROR: PAPER_TRADE_MODE=False but {settings.LIVE_ACK_FILE} not found. "
+            f"Live trading requires an explicit operator handshake. "
+            f"Create the file (e.g. `touch {settings.LIVE_ACK_FILE}`) to proceed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _check_kill_switch(strats, pnl_engine, risk, log, alerts=None) -> bool:
+    """LIVE-19: Returns True if the HALT file was present (and acted on).
+    LIVE-23: emits a warning alert when the file triggers."""
+    if not os.path.exists(settings.HALT_FILE):
+        return False
+    log.critical("HALT FILE DETECTED — initiating emergency stop.")
+    if alerts is not None:
+        alerts.send(Alert(
+            event="halt_file_detected",
+            severity="warning",
+            title="RegimeTrader: halt file triggered",
+            body="Operator dropped data/HALT — initiating emergency flatten and exit.",
+        ))
+    _force_exit_all(strats, pnl_engine, risk)
+    try:
+        os.remove(settings.HALT_FILE)
+    except FileNotFoundError:
+        pass
+    return True
 
 
 def _force_exit_all(strats, pnl_engine, risk):
@@ -60,6 +197,27 @@ def _force_exit_all(strats, pnl_engine, risk):
                 pnl_engine.record_trade(s.instrument, result['pnl'], result)
 
 
+def _evaluate_stop_checks(strats, pnl_engine, risk, log):
+    """5/5b. Combined hard stop + LIVE-22 daily rupee cap. Both check_*
+    methods short-circuit ``if self.halted: return True`` to signal "session
+    is dead" — that's correct as a predicate. The CRITICAL log + flatten
+    attempt below is a state-transition action; it must not re-fire every
+    cycle once the halt is already set, so we gate on risk.halted.
+
+    Incident 2026-04-28: a Phase-5b halt at 10:49 produced 20 redundant
+    CRITICAL lines (10× combined-stop, 10× daily-cap) in the next 11 minutes,
+    polluting the log and making grep on real triggers useless.
+    """
+    if risk.halted:
+        return
+    if risk.check_combined_stop_loss(strats):
+        _force_exit_all(strats, pnl_engine, risk)
+        log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
+    if pnl_engine and risk.check_daily_loss_cap(pnl_engine):
+        _force_exit_all(strats, pnl_engine, risk)
+        log.critical("DAILY LOSS CAP HIT - Trading Halted for the session.")
+
+
 def _drain_rollback_failures(strats, risk):
     """BUG-05: after each entry attempt, check whether rollback left stuck legs.
     Escalate to a hard halt through the risk manager and clear the flag."""
@@ -70,16 +228,45 @@ def _drain_rollback_failures(strats, risk):
             s._last_rollback_stuck_legs = []
 
 
-def _halt_on_exception(exc, risk, log):
+def _halt_on_exception(exc, risk, log, alerts=None):
     """BUG-19 / Axiom 3: convert an unhandled main-loop exception into a
     controlled halt rather than a process crash. Caller is responsible for
-    persisting state and continuing the loop."""
+    persisting state and continuing the loop.
+    LIVE-23: emits a critical alert so the operator learns the loop halted."""
     risk.halted = True
     log.critical(
         "Unhandled exception in main loop — halting trading: %s",
         exc,
         exc_info=True,
     )
+    if alerts is not None:
+        alerts.send(Alert(
+            event="unhandled_exception",
+            severity="critical",
+            title="RegimeTrader: main loop halted on exception",
+            body=f"{type(exc).__name__}: {exc}. Trading halted. See logs for traceback.",
+        ))
+
+
+def _build_alert_channel(log) -> AlertChannel:
+    """LIVE-23: build the operator alert channel at startup, honoring the
+    settings master switch and pulling the ntfy topic URL from cred.yml."""
+    if not settings.ALERTS_ENABLED:
+        return NullAlertChannel()
+    topic_url = None
+    try:
+        with open("cred.yml") as f:
+            creds = yaml.safe_load(f) or {}
+        topic_url = creds.get("ALERTS_NTFY_TOPIC_URL")
+    except FileNotFoundError:
+        pass
+    channel = build_channel(
+        enabled=True,
+        channel_type=settings.ALERTS_CHANNEL,
+        ntfy_topic_url=topic_url,
+    )
+    log.info("Alert channel built: %s", type(channel).__name__)
+    return channel
 
 
 def _find_expiring_today(strats, today_iso):
@@ -214,6 +401,10 @@ def _load_creds(path="cred.yml"):
 def _save_creds(creds, path="cred.yml"):
     with open(path, "w") as f:
         yaml.safe_dump(creds, f, sort_keys=False)
+    # Restrict to owner-only — file holds OAuth token + Secret_Code; default
+    # umask leaves it world-readable, exposing trade-placement credentials to
+    # any local read (backup process, log scrape, container layer).
+    os.chmod(path, 0o600)
 
 def _mask_secret(value):
     s = str(value or "")
@@ -261,11 +452,42 @@ def _fetch_auth_code_from_command(creds, log):
     except ValueError:
         timeout = 180
 
+    # Tokenize so we can run without a shell — shell=True would interpret
+    # any metacharacter in cmd (potentially injected via cred.yml drift or
+    # SHOONYA_AUTH_CODE_CMD env). _resolve_auth_code_cmd returns either the
+    # operator's exact string or `python3 "<DEFAULT_AUTH_CODE_SCRIPT>"`, both
+    # of which split cleanly under POSIX rules.
+    try:
+        argv = shlex.split(cmd)
+    except ValueError as exc:
+        log.warning("Auth code command unparseable (%s): %s", exc, cmd)
+        return ""
+    if not argv:
+        return ""
+
+    # Runner uses shell=False, so shell control tokens (`&&`, `;`, pipes,
+    # redirects) survive shlex.split as literal argv entries — they would be
+    # passed to the binary as positional args, never interpreted. The classic
+    # case is `cd path && python script.py`: shell=False execs `cd` (a macOS
+    # shim that exits 0 ignoring the trailing args), the script never runs,
+    # and we silently fall through with no auth code. Refuse loudly instead.
+    shell_tokens = {"&&", "||", ";", "|", "&", ">", "<", ">>", "<<", ">&", "<&"}
+    leaked = [a for a in argv if a in shell_tokens]
+    if leaked:
+        log.warning(
+            "Auth code command contains shell control token(s) %s; runner uses "
+            "shell=False so they cannot be interpreted. Rewrite cred.yml's "
+            "auth_code_cmd as a single binary invocation (e.g. "
+            "'/usr/bin/python3 /abs/path/to/script.py').",
+            leaked,
+        )
+        return ""
+
     log.info("Attempting auth code via command: %s", cmd)
     try:
         process = subprocess.Popen(
-            cmd,
-            shell=True,
+            argv,
+            shell=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
@@ -384,7 +606,7 @@ def _validate_oauth_creds(creds, log):
             )
 
 
-def _initialize_api_oauth(api, creds, log):
+def _initialize_api_oauth(api, creds, log, alerts=None):
     _validate_oauth_creds(creds, log)
     uid = str(creds.get("UID", "")).strip()
     client_id = str(creds.get("client_id", "")).strip()
@@ -470,11 +692,25 @@ def _initialize_api_oauth(api, creds, log):
     token_data = api.exchange_auth_code(auth_code, secret_code, client_id, uid, token_url=token_url)
     if not token_data:
         detail = api.get_last_broker_error() or "Unknown token exchange failure"
+        if alerts is not None:
+            alerts.send(Alert(
+                event="oauth_auth_failure",
+                severity="critical",
+                title="RegimeTrader: OAuth login failed",
+                body=f"All auth paths exhausted. Token exchange failure: {detail}",
+            ))
         raise RuntimeError(f"OAuth token exchange failed: {detail}")
     new_access_token, user_id, _refresh_token, new_account_id = token_data
     api.inject_oauth_header(new_access_token, user_id, new_account_id)
     if not api.validate_oauth_session():
         detail = api.get_last_broker_error() or "Unknown validation failure"
+        if alerts is not None:
+            alerts.send(Alert(
+                event="oauth_auth_failure",
+                severity="critical",
+                title="RegimeTrader: OAuth validation failed",
+                body=f"Token exchange succeeded but session validation failed: {detail}",
+            ))
         raise RuntimeError(f"OAuth session validation failed after token exchange: {detail}")
     creds["Access_token"] = new_access_token
     creds["Account_ID"] = new_account_id
@@ -483,19 +719,25 @@ def _initialize_api_oauth(api, creds, log):
     log.info("OAuth login successful (manual fallback); access token cached to cred.yml (%s).", _mask_secret(new_access_token))
     return api
 
-def initialize_api(log) -> ShoonyaApiPy:
+def initialize_api(log, alerts=None) -> ShoonyaApiPy:
     creds = _load_creds()
     api = ShoonyaApiPy()
     if _is_oauth_configured(creds):
-        return _initialize_api_oauth(api, creds, log)
+        return _initialize_api_oauth(api, creds, log, alerts=alerts)
     return _initialize_api_legacy(api, creds)
 
 def run():
     setup_logging()
     log = logging.getLogger("main")
+    _acquire_pid_lock()   # LIVE-20: fail fast if already running
+    _require_live_ack()   # SHAKEDOWN: live mode requires explicit operator handshake
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
+    _log_holiday_calendar(log)
 
-    api = initialize_api(log)
+    # LIVE-23: build alert channel before API init so OAuth failures surface.
+    alerts = _build_alert_channel(log)
+
+    api = initialize_api(log, alerts=alerts)
     sm = SymbolManager(api)
     sm.load_symbol_files()
     
@@ -511,16 +753,13 @@ def run():
         'NIFTY': DayClassifier(md, signals, settings.NIFTY_SYMBOL, settings.NIFTY_SPOT_KEY),
         'BANKNIFTY': DayClassifier(md, signals, settings.BANKNIFTY_SYMBOL, settings.BANKNIFTY_SPOT_KEY),
     }
-    risk = RiskManager()
+    risk = RiskManager(alerts=alerts)
     expiry_mgr = ExpiryManager(sm)
     sr_mgr = SRManager()
     trade_logger = TradeLogger()
     
-    if settings.PAPER_TRADE_MODE:
-        pos_mgr = PosMgr()
-        order_mgr = OrderMgr(md, pos_mgr)
-        pnl_engine = PnLEngine(pos_mgr, md, trade_logger)
-    
+    pos_mgr, order_mgr, pnl_engine = _build_order_stack(api, md, trade_logger)
+
     # Strategies
     nifty_ic = IronCondorStrategy(order_mgr, md, 'NIFTY')
     banknifty_ic = IronCondorStrategy(order_mgr, md, 'BANKNIFTY')
@@ -528,7 +767,7 @@ def run():
     strats_map = {'NIFTY': nifty_ic, 'BANKNIFTY': banknifty_ic}
 
     # Restore any carried-overnight positions + P&L state.
-    meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk)
+    meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk, regime_filter=regime)
     if meta.get("restored_strategies") or meta.get("tracker_positions"):
         log.info(
             "Restored carried state: %d strategies, %d tracker positions (saved_at=%s, trading_date=%s)",
@@ -614,6 +853,47 @@ def run():
         risk.stop_hit_at = datetime.now()
         return
 
+    # LIVE-07: broker is the authoritative source of open exposure in live
+    # mode. A crash between leg-2 fill and leg-3 send leaves the engine's
+    # JSON stale (0 legs on disk, 2 at broker) or phantom (JSON says 4,
+    # broker squared off overnight). Reconcile against get_positions BEFORE
+    # entering the loop; any divergence halts startup until operator clears.
+    # Skipped in paper mode — no broker counterpart to compare against.
+    if not settings.PAPER_TRADE_MODE:
+        try:
+            broker_positions = api.get_positions() or []
+        except Exception:
+            log.exception("HALTED at startup: get_positions() call failed; cannot verify broker state")
+            if alerts is not None:
+                alerts.send(Alert(
+                    event="startup_reconcile_failed",
+                    severity="critical",
+                    title="RegimeTrader startup halted - broker query failed",
+                    body="get_positions() raised; engine cannot verify broker state. Inspect and clear.",
+                ))
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
+
+        engine_positions = getattr(pos_mgr, "_positions", {}) or {}
+        report = reconcile_startup_positions(engine_positions, broker_positions)
+        log.info(report.summary())
+        if not report.consistent:
+            log.error(
+                "HALTED at startup: engine and broker positions diverge. %s",
+                report.summary(),
+            )
+            if alerts is not None:
+                alerts.send(Alert(
+                    event="startup_reconcile_divergent",
+                    severity="critical",
+                    title="RegimeTrader startup halted - broker/engine divergence",
+                    body=report.summary(),
+                ))
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
+
     day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False
 
@@ -622,6 +902,15 @@ def run():
     try:
         while True:
           try:
+            # LIVE-19: operator emergency stop — checked before anything else.
+            if _check_kill_switch(strats, pnl_engine, risk, log, alerts=alerts):
+                position_persistence.save(
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
+                    session_status=position_persistence.SESSION_FLAT,
+                    shutdown_reason="kill-switch",
+                )
+                sys.exit(0)
+
             now = datetime.now()
             now_t = now.time()
 
@@ -634,19 +923,41 @@ def run():
                 log.info("Market closed. Exiting loop.")
                 break
 
-            # 2. End-of-day: force-exit expiring positions; also flatten if
-            #    next day is not a trading day or if next-session DTE would
-            #    drop below IC_DTE_THRESHOLD.
+            # LIVE-11: intra-day margin shortfall. SEBI peak-margin snapshots
+            # hit at random intervals; a position that passed LIVE-10's
+            # pre-entry check can still hit shortfall if spot moves or SPAN
+            # re-prices. Halt new entries on any broker-reported shortfall;
+            # existing positions keep being monitored/harvested.
+            if not settings.PAPER_TRADE_MODE and not risk.halted:
+                shortfall = order_mgr.get_margin_shortfall()
+                if shortfall > 0:
+                    log.critical("LIVE-11 intraday margin shortfall ₹%.2f — halting new entries.", shortfall)
+                    if alerts is not None:
+                        alerts.send(Alert(
+                            event="intraday_margin_shortfall",
+                            severity="critical",
+                            title="RegimeTrader: intraday margin shortfall",
+                            body=f"Broker reports margin shortfall of Rs {shortfall:,.2f}. New entries halted; reconcile against broker before clearing.",
+                        ))
+                    risk.halted = True
+                    risk.stop_hit_at = datetime.now()
+
+            # 2a. Expiry-day early close (TRADE_END_EXPIRY = 15:00).
+            #     Fires 10 min before TRADE_END to avoid the expiry settlement squeeze.
+            if now_t >= datetime.strptime(settings.TRADE_END_EXPIRY, "%H:%M").time():
+                expiring_early = _find_expiring_today(strats, datetime.now().date().isoformat())
+                if expiring_early:
+                    _force_exit_all(expiring_early, pnl_engine, risk)
+                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring_early))
+
+            # 2b. End-of-day: flatten remaining positions; also flatten if
+            #     next day is not a trading day or if next-session DTE would
+            #     drop below IC_DTE_THRESHOLD.
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 today_date = datetime.now().date()
                 today_iso = today_date.isoformat()
                 tomorrow = datetime.now() + timedelta(days=1)
                 next_day_is_trading = is_trading_day_ist(tomorrow)
-                # BUG-18: close any IC whose own expiry is today, regardless of tomorrow.
-                expiring = _find_expiring_today(strats, today_iso)
-                if expiring:
-                    _force_exit_all(expiring, pnl_engine, risk)
-                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring))
                 # Fix #4: Overnight-DTE block. Close any position whose DTE at
                 # the next trading session would be below IC_DTE_THRESHOLD.
                 # Catches the Fri→Mon weekend-gap case where calendar DTE
@@ -667,14 +978,14 @@ def run():
                 if not next_day_is_trading:
                     _force_exit_all(strats, pnl_engine, risk)
                     log.info("Pre-holiday/weekend close: force-exited all positions.")
-                if settings.PAPER_TRADE_MODE and pnl_engine:
+                if pnl_engine:
                     pnl_engine.write_snapshot()
                 if collection_started:
                     collector.stop_collection()
                     collection_started = False
                 flat_now = position_persistence.is_flat(strats_map, pos_mgr)
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk,
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
                     session_status=(
                         position_persistence.SESSION_FLAT if flat_now
                         else position_persistence.SESSION_ACTIVE
@@ -702,10 +1013,8 @@ def run():
                     if result:
                         pnl_engine.record_trade(s.instrument, result['pnl'], result)
 
-            # 5. Combined Stop Loss
-            if risk.check_combined_stop_loss(strats):
-                _force_exit_all(strats, pnl_engine, risk)
-                log.critical("COMBINED STOP LOSS HIT - Trading Halted.")
+            # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
+            _evaluate_stop_checks(strats, pnl_engine, risk, log)
 
             # 6. Entry Logic (requires per-instrument classification).
             if not risk.halted:
@@ -715,7 +1024,7 @@ def run():
                         continue  # pre-classify time for this instrument
                     if s.is_active():
                         continue
-                    if not regime.get_regime_gate(dc.day_type):
+                    if not regime.get_regime_gate(dc.day_type, s.instrument):
                         continue
                     # Fetch context for entry
                     spot_key = settings.NIFTY_SPOT_KEY if s.instrument == 'NIFTY' else settings.BANKNIFTY_SPOT_KEY
@@ -731,22 +1040,24 @@ def run():
             _drain_rollback_failures(strats, risk)
 
             # Keep live P&L fresh for dashboards (realised + unrealised).
-            if settings.PAPER_TRADE_MODE and pnl_engine:
+            # LIVE-01/LIVE-24: snapshot must refresh in both modes so the
+            # heartbeat watchdog sees a live process.
+            if pnl_engine:
                 pnl_engine.write_snapshot()
 
             # Persist position + P&L state so a crash/restart can resume cleanly.
             position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk,
+                strats_map, pos_mgr, pnl_engine, risk, regime,
                 session_status=position_persistence.SESSION_ACTIVE,
             )
 
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
           except Exception as exc:
             # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
-            _halt_on_exception(exc, risk, log)
+            _halt_on_exception(exc, risk, log, alerts=alerts)
             try:
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk,
+                    strats_map, pos_mgr, pnl_engine, risk, regime,
                     session_status=position_persistence.SESSION_ACTIVE,
                     shutdown_reason="exception-halt",
                 )
@@ -783,7 +1094,7 @@ def run():
         try:
             flat_now = position_persistence.is_flat(strats_map, pos_mgr)
             position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk,
+                strats_map, pos_mgr, pnl_engine, risk, regime,
                 session_status=(
                     position_persistence.SESSION_FLAT if flat_now
                     else position_persistence.SESSION_ACTIVE

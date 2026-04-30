@@ -15,13 +15,27 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from trading_system.config import settings
+from trading_system.core.fees import compute_taxes_and_fees
 
 logger = logging.getLogger(__name__)
 
+# LIVE-12: CSV now carries the full six-component cost stack so
+# ops/reconcile.py can diff every charge against the broker contract note
+# rather than eating a fat opaque "costs" delta.
 _ORDERS_CSV_COLUMNS = [
     "timestamp", "order_id", "symbol", "side", "quantity",
-    "fill_price", "stt", "brokerage", "status", "reason", "paper",
+    "fill_price",
+    "stt", "brokerage", "exch_txn", "sebi", "stamp", "gst", "taxes_total",
+    "status", "reason", "paper",
 ]
+
+# Zero-cost stub used on REJECTED/CANCELED orders that never filled — no
+# charges apply since no trade happened. Kept as a single dict so every
+# non-fill path stays consistent.
+_ZERO_FEES = {
+    "stt": 0.0, "brokerage": 0.0, "exch_txn": 0.0,
+    "sebi": 0.0, "stamp": 0.0, "gst": 0.0, "taxes_total": 0.0,
+}
 
 
 class PaperOrderManager:
@@ -74,6 +88,17 @@ class PaperOrderManager:
         core = tradingsymbol.split("|")[-1]
         return ("C" in core[-6:]) or ("P" in core[-6:])
 
+    def get_available_margin(self) -> float:
+        """LIVE-10: paper mode has no broker margin constraint. Returns
+        infinity so the pre-entry check in IronCondorStrategy.enter is a
+        no-op in paper. Tests that want to exercise the insufficient-margin
+        branch monkeypatch this to a small number."""
+        return float("inf")
+
+    def get_margin_shortfall(self) -> float:
+        """LIVE-11: paper has no broker to be short against."""
+        return 0.0
+
     @staticmethod
     def build_option_symbol(
         symbol: str, expiry: str, strike: float, opt_type: str
@@ -96,14 +121,40 @@ class PaperOrderManager:
         ot = opt_type[0] if opt_type else "C"  # CE→C, PE→P
         return f"NFO|{symbol}{exp_str}{ot}{int(strike)}"
 
-    @staticmethod
-    def _calc_stt(symbol: str, side: str, price: float, qty: int) -> float:
-        turnover = price * qty
-        if "FUT" in symbol:
-            return turnover * settings.STT_FUTURES
-        if side == "SELL" or side == "S":
-            return turnover * settings.STT_OPTIONS_SELL
-        return 0.0
+    def _limit_not_reached_cancel(
+        self, symbol: str, side: str, qty: int, limit_price: float, ltp: float,
+    ) -> Dict:
+        """LIVE-25 Phase 4: LMT order whose limit was never crossed by the book
+        gets CANCELED (no fill). Mirrors Shoonya's behavior when a timeout-IOC
+        limit doesn't trade through."""
+        # Fetch current bid at cancel time to distinguish paper-model artefact
+        # (bid > ltp → gate should have passed) from real fast-market move
+        # (bid <= ltp → underlying moved between Phase-3 re-fetch and place_order).
+        qb = None
+        try:
+            qb = self.md.get_quote_book(symbol)
+        except Exception:
+            pass
+        bid_at_cancel = qb.bid if qb is not None else None
+        canceled = {
+            "order_id": self._next_id(),
+            "symbol": symbol, "side": side, "quantity": qty,
+            "fill_qty": 0, "fill_price": 0.0,
+            **_ZERO_FEES,
+            "status": "CANCELED",
+            "timestamp": datetime.now().isoformat(), "paper": True,
+            "reason": "limit_not_reached",
+            "limit_price": limit_price,
+            "ltp_at_submit": ltp,
+            "bid_at_cancel": bid_at_cancel,
+        }
+        self._append_order_csv(canceled)
+        bid_str = f"{bid_at_cancel:.2f}" if bid_at_cancel is not None else "n/a"
+        logger.info(
+            "PAPER ORDER CANCELED %s %s qty=%d limit=%.2f ltp=%.2f bid=%s — limit not reached",
+            side, symbol, qty, limit_price, ltp, bid_str,
+        )
+        return canceled
 
     def place_order(
         self,
@@ -127,9 +178,9 @@ class PaperOrderManager:
                     "symbol": tradingsymbol,
                     "side": buy_or_sell,
                     "quantity": quantity,
+                    "fill_qty": 0,
                     "fill_price": 0.0,
-                    "stt": 0.0,
-                    "brokerage": 0.0,
+                    **_ZERO_FEES,
                     "status": "REJECTED",
                     "timestamp": datetime.now().isoformat(),
                     "paper": True,
@@ -151,9 +202,9 @@ class PaperOrderManager:
                 "symbol": tradingsymbol,
                 "side": buy_or_sell,
                 "quantity": quantity,
+                "fill_qty": 0,
                 "fill_price": 0.0,
-                "stt": 0.0,
-                "brokerage": 0.0,
+                **_ZERO_FEES,
                 "status": "REJECTED",
                 "timestamp": datetime.now().isoformat(),
                 "paper": True,
@@ -167,23 +218,65 @@ class PaperOrderManager:
             slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
         else:
             slip = max(ltp * settings.SLIPPAGE_PCT, settings.SLIPPAGE_MIN_ABS)
-        if buy_or_sell in ("BUY", "B"):
-            fill = ltp + slip
-        else:
-            fill = ltp - slip
+
+        # LIVE-25: paper-side LMT support. Fill gate is `price` vs `LTP` — i.e.
+        # marketable-against-last-trade. The IC code submits SELL @ real-bid
+        # (iron_condor.py:695-700) and the broker prints LTP at the bid-touch
+        # under selling pressure, so `limit == LTP` must fill — that's the
+        # contract paper has to honor. Slippage is applied to the fill price
+        # (worst-case execution penalty) but is NOT a fill-gate threshold —
+        # using slip as the gate caused incident 2026-04-27 10:59:19 (BANKNIFTY
+        # P51000 limit=147.50 ltp=147.50, paper_bid=147.25, deterministic
+        # cancel → atomic-entry halt). MKT flow is unchanged.
+        if price_type == "LMT":
+            if price <= 0:
+                logger.error("Paper LMT order for %s rejected: no price provided", tradingsymbol)
+                rejected = {
+                    "order_id": self._next_id(),
+                    "symbol": tradingsymbol, "side": buy_or_sell, "quantity": quantity,
+                    "fill_qty": 0, "fill_price": 0.0,
+                    **_ZERO_FEES,
+                    "status": "REJECTED",
+                    "timestamp": datetime.now().isoformat(), "paper": True,
+                    "reason": "limit_price_missing",
+                }
+                self._append_order_csv(rejected)
+                return rejected
+
+            if buy_or_sell in ("BUY", "B"):
+                if price >= ltp:
+                    fill = min(price, ltp + slip)
+                else:
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+            else:
+                if price <= ltp:
+                    fill = max(price, ltp - slip)
+                else:
+                    return self._limit_not_reached_cancel(tradingsymbol, buy_or_sell, quantity, price, ltp)
+        else:  # MKT (default)
+            if buy_or_sell in ("BUY", "B"):
+                fill = ltp + slip
+            else:
+                fill = ltp - slip
 
         fill = round(round(fill / settings.PRICE_TICK) * settings.PRICE_TICK, 2)
 
-        stt = self._calc_stt(tradingsymbol, buy_or_sell, fill, quantity)
+        fees = compute_taxes_and_fees(tradingsymbol, buy_or_sell, fill, quantity)
 
         order = {
             "order_id": self._next_id(),
             "symbol": tradingsymbol,
             "side": buy_or_sell,
             "quantity": quantity,
+            "fill_qty": quantity,
             "fill_price": fill,
-            "stt": round(stt, 2),
-            "brokerage": settings.BROKERAGE_PER_ORDER,
+            "stt": fees["stt"],
+            "brokerage": fees["brokerage"],
+            "exch_txn": fees["exch_txn"],
+            "sebi": fees["sebi"],
+            "stamp": fees["stamp"],
+            "gst": fees["gst"],
+            "taxes_total": fees["total"],
             "status": "COMPLETE",
             "timestamp": datetime.now().isoformat(),
             "paper": True,
@@ -193,7 +286,9 @@ class PaperOrderManager:
             self.tracker.add_position(order)
         self._append_order_csv(order)
         logger.info(
-            "PAPER ORDER %s %s %d @ %.2f (stt=%.2f)",
-            buy_or_sell, tradingsymbol, quantity, fill, stt,
+            "PAPER ORDER %s %s %d @ %.2f (fees=₹%.2f stt=%.2f brok=%.2f exch=%.2f sebi=%.2f stamp=%.2f gst=%.2f)",
+            buy_or_sell, tradingsymbol, quantity, fill,
+            fees["total"], fees["stt"], fees["brokerage"],
+            fees["exch_txn"], fees["sebi"], fees["stamp"], fees["gst"],
         )
         return order

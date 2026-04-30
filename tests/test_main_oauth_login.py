@@ -310,6 +310,79 @@ def test_configures_service_host_before_auth(clean_env, no_disk_writes, monkeypa
     assert api.configured_ws == "wss://api.shoonya.com/NorenWS/"
 
 
+# -------------------- _fetch_auth_code_from_command shell-metachar refusal --------------------
+#
+# 2026-04-28 latent regression: Sunday's 2548a84 hardened the runner to
+# shell=False + shlex.split. Operator cred.yml had `cd /path && python script`,
+# which under shlex.split becomes argv ['cd', '/path', '&&', 'python', 'script'].
+# With shell=False, /usr/bin/cd (a macOS shim) execs and ignores the trailing
+# args; the python script never runs and the runner falls through with no code.
+# Bug stayed dormant Monday because the cached OAuth token was still valid; it
+# fired Tuesday morning the moment the token expired and re-auth ran for the
+# first time since the hardening.
+#
+# These tests pin the contract operator cred.yml MUST satisfy: shell control
+# tokens that survive shlex.split as literal argv entries are refused with a
+# warning and an empty return, not silently exec'd as positional args.
+
+def test_auth_code_cmd_with_shell_and_chain_is_refused(clean_env, monkeypatch, caplog, log):
+    """The exact cred.yml shape that broke 2026-04-28 must refuse with a clear log line."""
+    creds = {"auth_code_cmd": "cd /tmp && /usr/bin/python3 script.py"}
+    # Guard: ensure no real subprocess is spawned even if the refusal regresses.
+    def _never_spawn(*args, **kwargs):
+        raise AssertionError("subprocess.Popen must not be called when shell tokens leak")
+    monkeypatch.setattr(main.subprocess, "Popen", _never_spawn)
+
+    with caplog.at_level(logging.WARNING, logger="test_main_oauth_login"):
+        result = main._fetch_auth_code_from_command(creds, log)
+
+    assert result == ""
+    assert any("shell control token" in r.message for r in caplog.records), (
+        "operator must see an actionable warning, not a silent no-op"
+    )
+
+
+@pytest.mark.parametrize("cmd", [
+    "python a.py; python b.py",          # ;
+    "python a.py | grep code",            # |
+    "python a.py || python fallback.py",  # ||
+    "python a.py > /tmp/out",             # >
+    "python a.py < /tmp/in",              # <
+    "python a.py &",                      # & (background)
+])
+def test_auth_code_cmd_other_shell_tokens_refused(clean_env, monkeypatch, cmd, log):
+    """Refusal covers the full set of bash control tokens that shlex preserves as separate argv entries."""
+    creds = {"auth_code_cmd": cmd}
+    def _never_spawn(*args, **kwargs):
+        raise AssertionError(f"subprocess.Popen must not be called for: {cmd!r}")
+    monkeypatch.setattr(main.subprocess, "Popen", _never_spawn)
+    assert main._fetch_auth_code_from_command(creds, log) == ""
+
+
+def test_auth_code_cmd_clean_argv_is_not_refused(clean_env, monkeypatch, log):
+    """Plain argv-style commands (the documented shape) must reach subprocess.Popen."""
+    creds = {"auth_code_cmd": "/usr/bin/python3 /abs/path/getAuthCode.py"}
+    spawn_called = {"argv": None}
+
+    class _FakeProc:
+        stdout = None
+        returncode = 0
+        def poll(self):
+            return 0
+        def communicate(self, timeout=3):
+            return ("", "")
+        def terminate(self):
+            pass
+
+    def _capture(argv, **kwargs):
+        spawn_called["argv"] = argv
+        return _FakeProc()
+
+    monkeypatch.setattr(main.subprocess, "Popen", _capture)
+    main._fetch_auth_code_from_command(creds, log)
+    assert spawn_called["argv"] == ["/usr/bin/python3", "/abs/path/getAuthCode.py"]
+
+
 def test_manual_fallback_reached_when_all_attempts_capture_no_code(clean_env, no_disk_writes, monkeypatch, log):
     """Retry loop exhausts with no auth code -> manual input() fallback runs and succeeds."""
     monkeypatch.setenv("SHOONYA_OAUTH_REAUTH_ATTEMPTS", "1")

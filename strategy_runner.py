@@ -268,6 +268,90 @@ def is_market_closed_ist(now: Optional[datetime] = None) -> bool:
     return dt >= dt.replace(hour=15, minute=30, second=0, microsecond=0)
 
 
+def _parse_hhmm(s: str) -> "tuple[int, int]":
+    h, m = s.strip().split(":")
+    return int(h), int(m)
+
+
+def _muhurat_window_for_date(d) -> Optional["tuple[datetime, datetime]"]:
+    """If date ``d`` has a muhurat session configured, return (open, close)
+    as tz-aware datetimes on that date. Otherwise None. Unknown-shape entries
+    are skipped rather than raising — an operator typo shouldn't kill the
+    loop."""
+    try:
+        from trading_system.config import settings as _settings_local
+        sessions = getattr(_settings_local, "MUHURAT_SESSIONS", None) or []
+    except Exception:
+        return None
+
+    iso = d.isoformat()
+    for entry in sessions:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("date") != iso:
+            continue
+        try:
+            oh, om = _parse_hhmm(entry["open"])
+            ch, cm = _parse_hhmm(entry["close"])
+        except (KeyError, ValueError, TypeError):
+            logger.warning("Malformed MUHURAT_SESSIONS entry; skipping: %r", entry)
+            continue
+        base = datetime.combine(d, datetime.min.time())
+        if IST is not None:
+            base = base.replace(tzinfo=IST)
+        return (
+            base.replace(hour=oh, minute=om),
+            base.replace(hour=ch, minute=cm),
+        )
+    return None
+
+
+def is_tradable_now(now: Optional[datetime] = None) -> "tuple[bool, str]":
+    """LIVE-18: single authority for whether a new entry may be placed right now.
+
+    Returns ``(is_tradable, reason)`` where ``reason`` is a short tag safe to
+    log or include in structured IC_REJECT records. The regular session is the
+    only tradable window on a normal trading day; pre-open, post-close,
+    weekends, holidays, and muhurat-date-outside-window all refuse.
+    """
+    dt = get_now_ist() if now is None else now
+
+    muhurat = _muhurat_window_for_date(dt.date())
+    if muhurat is not None:
+        m_open, m_close = muhurat
+        # Muhurat sessions live on dates that may OR may not also appear in
+        # TRADING_HOLIDAYS_IST. Either way, the muhurat window is the sole
+        # tradable slice on that date.
+        if m_open <= dt < m_close:
+            return (True, "muhurat")
+        return (False, "muhurat_closed")
+
+    if dt.date().weekday() >= 5:
+        return (False, "weekend")
+    if dt.date().isoformat() in _get_holiday_set_ist():
+        return (False, "holiday")
+
+    try:
+        from trading_system.config import settings as _cfg
+        po_start = getattr(_cfg, "PRE_OPEN_START_IST", "09:00")
+        po_end = getattr(_cfg, "PRE_OPEN_END_IST", "09:15")
+    except ImportError:
+        po_start, po_end = "09:00", "09:15"
+    po_start_h, po_start_m = _parse_hhmm(po_start)
+    po_end_h, po_end_m = _parse_hhmm(po_end)
+    pre_open_start = dt.replace(hour=po_start_h, minute=po_start_m, second=0, microsecond=0)
+    pre_open_end = dt.replace(hour=po_end_h, minute=po_end_m, second=0, microsecond=0)
+    market_close = dt.replace(hour=15, minute=30, second=0, microsecond=0)
+
+    if dt < pre_open_start:
+        return (False, "before_open")
+    if pre_open_start <= dt < pre_open_end:
+        return (False, "pre_open")
+    if dt >= market_close:
+        return (False, "after_close")
+    return (True, "regular")
+
+
 def is_market_hours(now: Optional[datetime] = None) -> bool:
     """True if 9:15 AM - 3:30 PM IST on a trading day."""
     dt = get_now_ist() if now is None else now

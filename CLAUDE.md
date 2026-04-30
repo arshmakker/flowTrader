@@ -2,15 +2,71 @@
 
 ## On conversation start
 
-Every time this project is opened in Claude, automatically compute and display the day's PnL summary. Use the system date (do NOT hardcode a date). Steps:
+Every time this project is opened in Claude, do these two things in order.
 
-1. Get today's date from the system (`date` command)
-2. Read `data/pnl_snapshot.json` — check if the `timestamp` field matches today's date
-3. If it matches today, display a summary: daily realised PnL, unrealised PnL, net total, trade count, win rate, and per-instrument breakdown (NIFTY/BANKNIFTY)
-4. Also scan `data/paper_trades.csv` for rows matching today's date to show individual trade details if useful
-5. If the snapshot is from a previous day, report "No trading data for today yet" with the date of the last snapshot
+### 1. Anchor the current date — required for all date-based planning
 
-Format the output as a concise table. Always show the PnL in INR (₹).
+Run `date` and `TZ=Asia/Kolkata date` (IST is the trading timezone). Never hardcode, infer, or estimate today's date. Every date reference in this session — log filenames, market-hours checks, weekend carry rules, session resume files, checklist "Addressed YYYY-MM-DD" timestamps — must resolve against that anchored value. When the user mentions a relative date ("Thursday", "next week", "yesterday's session"), convert it against the system-anchored date before acting.
+
+### 2. Show session state — PnL summary AND next-session pickup
+
+**PnL summary:**
+- Read `data/pnl_snapshot.json`; if `timestamp` matches today, display: daily realised PnL, unrealised PnL, net total, trade count, win rate, per-instrument breakdown (NIFTY/BANKNIFTY)
+- Also scan `data/paper_trades.csv` for today's rows if useful
+- If the snapshot is from a previous day, report "No trading data for today yet" with the date of the last snapshot
+- Format as a concise table; all PnL in INR (₹)
+
+**Next-session pickup:**
+- Read the latest `session_<date>_resume.md` under `/Users/arshdeep/.claude/projects/-Users-arshdeep-git-regimetrader/memory/` (the file pointed to by `MEMORY.md`'s first entry)
+- Display in 3-5 bullets: current branch @ commit, test count, what landed last session, what's next to pick up
+- Flag any operator-pending items (e.g. "LIVE-23 ntfy smoke test still open")
+- If the session resume is older than today, note the gap — the user may want to re-plan rather than blindly continue
+
+This block keeps the operator oriented without needing to read the memory file themselves.
+
+## Delegate verbose-output commands to the operator
+
+Real token savings come from avoiding **command output** flooding the context, not from avoiding permission prompts (those are UI, not tokens). Delegate only when output is genuinely verbose:
+
+**Delegate — print the command and ask operator to run it:**
+- `pip install` / `pip uninstall` / `brew install` / `npm install` (hundreds of lines of dependency resolution)
+- Any long-running build/compile step
+- Anything requiring sudo or interactive input
+
+**Confirm first, then run via Bash** (destructive, short output — safety matters more than tokens):
+- `rm` / `rm -rf` / `mv` (state the target, get explicit OK, then run)
+- `kill` / `pkill` (state the PID and what's being killed)
+
+**Run freely via Bash** (already allowlisted in `.claude/settings.local.json`, output is small):
+- `git status` / `git diff` / `git log` / `git show` / `git add` / `git commit` / `git push` / `git checkout` / `git merge` / `git stash`
+- `pytest`, `python *`, `ls`, `grep`, `find`, `date`
+- Anything purely informational
+
+**Output pattern when delegating:** finish the work, then say "Run this when you're ready: `<command>`" — single line, copy-pasteable. Numbered if multi-step. No permission-prompt ceremony; the operator already knows the drill. If you need the output back to proceed, say so explicitly so the operator knows to paste it.
+
+## Engineering axiom — code earns its existence
+
+Every line, parameter, branch, flag, test, and abstraction must be justified by a concrete failure mode it prevents. Default to **not** writing it. When unsure, smaller code wins; if the same bug recurs, abstract then.
+
+This axiom governs every engineering and architectural decision in this repo. It overrides "completeness," "consistency with similar code elsewhere," "future-proofing," and any urge to add a knob "just in case." If a proposal can't name the concrete failure mode it prevents — cite the line and the scenario — it doesn't ship.
+
+**Rejected by default:**
+- Defensive branches against inputs that cannot occur — validate only at system boundaries (broker API responses, `cred.yml`, operator input). Trust internal call-sites.
+- Feature flags or settings toggles for safety controls — a disable-able P0 is not P0. Hard-code the gate; let the test suite be the toggle.
+- Speculative parameters for hypothetical future consumers (`symbol=None, broker_halt_flag=None` with no current caller).
+- Dead branches: paths no production code reaches (e.g. a futures branch in an IC-only system).
+- `getattr(settings, "X", default)` when we own `settings.X` — use direct access. The fallback hides config-drift bugs.
+- Test-compat branches in production code — e.g. `isinstance(x, (int, float))` added so a `MagicMock` test doesn't crash. Fix the test, not the production code.
+- Tests that pin log-string format, kwarg-vs-positional call shape, or which internal field was consulted — they break on valid refactors that preserve user-visible behavior.
+- Comments restating what well-named code already says. Comments earn their existence too: only when the *why* is non-obvious (hidden constraint, subtle invariant, workaround for a specific upstream bug).
+- Backwards-compat shims, `_unused` renames of removed symbols, "// removed for X" markers when the code is simply gone. `git log` is the history.
+
+**Required:**
+- Each bug fix ships with a regression test that fails without the fix and passes with it.
+- Pure-deletion fixes are verified by the suite staying green — call that out explicitly in the response, don't skip the verification statement silently.
+- The 5 trading-system axioms in `docs/axioms.md` are sacrosanct. Never propose an amendment unprompted; if a design conflicts with one, flag the conflict and stop.
+
+**Enforcement:** the unprompted 4-question post-session audit per commit (see `memory/feedback_post_session_audit.md`). The audit asks per commit: (1) what concrete bug does this prevent, (2) is any part overbuilt, (3) any dead branches or implementation-pinning tests, (4) does the regression test actually exercise the bug. If a commit can't pass all four, it shouldn't have shipped — and the audit is the mechanism that catches it before the next batch compounds it.
 
 ## What is this project
 
@@ -59,17 +115,14 @@ main.py (orchestrator)
 4. **Entry gate** — Only enters on RANGING days with VIX < 30 and stable for 45 min
 5. **IC strategy** — VIX-adaptive strikes, S/R buffered, 4-leg atomic entry
 6. **Monitoring** — 1% harvest cycles (close + re-enter), breach adjustments
-7. **Hard close** — All positions closed at 14:15, system shutdown by 15:30
+7. **Hard close** — Expiring positions closed at 15:00; all others at 15:10; system shutdown by 15:30
 8. **Persistence** — State saved to `data/open_positions.json` after every cycle
 
 ## Common commands
 
 ```bash
-# Run the system
+# Run the system (OAuth login is in-process; no wrapper script)
 python main.py
-
-# Run with startup script (handles auth mode detection)
-./start.sh
 
 # Run tests (fast unit tests only by default)
 pytest
@@ -80,6 +133,16 @@ pytest tests/test_paper_trading.py
 # Install dependencies
 pip install -r requirements.txt
 ```
+
+## Watch loop — paste during market hours
+
+Session-bound monitoring + auto-restart. Paste this after opening Claude on a trading morning; fires every 10 min, reports only deltas, self-stops at 15:35 IST.
+
+```
+/loop 10m Trading day system-watch. Each tick: (1) CHECK PROCESS: pgrep -f "python main.py". If dead AND IST 09:15–15:20: (a) tail last 100 lines of logs/ic_system_$(TZ=Asia/Kolkata date +%Y%m%d).log for root cause; (b) read data/open_positions.json — if risk_state.halted=true, clear it: python -c "import json; f='data/open_positions.json'; d=json.load(open(f)); d.get('risk_state',{}).update({'halted':False,'stop_hit_at':None,'rollback_failures':[]}); json.dump(d,open(f,'w'),indent=2)"; (c) restart: python main.py > logs/restart_$(TZ=Asia/Kolkata date +%Y%m%d_%H%M%S).log 2>&1 & — report PID and root cause. (2) SCAN LOGS: grep new ERROR|HALT|BREACH|HARD_STOP|FORCE_EXIT|Phase-5b|suspended lines since last tick — quote + diagnose. (3) PnL: data/pnl_snapshot.json — delta vs prior tick. (4) POSITIONS: data/open_positions.json — changes, flag halted/suspended state. (5) FILLS: tail data/paper_trades.csv last 5 rows — new entries. Report ONLY deltas (silent if nothing changed). Stop loop at IST >= 15:35.
+```
+
+Loop is session-bound — closing this terminal stops it. For a durable cloud-resident equivalent that runs every weekday automatically, use `/schedule` instead.
 
 ## Testing
 

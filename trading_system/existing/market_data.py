@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 import time
+from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Any, Dict, Optional
 
@@ -18,6 +19,38 @@ import pandas as pd
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class QuoteBook:
+    """Top-of-book snapshot for LIVE-06 (bid/ask visibility).
+
+    ``bid``/``ask`` are the best bid/offer prices; ``bid_qty``/``ask_qty`` are
+    the sizes available at those levels. ``mid`` is ``(bid+ask)/2`` — meaningful
+    only when both sides are valid (use ``is_tradable``).
+    """
+    symbol: str
+    bid: float
+    ask: float
+    bid_qty: int
+    ask_qty: int
+
+    @property
+    def mid(self) -> float:
+        return (self.bid + self.ask) / 2.0
+
+    @property
+    def spread(self) -> float:
+        return max(self.ask - self.bid, 0.0)
+
+    @property
+    def is_tradable(self) -> bool:
+        """Both sides quoted, non-zero size. Callers pre-checking liquidity
+        for an order should still compare against their own qty requirement."""
+        return (
+            self.bid > 0 and self.ask > 0 and self.ask >= self.bid
+            and self.bid_qty > 0 and self.ask_qty > 0
+        )
 
 
 class MarketData:
@@ -152,6 +185,49 @@ class MarketData:
         except Exception:
             logger.warning("get_ltp failed for %s", symbol_key, exc_info=True)
         return 0.0
+
+    def get_quote_book(self, symbol_key: str) -> Optional[QuoteBook]:
+        """LIVE-06: top-of-book snapshot for an F&O symbol. Returns None on
+        failure (missing token, API error, malformed response, or no bid/ask
+        fields). Callers must handle None — this is the go/no-go signal for
+        liquidity pre-checks (LIVE-25 Phase 1 / Phase 4).
+
+        Uses Shoonya fields: ``bp1`` / ``sp1`` (best bid/ask), ``bq1`` / ``sq1``
+        (sizes). The existing ``get_ltp`` FixQ1 path already reads bp1/sp1 as a
+        fallback for a suspicious ``lp``, so the wire shape is known."""
+        try:
+            parts = symbol_key.split("|", 1)
+            if len(parts) == 2:
+                exchange, tsym = parts
+                token = self._resolve_token(exchange, tsym)
+                if token == tsym and exchange == "NFO":
+                    logger.warning("get_quote_book: unresolved token for %s", symbol_key)
+                    return None
+                quote = self.api.get_quotes(exchange=exchange, token=token)
+            else:
+                quote = self.api.get_quotes(exchange="NSE", token=symbol_key)
+        except Exception:
+            logger.warning("get_quote_book: API call failed for %s", symbol_key, exc_info=True)
+            return None
+
+        if not quote:
+            logger.warning("get_quote_book: empty quote for %s", symbol_key)
+            return None
+
+        try:
+            bid = float(quote.get("bp1", 0) or 0)
+            ask = float(quote.get("sp1", 0) or 0)
+            bid_qty = int(float(quote.get("bq1", 0) or 0))
+            ask_qty = int(float(quote.get("sq1", 0) or 0))
+        except (TypeError, ValueError):
+            logger.warning("get_quote_book: malformed fields for %s (quote=%s)", symbol_key, quote)
+            return None
+
+        return QuoteBook(
+            symbol=symbol_key,
+            bid=bid, ask=ask,
+            bid_qty=bid_qty, ask_qty=ask_qty,
+        )
 
     def _resolve_token(self, exchange: str, name: str) -> str:
         """Resolve a trading symbol or index name to its token."""
