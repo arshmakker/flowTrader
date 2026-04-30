@@ -115,7 +115,7 @@ main.py (orchestrator)
 4. **Entry gate** — Only enters on RANGING days with VIX < 30 and stable for 45 min
 5. **IC strategy** — VIX-adaptive strikes, S/R buffered, 4-leg atomic entry
 6. **Monitoring** — 1% harvest cycles (close + re-enter), breach adjustments
-7. **Hard close** — All positions closed at 14:15, system shutdown by 15:30
+7. **Hard close** — Expiring positions closed at 15:00; all others at 15:10; system shutdown by 15:30
 8. **Persistence** — State saved to `data/open_positions.json` after every cycle
 
 ## Common commands

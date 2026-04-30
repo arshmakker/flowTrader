@@ -25,7 +25,8 @@ NIFTY_SPOT_EXCHANGE = "NSE"
 
 # ══ SESSION ═════════════════════════════════════════════════════════
 CLASSIFY_TIME = "10:30"
-TRADE_END = "14:15"  # Hard close ALL positions (per CLAUDE.md axiom; 75 min buffer before 15:30 expiry settlement)
+TRADE_END = "15:10"         # Hard close all non-expiring positions
+TRADE_END_EXPIRY = "15:00"  # Hard close positions expiring today (30 min before expiry-day settlement squeeze)
 SIGNAL_RECHECK_SEC = 30
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════

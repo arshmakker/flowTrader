@@ -874,3 +874,6 @@ def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
     assert submitted.get("sc") == expected_limit, (
         f"SC limit {submitted.get('sc')} must equal bid-drift_tol = {expected_limit}"
     )
+    assert submitted.get("sp") == expected_limit, (
+        f"SP limit {submitted.get('sp')} must equal bid-drift_tol = {expected_limit}"
+    )

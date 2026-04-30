@@ -942,19 +942,22 @@ def run():
                     risk.halted = True
                     risk.stop_hit_at = datetime.now()
 
-            # 2. End-of-day: force-exit expiring positions; also flatten if
-            #    next day is not a trading day or if next-session DTE would
-            #    drop below IC_DTE_THRESHOLD.
+            # 2a. Expiry-day early close (TRADE_END_EXPIRY = 15:00).
+            #     Fires 10 min before TRADE_END to avoid the expiry settlement squeeze.
+            if now_t >= datetime.strptime(settings.TRADE_END_EXPIRY, "%H:%M").time():
+                expiring_early = _find_expiring_today(strats, datetime.now().date().isoformat())
+                if expiring_early:
+                    _force_exit_all(expiring_early, pnl_engine, risk)
+                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring_early))
+
+            # 2b. End-of-day: flatten remaining positions; also flatten if
+            #     next day is not a trading day or if next-session DTE would
+            #     drop below IC_DTE_THRESHOLD.
             if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
                 today_date = datetime.now().date()
                 today_iso = today_date.isoformat()
                 tomorrow = datetime.now() + timedelta(days=1)
                 next_day_is_trading = is_trading_day_ist(tomorrow)
-                # BUG-18: close any IC whose own expiry is today, regardless of tomorrow.
-                expiring = _find_expiring_today(strats, today_iso)
-                if expiring:
-                    _force_exit_all(expiring, pnl_engine, risk)
-                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring))
                 # Fix #4: Overnight-DTE block. Close any position whose DTE at
                 # the next trading session would be below IC_DTE_THRESHOLD.
                 # Catches the Fri→Mon weekend-gap case where calendar DTE
