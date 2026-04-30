@@ -46,9 +46,11 @@ IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before ha
 # Per-instrument minimum net credit per lot. Calibrated against the LIVE-12
 # cost stack (see docs/calibration_2026_04_26.md):
 #   NIFTY     wide-IC break-even ≈ ₹17.38 → 18 leaves ₹0.62 margin
-#   BANKNIFTY wide-IC break-even ≈ ₹23.92 → 30 leaves slippage headroom
-# A single floor was structurally too low for BANKNIFTY across every IC shape.
-IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 30.0}
+#   BANKNIFTY wide-IC break-even ≈ ₹23.92 → 25 leaves ₹1.08 margin
+# LIVE-27: Prior BANKNIFTY floor of ₹30 blocked all afternoon re-entry cycles —
+# market delivered ₹22–29 after harvest, never clearing ₹30. ₹25 is fee-positive
+# and matches the observed post-harvest credit range.
+IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 25.0}
 
 # ══ LIVE-25: HEDGE-FIRST ENTRY SEQUENCING ════════════════════════════
 # 'hedge_first' (default on this branch) routes IronCondorStrategy.enter()

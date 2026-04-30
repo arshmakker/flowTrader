@@ -228,6 +228,45 @@ def test_exit_result_contains_entry_date(mock_om, mock_md):
     assert result['entry_date'] == '2026-04-20'
 
 
+def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
+    """LIVE-27: BANKNIFTY at ₹26 credit must enter at the ₹25 floor.
+    The prior ₹30 floor rejected this — the post-harvest credit range is ₹22–29.
+    Strikes: spot=50000, VIX=12 (low tier OTM=150, step=100) →
+    SC=50200, SP=49800, LC=50300, LP=49700."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, 'BANKNIFTY')
+    sr_mgr = MagicMock()
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+
+    # (14+14) - (1+1) = 26 > 25 floor → must enter
+    mock_md.get_ltp.side_effect = lambda sym: (
+        14.0 if sym.endswith(('C50200', 'P49800')) else
+        1.0 if sym.endswith(('C50300', 'P49700')) else
+        10.0
+    )
+    success = s.enter(50000, 12, 51000, 49000, sr_mgr, '19-MAR-2026', 10)
+    assert success is True
+    assert mock_om.place_order.call_count == 4
+
+
+def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
+    """LIVE-27: BANKNIFTY at ₹24 credit must be refused at the ₹25 floor."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, 'BANKNIFTY')
+    sr_mgr = MagicMock()
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+
+    # (13+13) - (1+1) = 24 < 25 floor → must refuse
+    mock_md.get_ltp.side_effect = lambda sym: (
+        13.0 if sym.endswith(('C50200', 'P49800')) else
+        1.0 if sym.endswith(('C50300', 'P49700')) else
+        10.0
+    )
+    success = s.enter(50000, 12, 51000, 49000, sr_mgr, '19-MAR-2026', 10)
+    assert success is False
+    assert mock_om.place_order.call_count == 0
+
+
 def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
     """BANKNIFTY at 8.7% MTM ratio must NOT harvest (threshold is 13%).
     Regression: flat 1% threshold fires fee-negative harvests on BANKNIFTY
