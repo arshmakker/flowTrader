@@ -66,9 +66,9 @@ def test_ic_strategy_harvest(mock_om, mock_md):
         max_profit=1000, entry_credit=20, lots=2, entry_time='10:00:00'
     )
     
-    # Harvest trigger = 1% of max_profit (1000) = 10
+    # Harvest trigger = 2% of max_profit (1000) = 20 (NIFTY threshold).
     # Current premium: 19.0. PnL = (20 - 19.0) * 2 * 25 = 1.0 * 50 = 50.
-    # Should trigger harvest (trigger is 10).
+    # Should trigger harvest (50 >= 20).
     def ltp_side_effect(sym):
         if sym in ('SC', 'SP'): return 14.5
         if sym in ('LC', 'LP'): return 5.0
@@ -226,3 +226,54 @@ def test_exit_result_contains_entry_date(mock_om, mock_md):
     result = s.force_exit()
     assert result is not None
     assert result['entry_date'] == '2026-04-20'
+
+
+def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
+    """BANKNIFTY at 8.7% MTM ratio must NOT harvest (threshold is 13%).
+    Regression: flat 1% threshold fires fee-negative harvests on BANKNIFTY
+    because the 8-leg round-trip fee stack breaks even at ~11.8% of max_profit."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, 'BANKNIFTY')
+    # max_profit=10000, so 13% trigger = 1300; 8.7% MTM = 870 — below threshold.
+    s._position = IC_Position(
+        instrument='BANKNIFTY',
+        sc_sym='SC', sp_sym='SP', lc_sym='LC', lp_sym='LP',
+        sc_strike=52000, sp_strike=51000, lc_strike=52500, lp_strike=50500,
+        max_profit=10000, entry_credit=33.0, lots=10, entry_time='10:30:00',
+    )
+    # current_premium = (SC+SP)-(LC+LP) = (17+17)-(1.95+1.95) = 30.1
+    # pnl_unit = entry_credit - current_premium = 33.0 - 30.1 = 2.9
+    # total_pnl = 2.9 * 10 * 30 = 870 = 8.7% of max_profit=10000 → below 13% gate
+    def ltp_side_effect(sym):
+        if sym in ('SC', 'SP'): return 17.0
+        if sym in ('LC', 'LP'): return 1.95
+        return 0.0
+    mock_md.get_ltp.side_effect = ltp_side_effect
+    result = s.monitor()
+    assert result is None or result.get('exit_reason') != 'PROFIT_HARVEST', (
+        "BANKNIFTY should not harvest at 8.7% of max_profit (below 13% threshold)"
+    )
+
+
+def test_banknifty_harvest_above_threshold_triggers(mock_om, mock_md):
+    """BANKNIFTY at 13%+ MTM ratio must harvest."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, 'BANKNIFTY')
+    # max_profit=10000, so 13% trigger = 1300; 15% MTM = 1500 — above threshold.
+    s._position = IC_Position(
+        instrument='BANKNIFTY',
+        sc_sym='SC', sp_sym='SP', lc_sym='LC', lp_sym='LP',
+        sc_strike=52000, sp_strike=51000, lc_strike=52500, lp_strike=50500,
+        max_profit=10000, entry_credit=33.0, lots=10, entry_time='10:30:00',
+    )
+    # current_premium = (SC+SP)-(LC+LP) = (15.5+15.5)-(1.5+1.5) = 28.0
+    # pnl_unit = 33.0 - 28.0 = 5.0; total_pnl = 5.0 * 10 * 30 = 1500 = 15% of 10000
+    def ltp_side_effect(sym):
+        if sym in ('SC', 'SP'): return 15.5
+        if sym in ('LC', 'LP'): return 1.5
+        return 0.0
+    mock_md.get_ltp.side_effect = ltp_side_effect
+    result = s.monitor()
+    assert result is not None and result.get('exit_reason') == 'PROFIT_HARVEST', (
+        "BANKNIFTY should harvest at 15% of max_profit (above 13% threshold)"
+    )

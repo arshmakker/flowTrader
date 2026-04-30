@@ -36,7 +36,11 @@ IC_VIX_STABLE_MINS = 15
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
 IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
-IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry
+IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry (NIFTY default)
+# Per-instrument harvest threshold, calibrated against the LIVE-12 cost stack.
+# BANKNIFTY 8-leg round-trip fees ≈ ₹760 on 10 lots; break-even ratio ≈ 11.8%.
+# A flat 1% threshold triggers harvests that are negative net of fees on BANKNIFTY.
+IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}
 IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 # Per-instrument minimum net credit per lot. Calibrated against the LIVE-12

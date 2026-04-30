@@ -121,6 +121,12 @@ class IronCondorStrategy:
         LIVE-12 cost stack (see docs/calibration_2026_04_26.md)."""
         return settings.IC_MIN_CREDIT_BY_INSTRUMENT[self.instrument]
 
+    def _harvest_pct(self) -> float:
+        """Per-instrument harvest threshold as a fraction of max_profit.
+        BANKNIFTY needs a higher floor because its 8-leg fee stack (≈₹760/10-lot
+        round-trip) breaks even at ~11.8% of max_profit; 1% harvests are fee-negative."""
+        return settings.IC_HARVEST_PCT_BY_INSTRUMENT[self.instrument]
+
     def is_active(self) -> bool:
         return self._position is not None
 
@@ -929,7 +935,7 @@ class IronCondorStrategy:
 
         # 2. Check 1% Profit Harvest Cycle
         # agents.md: "Close immediately when unrealized profit reaches 1% of the maximum possible profit"
-        harvest_trigger = pos.max_profit * settings.IC_HARVEST_PCT
+        harvest_trigger = pos.max_profit * self._harvest_pct()
         if total_pnl >= harvest_trigger:
             logger.info(f"IC {self.instrument} HARVEST: PnL {total_pnl:.2f} >= Trigger {harvest_trigger:.2f}")
             return self.exit("PROFIT_HARVEST", total_pnl)

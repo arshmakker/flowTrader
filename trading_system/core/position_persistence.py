@@ -161,7 +161,19 @@ def load(
         last_shutdown_reason or "unknown",
     )
     if session_status == SESSION_FLAT:
-        logger.info("Persisted session is flat; skipping restore")
+        logger.info("Persisted session is flat; skipping position restore")
+        # Daily counters (PnL, risk, target) must survive same-day flat restarts.
+        # A flat session means no open positions — not that today's trades didn't happen.
+        if not is_stale_trading_day:
+            pnl_data = payload.get("pnl_state", {})
+            if pnl_data and pnl_engine is not None and hasattr(pnl_engine, "restore_state"):
+                pnl_engine.restore_state(pnl_data, reset_daily=False)
+            risk_data = payload.get("risk_state", {})
+            if risk_data and risk_manager is not None and hasattr(risk_manager, "restore_state"):
+                risk_manager.restore_state(risk_data, reset_daily=False)
+            target_data = payload.get("target_state", {})
+            if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
+                daily_target.restore_state(target_data, reset_hit=False)
         return {
             "restored_strategies": 0,
             "tracker_positions": 0,
