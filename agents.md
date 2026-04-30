@@ -23,7 +23,7 @@ enforcement:
   - "Schedule Rule: Trading days are Monday–Thursday ONLY. All positions must be hard-closed by Thursday 3:15 PM. Friday/Weekend exposure is strictly forbidden."
   - "Holiday/Vacation Rule: All positions must be hard-closed by 3:15 PM on the last trading day before any market holiday or operator vacation. No carry across any non-trading gap."
   - "Expiry Rule: If current weekly expiry has < 3 DTE, roll all new entries to the next week's expiry contract."
-  - "Hard Close — Expiry Day: Positions expiring today are force-closed at 15:00 (30 min before settlement squeeze)."
+  - "Hard Close — Expiry Day: When today's date matches the expiry date recorded on an active IC position (sourced from NFO.csv at entry, not assumed to be Thursday), those positions are force-closed at 15:00 to avoid the settlement squeeze."
   - "Hard Close — All Other Positions: All remaining non-expiry positions are force-closed at 15:10."
   - "Lot Sizing: Maintain a constant 10 lots per instrument (Nifty + BankNifty) across all VIX regimes. No Martingale/Averaging."
   - "Entry Gate: New entries require (a) day classified as RANGING, (b) India VIX < 30, (c) VIX stable within a 1.5-point band for the last 8 minutes."
