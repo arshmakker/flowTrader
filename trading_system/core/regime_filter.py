@@ -75,13 +75,14 @@ class RegimeFilter:
             (now - self._vix_history[0][0]) if self._vix_history else 0,
         )
 
-    def get_regime_gate(self, day_type: str) -> bool:
+    def get_regime_gate(self, day_type: str, instrument: str = "") -> bool:
         """
         Entry Gate: New positions permitted ONLY when:
         - market is in a tradable session (LIVE-18: not pre-open, weekend, holiday, ...)
         - day_type == 'RANGING'
         - VIX < 30.0
-        - VIX stable for 45 mins
+        - NIFTY only: VIX >= IC_NIFTY_MIN_VIX (structural credit floor)
+        - VIX stable for IC_VIX_STABLE_MINS
         """
         # LIVE-18: refuse entries during pre-open, after-close, weekends,
         # holidays, or muhurat-date-outside-window. Put this first — no
@@ -100,6 +101,13 @@ class RegimeFilter:
 
         if vix >= settings.IC_VIX_MAX:
             logger.info(f"Entry Gate BLOCKED: VIX {vix:.2f} >= Limit {settings.IC_VIX_MAX}")
+            return False
+
+        if instrument == "NIFTY" and vix < settings.IC_NIFTY_MIN_VIX:
+            logger.info(
+                "Entry Gate BLOCKED: NIFTY VIX %.1f < %.1f structural credit floor",
+                vix, settings.IC_NIFTY_MIN_VIX,
+            )
             return False
 
         if not self.is_vix_stable():

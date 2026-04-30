@@ -97,3 +97,11 @@ def test_regime_filter_gates(monkeypatch):
     api.get_quotes.return_value = {'lp': '31.0'}
     rf._vix_cache = None # clear cache
     assert rf.get_regime_gate('RANGING') is False
+
+    # LIVE-30: NIFTY VIX < 14 = BLOCKED (structural credit floor)
+    api.get_quotes.return_value = {'lp': '12.0'}
+    rf._vix_cache = None
+    rf._vix_history = [(now_wall - i, 12.0) for i in range(10)]
+    assert rf.get_regime_gate('RANGING', 'NIFTY') is False
+    # BANKNIFTY at the same VIX is not subject to the min-VIX gate
+    assert rf.get_regime_gate('RANGING', 'BANKNIFTY') is True

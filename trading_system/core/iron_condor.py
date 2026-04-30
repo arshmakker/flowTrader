@@ -413,12 +413,33 @@ class IronCondorStrategy:
         sc = sr_manager.apply_buffer(sc, sr_high, sr_low, 'CE', step=step)
         sp = sr_manager.apply_buffer(sp, sr_high, sr_low, 'PE', step=step)
 
+        # LIVE-29: cap S/R-adjusted strikes so a wide 20-day range can't push
+        # them into illiquid far-OTM territory where credit collapses.
+        cap_otm = settings.IC_SR_CAP_OTM_FROM_SPOT.get(self.instrument)
+        if cap_otm:
+            sc_max = round((spot + cap_otm) / step) * step
+            sp_min = round((spot - cap_otm) / step) * step
+            if sc > sc_max:
+                logger.warning(
+                    "IC %s S/R cap: SC %.0f → %.0f (%.0f OTM > cap %d); "
+                    "20-day range too wide, clamping to liquid zone",
+                    self.instrument, sc, sc_max, sc - spot, cap_otm,
+                )
+                sc = sc_max
+            if sp < sp_min:
+                logger.warning(
+                    "IC %s S/R cap: SP %.0f → %.0f (%.0f OTM > cap %d); "
+                    "20-day range too wide, clamping to liquid zone",
+                    self.instrument, sp, sp_min, spot - sp, cap_otm,
+                )
+                sp = sp_min
+
         # Define Wings
         # Ensure width is at least the strike step and a multiple of it
         actual_width = max(round(width / step) * step, step)
         lc = sc + actual_width
         lp = sp - actual_width
-        
+
         return sc, sp, lc, lp
 
     # ── Entry ───────────────────────────────────────────────────────────

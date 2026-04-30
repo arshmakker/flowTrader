@@ -51,6 +51,17 @@ IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before ha
 # market delivered ₹22–29 after harvest, never clearing ₹30. ₹25 is fee-positive
 # and matches the observed post-harvest credit range.
 IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 25.0}
+# LIVE-29: cap how far the S/R buffer can push a short strike from current spot.
+# A wide 20-day range (e.g. BANKNIFTY 51100–57477 = 6377 pts) forces strikes into
+# illiquid far-OTM territory where credit collapses and re-entry is impossible.
+# When the S/R-adjusted strike exceeds this cap, the strike is clamped and a
+# WARNING is logged so the operator can see when the rule fires.
+IC_SR_CAP_OTM_FROM_SPOT = {"NIFTY": 400, "BANKNIFTY": 1000}
+# LIVE-30: on VIX < 14 (quiet market) NIFTY IC credit is structurally below the
+# ₹18 fee break-even — market delivers ₹3–9 regardless of strike selection.
+# Skip NIFTY entry explicitly (avoid 500+ wasted quote-API calls per day) and log
+# a single diagnostic per cycle instead of 125 credit-floor rejections.
+IC_NIFTY_MIN_VIX = 14.0
 
 # ══ LIVE-25: HEDGE-FIRST ENTRY SEQUENCING ════════════════════════════
 # 'hedge_first' (default on this branch) routes IronCondorStrategy.enter()

@@ -1024,7 +1024,7 @@ def run():
                         continue  # pre-classify time for this instrument
                     if s.is_active():
                         continue
-                    if not regime.get_regime_gate(dc.day_type):
+                    if not regime.get_regime_gate(dc.day_type, s.instrument):
                         continue
                     # Fetch context for entry
                     spot_key = settings.NIFTY_SPOT_KEY if s.instrument == 'NIFTY' else settings.BANKNIFTY_SPOT_KEY
