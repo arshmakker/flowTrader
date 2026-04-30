@@ -15,9 +15,13 @@ This document defines the complete rule set for an automated iron condor trading
 
 ## 2. Objectives
 
-- Maintain at least one open iron condor position every normal trading day
-- Continuously harvest theta decay through systematic profit-taking and re-entry
-- Adapt spread width and strike placement dynamically to prevailing volatility and market structure
+**Primary goal: trade every eligible session to maximise net P&L after all taxes and brokerage costs.**
+
+All parameters — credit floors, harvest thresholds, VIX stability window, OTM distances — are calibrated so a winning cycle clears the full F&O cost stack (STT, exchange, SEBI, stamp, GST, brokerage). A cycle that wins gross but loses net is not a win.
+
+- Trade every eligible session — non-participation must be justified by a regime gate, not by parameter miscalibration
+- Harvest theta decay through systematic profit-taking and immediate re-entry
+- Adapt spread width and strike placement dynamically to prevailing VIX and S/R levels
 - Cap maximum drawdown per trade at 3× the max profit of the spread
 - Be flat before any weekend or holiday gap; operator targets Thursday 3:15 PM as personal weekly cut-off
 

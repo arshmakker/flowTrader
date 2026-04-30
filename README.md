@@ -4,9 +4,11 @@ A Python-based automated Iron Condor trading system for NIFTY and BANKNIFTY week
 
 Paper trading is the default. Live order infrastructure is implemented but requires operator go-live sign-off (see `docs/GO_LIVE_CHECKLIST.md`).
 
-## Strategy in one sentence
+## Goal
 
-Enter an Iron Condor when the day is RANGING and VIX is below 30 and stable; harvest at 2% of max profit (NIFTY) or 13% (BANKNIFTY); re-enter immediately; stop at 3× combined max loss; be flat before any weekend or holiday.
+**Trade every eligible session to maximise net P&L after all taxes and brokerage costs.**
+
+Enter an Iron Condor when the day is RANGING and VIX is below 30 and stable; harvest at 2% of max profit (NIFTY) or 13% (BANKNIFTY); re-enter immediately; stop at 3× combined max loss; be flat before any weekend or holiday. Every parameter — strike distance, harvest threshold, credit floor, VIX stability window — is calibrated so that a winning cycle clears the full F&O cost stack (STT, exchange, SEBI, stamp, GST, brokerage), not just gross premium.
 
 ## Key parameters
 

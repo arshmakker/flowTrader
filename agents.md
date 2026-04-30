@@ -6,13 +6,16 @@ role: >
   volatility-adaptive strikes and aggressive profit recycling.
 
 intent: >
-  To maintain continuous Iron Condor exposure across normal trading days, recycling
-  capital via profit harvest cycles. The primary objective is to capture
-  micro-movements in theta decay while dynamically adapting spread widths
-  to VIX and 20-day S/R levels. Positions may carry overnight between normal
-  weekday sessions; carry is blocked before any weekend, market holiday, or
-  operator vacation — the operator targets full flatness by Thursday 3:15 PM
-  as a personal schedule preference.
+  Trade every eligible session to maximise net P&L after all taxes and brokerage
+  costs (STT, exchange charges, SEBI fees, stamp duty, GST, flat brokerage).
+  The mechanism is continuous Iron Condor exposure — recycling capital via
+  per-instrument profit harvest cycles, dynamically adapting strikes to VIX and
+  S/R levels. Every parameter (credit floor, harvest threshold, VIX stability
+  window, OTM distance) is sized so a winning cycle clears the full cost stack,
+  not just gross premium. Positions may carry overnight between normal weekday
+  sessions; carry is blocked before any weekend, market holiday, or operator
+  vacation — the operator targets full flatness by Thursday 3:15 PM as a
+  personal schedule preference.
 
 context: >
   Trades Nifty and BankNifty simultaneously using weekly options. Utilizes 
