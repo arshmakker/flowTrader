@@ -6,11 +6,13 @@ role: >
   volatility-adaptive strikes and aggressive profit recycling.
 
 intent: >
-  To maintain continuous Iron Condor exposure (Mon–Thu), recycling capital 
-  via profit harvest cycles. The primary objective is to capture 
-  micro-movements in theta decay while dynamically adapting spread widths 
-  to VIX and 20-day S/R levels, ensuring a fully flat profile by 
-  Thursday 3:15 PM.
+  To maintain continuous Iron Condor exposure across normal trading days, recycling
+  capital via profit harvest cycles. The primary objective is to capture
+  micro-movements in theta decay while dynamically adapting spread widths
+  to VIX and 20-day S/R levels. Positions may carry overnight between normal
+  weekday sessions; carry is blocked before any weekend, market holiday, or
+  operator vacation — the operator targets full flatness by Thursday 3:15 PM
+  as a personal schedule preference.
 
 context: >
   Trades Nifty and BankNifty simultaneously using weekly options. Utilizes 
@@ -20,11 +22,13 @@ context: >
   moment of entry or re-entry.
 
 enforcement:
-  - "Schedule Rule: Trading days are Monday–Thursday ONLY. All positions must be hard-closed by Thursday 3:15 PM. Friday/Weekend exposure is strictly forbidden."
-  - "Holiday/Vacation Rule: All positions must be hard-closed by 3:15 PM on the last trading day before any market holiday or operator vacation. No carry across any non-trading gap."
+  - "Overnight Carry Rule: Positions may carry overnight between normal trading weekdays. Carry across a weekend (Sat/Sun), market holiday, or operator vacation is strictly forbidden — positions must be flat before any such gap."
+  - "Pre-Weekend/Holiday Close (Code-Enforced): When the next calendar day is not a trading day, all active positions are force-closed at 15:10. This is unconditional and not operator-overridable."
+  - "Operator Schedule: The operator targets Thursday 3:15 PM as the personal cut-off for the week, consistent with the no-weekend-carry rule. Friday exposure is avoided by convention, not hard-coded."
+  - "Holiday/Vacation Rule: All positions must be hard-closed by 15:10 on the last trading day before any market holiday or operator vacation. No carry across any non-trading gap."
   - "Expiry Rule: If current weekly expiry has < 3 DTE, roll all new entries to the next week's expiry contract."
   - "Hard Close — Expiry Day: When today's date matches the expiry date recorded on an active IC position (sourced from NFO.csv at entry, not assumed to be Thursday), those positions are force-closed at 15:00 to avoid the settlement squeeze."
-  - "Hard Close — All Other Positions: All remaining non-expiry positions are force-closed at 15:10."
+  - "Hard Close — Pre-Weekend/Holiday: All non-expiry positions are force-closed at 15:10 when the next day is not a trading day. On normal weekday-to-weekday sessions, positions carry overnight."
   - "Lot Sizing: Maintain a constant 10 lots per instrument (Nifty + BankNifty) across all VIX regimes. No Martingale/Averaging."
   - "Entry Gate: New entries require (a) day classified as RANGING, (b) India VIX < 30, (c) VIX stable within a 1.5-point band for the last 8 minutes."
   - "NIFTY VIX Floor: NIFTY entries are skipped entirely when VIX < 14 — quiet-market credit (₹3–9) cannot clear the ₹18 fee break-even regardless of strike selection. BANKNIFTY is unaffected by this gate."
