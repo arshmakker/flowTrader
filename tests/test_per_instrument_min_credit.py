@@ -70,9 +70,9 @@ def _ltp_close_to(spot: float, short_premium: float, wing_premium: float):
 def test_constants_define_both_instruments_with_banknifty_higher():
     floors = settings.IC_MIN_CREDIT_BY_INSTRUMENT
     assert "NIFTY" in floors and "BANKNIFTY" in floors
-    assert floors["BANKNIFTY"] > floors["NIFTY"], (
-        "BANKNIFTY break-even is structurally higher than NIFTY's (see docs/calibration_2026_04_26.md)"
-    )
+    assert (
+        floors["BANKNIFTY"] > floors["NIFTY"]
+    ), "BANKNIFTY break-even is structurally higher than NIFTY's (see docs/calibration_2026_04_26.md)"
 
 
 def test_min_credit_helper_returns_per_instrument_floor(mock_om, mock_md):

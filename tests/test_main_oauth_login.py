@@ -356,9 +356,9 @@ def test_auth_code_cmd_with_shell_and_chain_is_refused(clean_env, monkeypatch, c
         result = main._fetch_auth_code_from_command(creds, log)
 
     assert result == ""
-    assert any("shell control token" in r.message for r in caplog.records), (
-        "operator must see an actionable warning, not a silent no-op"
-    )
+    assert any(
+        "shell control token" in r.message for r in caplog.records
+    ), "operator must see an actionable warning, not a silent no-op"
 
 
 @pytest.mark.parametrize(

@@ -303,9 +303,9 @@ def test_vix_stable_8min_window_excludes_pre_classify_volatile_data(monkeypatch)
 
     # 15-min window sweeps in the volatile samples → unstable (prior blocking behavior)
     monkeypatch.setattr(settings, "IC_VIX_STABLE_MINS", 15)
-    assert rf.is_vix_stable() is False, (
-        "15-min window included volatile pre-classify data — this was blocking morning entries"
-    )
+    assert (
+        rf.is_vix_stable() is False
+    ), "15-min window included volatile pre-classify data — this was blocking morning entries"
 
 
 def test_vix_history_restore_reset_daily_clears_history():
