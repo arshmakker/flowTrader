@@ -11,6 +11,7 @@ post-close tick in market_data_20260421/raw_data/others/Nifty 50_20260421.csv).
 
 Run with main.py NOT running — we write open_positions.json directly.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,10 +21,10 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from trading_system.paper.paper_position_tracker import PaperPositionTracker
-from trading_system.paper.paper_pnl_engine import PaperPnLEngine
-from trading_system.core.trade_logger import TradeLogger
 from trading_system.core import position_persistence
+from trading_system.core.trade_logger import TradeLogger
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
 SETTLEMENT_SPOT = 24576.60
 EXPIRY_STRATEGY = "NIFTY"
@@ -68,8 +69,10 @@ def main() -> int:
         leg_pnl = tracker.close_position(sym, intrinsic)
         per_leg[sym] = leg_pnl
         total_pnl += leg_pnl
-        print(f"  {sym}: qty={pos_before['qty']:+d} avg={pos_before['avg_price']:.2f} "
-              f"exit={intrinsic:.2f} net_pnl={leg_pnl:+.2f}")
+        print(
+            f"  {sym}: qty={pos_before['qty']:+d} avg={pos_before['avg_price']:.2f} "
+            f"exit={intrinsic:.2f} net_pnl={leg_pnl:+.2f}"
+        )
 
     trade_data = {
         "instrument": EXPIRY_STRATEGY,

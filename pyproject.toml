@@ -3,3 +3,28 @@
 # Without this, `pytest tests/test_ic_strategy.py` fails at collection.
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+ignore = [
+    "E701",  # one-line if statements (common in tests)
+    "E501",  # line too long (strict for HTML/strings)
+    "N801",  # class naming (IC_Position is intentional)
+    "N802",  # function naming (NIFTY_SPOT_TOKEN properties)
+    "N806",  # variable naming in functions (FRESH_BID in tests)
+    "E741",  # ambiguous variable name (l in lambdas is common)
+    "N812",  # import naming (EC for expected_conditions)
+    "N818",  # exception naming (OrderPollingAbandoned - not an Error suffix)
+    "E402",  # module level import not at top (intentional after sys.path.insert)
+    "N803",  # argument naming (twoFA matches upstream API)
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

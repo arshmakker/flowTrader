@@ -56,6 +56,7 @@ def test_flat_session_restores_pnl_on_same_day_restart():
     import json
     import tempfile
     from datetime import date
+
     from trading_system.core.position_persistence import SESSION_FLAT
 
     class _PnLStub:
@@ -104,6 +105,7 @@ def test_flat_session_does_not_restore_pnl_on_stale_day():
     """Stale-day flat session: PnL must NOT be restored (daily counters belong to a prior day)."""
     import json
     import tempfile
+
     from trading_system.core.position_persistence import SESSION_FLAT
 
     class _PnLStub:

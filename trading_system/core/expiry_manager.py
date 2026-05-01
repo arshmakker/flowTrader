@@ -5,13 +5,15 @@ If current weekly expiry has < 3 DTE, roll all new entries to the next week's ex
 """
 
 import logging
-from datetime import datetime, date
-from typing import Optional, List
+from datetime import date, datetime
+from typing import Optional
+
 import pandas as pd
 
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class ExpiryManager:
     def __init__(self, symbol_manager):
@@ -31,8 +33,7 @@ class ExpiryManager:
             return None
 
         options_df = self.sm.nse_fo[
-            (self.sm.nse_fo['instrument'] == 'OPTIDX') &
-            (self.sm.nse_fo['symbol'] == index_name)
+            (self.sm.nse_fo["instrument"] == "OPTIDX") & (self.sm.nse_fo["symbol"] == index_name)
         ].copy()
 
         if options_df.empty:
@@ -40,8 +41,8 @@ class ExpiryManager:
             return None
 
         # 2. Parse and filter expiries
-        options_df['expiry_dt'] = pd.to_datetime(options_df['expiry'], format='%d-%b-%Y').dt.date
-        unique_expiries = sorted(options_df['expiry_dt'].unique())
+        options_df["expiry_dt"] = pd.to_datetime(options_df["expiry"], format="%d-%b-%Y").dt.date
+        unique_expiries = sorted(options_df["expiry_dt"].unique())
         active_expiries = [e for e in unique_expiries if e >= current_date]
 
         if not active_expiries:
@@ -55,13 +56,19 @@ class ExpiryManager:
         if dte < settings.IC_DTE_THRESHOLD:
             if len(active_expiries) > 1:
                 selected_expiry = active_expiries[1]
-                logger.info(f"{index_name}: DTE={dte} (<{settings.IC_DTE_THRESHOLD}), rolling to next week: {selected_expiry}")
+                logger.info(
+                    f"{index_name}: DTE={dte} (<{settings.IC_DTE_THRESHOLD}), rolling to next week: {selected_expiry}"
+                )
             else:
                 selected_expiry = nearest_expiry
-                logger.warning(f"{index_name}: DTE={dte} (<{settings.IC_DTE_THRESHOLD}) but no next week expiry found! Using {selected_expiry}")
+                logger.warning(
+                    f"{index_name}: DTE={dte} (<{settings.IC_DTE_THRESHOLD}) but no next week expiry found! Using {selected_expiry}"
+                )
         else:
             selected_expiry = nearest_expiry
-            logger.info(f"{index_name}: DTE={dte} (>= {settings.IC_DTE_THRESHOLD}), using current week: {selected_expiry}")
+            logger.info(
+                f"{index_name}: DTE={dte} (>= {settings.IC_DTE_THRESHOLD}), using current week: {selected_expiry}"
+            )
 
         # Convert back to DD-MMM-YYYY
-        return selected_expiry.strftime('%d-%b-%Y').upper()
+        return selected_expiry.strftime("%d-%b-%Y").upper()

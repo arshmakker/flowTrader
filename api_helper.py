@@ -1,15 +1,15 @@
-from NorenRestApiPy.NorenApi import NorenApi
-from threading import Timer, Lock
-from collections import deque
-import pandas as pd
-import time
 import concurrent.futures
+import hashlib
 import json
 import logging
-import urllib.parse
-import requests
-import hashlib
 import os
+import time
+import urllib.parse
+from collections import deque
+from threading import Lock
+
+import requests
+from NorenRestApiPy.NorenApi import NorenApi
 
 logger = logging.getLogger(__name__)
 api = None
@@ -35,44 +35,57 @@ def _agent_debug_log(hypothesis_id, location, message, data=None, run_id=None):
 
 
 class Order:
-     def __init__(self, buy_or_sell:str = None, product_type:str = None,
-                 exchange: str = None, tradingsymbol:str =None, 
-                 price_type: str = None, quantity: int = None, 
-                 price: float = None,trigger_price:float = None, discloseqty: int = 0,
-                 retention:str = 'DAY', remarks: str = "tag",
-                 order_id:str = None):
-        self.buy_or_sell=buy_or_sell
-        self.product_type=product_type
-        self.exchange=exchange
-        self.tradingsymbol=tradingsymbol
-        self.quantity=quantity
-        self.discloseqty=discloseqty
-        self.price_type=price_type
-        self.price=price
-        self.trigger_price=trigger_price
-        self.retention=retention
-        self.remarks=remarks
-        self.order_id=None
+    def __init__(
+        self,
+        buy_or_sell: str = None,
+        product_type: str = None,
+        exchange: str = None,
+        tradingsymbol: str = None,
+        price_type: str = None,
+        quantity: int = None,
+        price: float = None,
+        trigger_price: float = None,
+        discloseqty: int = 0,
+        retention: str = "DAY",
+        remarks: str = "tag",
+        order_id: str = None,
+    ):
+        self.buy_or_sell = buy_or_sell
+        self.product_type = product_type
+        self.exchange = exchange
+        self.tradingsymbol = tradingsymbol
+        self.quantity = quantity
+        self.discloseqty = discloseqty
+        self.price_type = price_type
+        self.price = price
+        self.trigger_price = trigger_price
+        self.retention = retention
+        self.remarks = remarks
+        self.order_id = None
 
 
-    #print(ret)
-
-    
+# print(ret)
 
 
 def get_time(time_string):
-    data = time.strptime(time_string,'%d-%m-%Y %H:%M:%S')
+    data = time.strptime(time_string, "%d-%m-%Y %H:%M:%S")
 
     return time.mktime(data)
 
 
 class ShoonyaApiPy(NorenApi):
     def __init__(self):
-        NorenApi.__init__(self, host='https://api.shoonya.com/NorenWClientTP/', websocket='wss://api.shoonya.com/NorenWSTP/')        
+        NorenApi.__init__(
+            self, host="https://api.shoonya.com/NorenWClientTP/", websocket="wss://api.shoonya.com/NorenWSTP/"
+        )
         global api
         api = self
         self._last_broker_error = None
-        self._quote_limiter_enabled = str(os.environ.get("SHOONYA_QUOTE_LIMIT_ENABLED", "1")).strip().lower() not in ("0", "false", "no")
+        self._quote_limiter_enabled = str(os.environ.get("SHOONYA_QUOTE_LIMIT_ENABLED", "1")).strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
         # Hard safety cap requested: never exceed 10 quote calls per second.
         self._quote_hard_max_per_sec = 10
         self._quote_max_per_sec = min(self._safe_int_env("SHOONYA_QUOTE_MAX_PER_SEC", 10), self._quote_hard_max_per_sec)
@@ -120,8 +133,12 @@ class ShoonyaApiPy(NorenApi):
 
                 global_sec_full = len(self._quote_sec_hits) >= self._quote_max_per_sec
                 global_min_full = len(self._quote_min_hits) >= self._quote_max_per_min
-                low_sec_full = len(self._quote_low_sec_hits) >= min(self._quote_low_max_per_sec, self._quote_max_per_sec)
-                low_min_full = len(self._quote_low_min_hits) >= min(self._quote_low_max_per_min, self._quote_max_per_min)
+                low_sec_full = len(self._quote_low_sec_hits) >= min(
+                    self._quote_low_max_per_sec, self._quote_max_per_sec
+                )
+                low_min_full = len(self._quote_low_min_hits) >= min(
+                    self._quote_low_max_per_min, self._quote_max_per_min
+                )
 
                 can_take = not global_sec_full and not global_min_full
                 if lane == "low":
@@ -160,7 +177,9 @@ class ShoonyaApiPy(NorenApi):
 
     def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
         """Legacy QuickAuth login with full broker error visibility."""
-        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(
+            NorenApi, "_NorenApi__service_config", None
+        )
         if not config:
             msg = "Login failed: no service config"
             self._set_last_broker_error(msg)
@@ -237,7 +256,9 @@ class ShoonyaApiPy(NorenApi):
         Perform OAuth-authenticated POST and return (ok, data, error_msg).
         Keeps broker/body errors visible instead of surfacing JSON decode only.
         """
-        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(
+            NorenApi, "_NorenApi__service_config", None
+        )
         if not config:
             return False, None, "OAuth call failed: no service config"
         host = (config.get("host") or "").rstrip("/")
@@ -340,7 +361,9 @@ class ShoonyaApiPy(NorenApi):
 
     def _quote_request(self, exchange, token):
         """Low-level quote request with explicit parse/HTTP diagnostics."""
-        config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+        config = getattr(self, "_NorenApi__service_config", None) or getattr(
+            NorenApi, "_NorenApi__service_config", None
+        )
         if not config:
             return None, "getquotes failed: no service config"
         host = (config.get("host") or "").rstrip("/")
@@ -366,12 +389,7 @@ class ShoonyaApiPy(NorenApi):
         try:
             res = requests.post(url, data=payload, headers=headers, timeout=15)
             text = (res.text or "").strip()
-            if (
-                headers
-                and res.status_code == 401
-                and "Invalid Session Key" in text
-                and session_key
-            ):
+            if headers and res.status_code == 401 and "Invalid Session Key" in text and session_key:
                 # Broker may reject OAuth-header auth for getquotes even when
                 # OAuth validation routes succeed; retry once with jKey.
                 retry_payload = "jData=" + json.dumps(values) + "&jKey=" + str(session_key)
@@ -482,7 +500,9 @@ class ShoonyaApiPy(NorenApi):
     def exchange_auth_code(self, auth_code, secret_code, client_id, uid, token_url=None):
         """Exchange auth code for (access_token, user_id, refresh_token, account_id)."""
         try:
-            config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+            config = getattr(self, "_NorenApi__service_config", None) or getattr(
+                NorenApi, "_NorenApi__service_config", None
+            )
             host = (config.get("host") or "").rstrip("/") if config else ""
             routes = config.get("routes") or {} if config else {}
             path = (routes.get("gen_acs_tok") or "").lstrip("/")
@@ -494,7 +514,11 @@ class ShoonyaApiPy(NorenApi):
             # produces (host ends with /, route starts with /) — harmless, kept for parity.
             # Note: trade.shoonya.com hosts the same API but enforces static-IP whitelist.
             default_token_url = "https://api.shoonya.com/NorenWClientAPI//GenAcsTok"
-            url = str(token_url or "").strip() or route_url.replace("NorenWClientTP", "NorenWClientAPI") or default_token_url
+            url = (
+                str(token_url or "").strip()
+                or route_url.replace("NorenWClientTP", "NorenWClientAPI")
+                or default_token_url
+            )
 
             checksum_src = f"{client_id}{secret_code}{auth_code}".encode("utf-8")
             checksum = hashlib.sha256(checksum_src).hexdigest()
@@ -503,7 +527,12 @@ class ShoonyaApiPy(NorenApi):
 
             logger.info(
                 "OAuth token exchange POST -> url=%s client_id=%s uid=%s code_len=%d secret_len=%d checksum=%s",
-                url, client_id, uid, len(auth_code or ""), len(secret_code or ""), checksum,
+                url,
+                client_id,
+                uid,
+                len(auth_code or ""),
+                len(secret_code or ""),
+                checksum,
             )
             res = requests.post(url, data=payload, timeout=30)
             text = (res.text or "").strip()
@@ -585,7 +614,13 @@ class ShoonyaApiPy(NorenApi):
         """Check whether current OAuth token can access account APIs."""
         checks = [
             ("watchlist_names", {"ordersource": "API", "uid": getattr(self, "_NorenApi__username", None)}),
-            ("limits", {"uid": getattr(self, "_NorenApi__username", None), "actid": getattr(self, "_NorenApi__accountid", None)}),
+            (
+                "limits",
+                {
+                    "uid": getattr(self, "_NorenApi__username", None),
+                    "actid": getattr(self, "_NorenApi__accountid", None),
+                },
+            ),
         ]
         last_error = ""
         for route_key, values in checks:
@@ -614,13 +649,12 @@ class ShoonyaApiPy(NorenApi):
     def place_basket(self, orders):
 
         resp_err = 0
-        resp_ok  = 0
-        result   = []
+        resp_ok = 0
+        result = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-
-            future_to_url = {executor.submit(self.place_order, order): order for order in  orders}
+            future_to_url = {executor.submit(self.place_order, order): order for order in orders}
             for future in concurrent.futures.as_completed(future_to_url):
-                url = future_to_url[future]
+                future_to_url[future]
             try:
                 result.append(future.result())
             except Exception as exc:
@@ -630,7 +664,7 @@ class ShoonyaApiPy(NorenApi):
                 resp_ok = resp_ok + 1
 
         return result
-                
+
     def placeOrder(self, order: Order):
         return self.place_order(
             buy_or_sell=order.buy_or_sell,
@@ -646,8 +680,21 @@ class ShoonyaApiPy(NorenApi):
             remarks=order.remarks or "tag",
         )
 
-    def place_order(self, buy_or_sell, product_type=None, exchange=None, tradingsymbol=None, quantity=None,
-                    discloseqty=0, price_type=None, price=0.0, trigger_price=None, retention="DAY", amo="NO", remarks=None):
+    def place_order(
+        self,
+        buy_or_sell,
+        product_type=None,
+        exchange=None,
+        tradingsymbol=None,
+        quantity=None,
+        discloseqty=0,
+        price_type=None,
+        price=0.0,
+        trigger_price=None,
+        retention="DAY",
+        amo="NO",
+        remarks=None,
+    ):
         """
         Place order via direct HTTP. NorenApi.place_order() returns None when broker
         returns stat != 'Ok', so we do the request here and always return the full
@@ -668,7 +715,9 @@ class ShoonyaApiPy(NorenApi):
             retention = o.retention or "DAY"
             remarks = o.remarks or "tag"
         try:
-            config = getattr(self, "_NorenApi__service_config", None) or getattr(NorenApi, "_NorenApi__service_config", None)
+            config = getattr(self, "_NorenApi__service_config", None) or getattr(
+                NorenApi, "_NorenApi__service_config", None
+            )
             if not config:
                 logger.error("Place order: no service config")
                 return None

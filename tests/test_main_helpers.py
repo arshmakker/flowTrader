@@ -1,12 +1,15 @@
 """tests/test_main_helpers.py — BUG-02 regression for _force_exit_all."""
-import sys, os
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import main
-from trading_system.paper.paper_pnl_engine import PaperPnLEngine
-from trading_system.paper.paper_position_tracker import PaperPositionTracker
 from trading_system.core.risk_manager import RiskManager
 from trading_system.core.trade_logger import TradeLogger
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
 
 class FakeMD:
@@ -73,6 +76,7 @@ def test_force_exit_all_handles_mix_of_active_and_inactive():
 
 class StuckStrategy:
     """Mimics an IC strategy that has stuck legs after a failed rollback."""
+
     def __init__(self, instrument, stuck):
         self.instrument = instrument
         self._last_rollback_stuck_legs = list(stuck)
@@ -85,8 +89,15 @@ def test_drain_rollback_failures_escalates_and_clears():
     """BUG-05: any strategy with stuck legs must escalate via risk.escalate_rollback_failure,
     and its flag must be cleared so we don't double-report."""
     risk = RiskManager()
-    stuck = [{"symbol": "NFO|NIFTY19MAR26C22150", "original_side": "SELL",
-              "rollback_side": "BUY", "qty": 65, "reason": "sim"}]
+    stuck = [
+        {
+            "symbol": "NFO|NIFTY19MAR26C22150",
+            "original_side": "SELL",
+            "rollback_side": "BUY",
+            "qty": 65,
+            "reason": "sim",
+        }
+    ]
     strats = [StuckStrategy("NIFTY", stuck)]
     main._drain_rollback_failures(strats, risk)
     assert risk.halted is True
@@ -107,6 +118,7 @@ def test_drain_rollback_failures_noop_when_clean():
 
 # ── _evaluate_stop_checks: log/flatten gating after halt ─────────────────────
 
+
 def test_evaluate_stop_checks_noop_when_already_halted():
     """Incident 2026-04-28: a Phase-5b halt at 10:49 caused both stop predicates
     to keep returning True for the rest of the loop, re-firing CRITICAL logs
@@ -114,6 +126,7 @@ def test_evaluate_stop_checks_noop_when_already_halted():
     that subsequent ticks after a halt don't re-emit either log line."""
     import logging
     from unittest.mock import MagicMock
+
     pnl, _ = _build_pnl("/tmp/test_eval_stop_halted")
     risk = RiskManager()
     risk.halted = True  # pre-set: simulates the second-tick state after a halt
@@ -129,6 +142,7 @@ def test_evaluate_stop_checks_flattens_and_logs_on_combined_stop_trigger():
     active strategies and emit the CRITICAL log line exactly once."""
     import logging
     from unittest.mock import MagicMock
+
     pnl, _ = _build_pnl("/tmp/test_eval_stop_combined")
     risk = MagicMock(spec=RiskManager)
     risk.halted = False
@@ -148,6 +162,7 @@ def test_evaluate_stop_checks_flattens_and_logs_on_daily_cap_trigger():
     flatten and log only the daily-cap line."""
     import logging
     from unittest.mock import MagicMock
+
     pnl, _ = _build_pnl("/tmp/test_eval_stop_daily")
     risk = MagicMock(spec=RiskManager)
     risk.halted = False
@@ -165,6 +180,7 @@ def test_evaluate_stop_checks_flattens_and_logs_on_daily_cap_trigger():
 def test_halt_on_exception_sets_halted_without_reraising():
     """BUG-19 / Axiom 3: an unhandled exception must halt trading cleanly."""
     import logging
+
     risk = RiskManager()
     log = logging.getLogger("test_bug19")
     # Must not raise.
@@ -174,10 +190,13 @@ def test_halt_on_exception_sets_halted_without_reraising():
 
 class FakePositionedStrategy:
     """Strategy stub with an active IC_Position-like object, including expiry_date."""
+
     def __init__(self, instrument, expiry_iso):
         self.instrument = instrument
+
         class _Pos:
             pass
+
         pos = _Pos()
         pos.expiry_date = expiry_iso
         self._position = pos
@@ -239,11 +258,13 @@ def test_find_past_expiry_ignores_inactive():
 def test_halt_on_exception_does_not_overwrite_stop_hit_if_already_set():
     """Escalation from a prior rollback failure should not be clobbered by a later exception halt."""
     from datetime import datetime
+
     risk = RiskManager()
     original = datetime(2026, 4, 19, 10, 30)
     risk.stop_hit_at = original
     risk.halted = True
     import logging
+
     main._halt_on_exception(RuntimeError("later exception"), risk, logging.getLogger("test_bug19"))
     # halted stays True; stop_hit_at semantics up to _halt_on_exception — currently it doesn't
     # touch stop_hit_at, which is the desired behavior.
@@ -253,14 +274,20 @@ def test_halt_on_exception_does_not_overwrite_stop_hit_if_already_set():
 
 # ── LIVE-23: alert emission from main helpers ────────────────────────────────
 
+
 def test_halt_on_exception_emits_alert_when_channel_provided():
     """LIVE-23: an unhandled cycle exception must surface to the operator alert channel."""
     import logging
+
     from trading_system.ops.alerts import NullAlertChannel
+
     alerts = NullAlertChannel()
     risk = RiskManager()
     main._halt_on_exception(
-        RuntimeError("simulated"), risk, logging.getLogger("t"), alerts=alerts,
+        RuntimeError("simulated"),
+        risk,
+        logging.getLogger("t"),
+        alerts=alerts,
     )
     assert risk.halted is True
     assert len(alerts.sent) == 1
@@ -271,6 +298,7 @@ def test_halt_on_exception_emits_alert_when_channel_provided():
 def test_halt_on_exception_without_alerts_still_halts():
     """LIVE-23: alerts param is optional; existing callers that don't pass it keep working."""
     import logging
+
     risk = RiskManager()
     main._halt_on_exception(RuntimeError("simulated"), risk, logging.getLogger("t"))
     assert risk.halted is True  # still halts; alert channel just not notified
@@ -280,8 +308,9 @@ def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypat
     """LIVE-23: halt file detection must surface as a warning alert."""
     import logging
     from unittest.mock import MagicMock, patch
-    from trading_system.ops.alerts import NullAlertChannel
+
     from trading_system.config import settings
+    from trading_system.ops.alerts import NullAlertChannel
 
     alerts = NullAlertChannel()
     halt_path = str(tmp_path / "HALT")
@@ -289,8 +318,7 @@ def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypat
     strats = [MagicMock(is_active=MagicMock(return_value=False))]
     pnl, risk, log = MagicMock(), MagicMock(), logging.getLogger("t")
 
-    with patch.object(settings, "HALT_FILE", halt_path), \
-         patch("main._force_exit_all"):
+    with patch.object(settings, "HALT_FILE", halt_path), patch("main._force_exit_all"):
         result = main._check_kill_switch(strats, pnl, risk, log, alerts=alerts)
 
     assert result is True
@@ -306,16 +334,17 @@ def test_check_kill_switch_emits_alert_when_channel_provided(tmp_path, monkeypat
 # import-time conditional once against the default (True), so live was
 # unreachable from the running process even with the flag flipped.
 
+
 def test_build_order_stack_paper_mode_uses_paper_order_manager(tmp_path):
     from unittest.mock import MagicMock, patch
+
     from trading_system.config import settings
     from trading_system.paper.paper_order_manager import PaperOrderManager
-    from trading_system.paper.paper_position_tracker import PaperPositionTracker
     from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
     api, md, tl = MagicMock(), FakeMD(), MagicMock()
-    with patch.object(settings, "PAPER_TRADE_MODE", True), \
-         patch.object(settings, "DATA_DIR", str(tmp_path)):
+    with patch.object(settings, "PAPER_TRADE_MODE", True), patch.object(settings, "DATA_DIR", str(tmp_path)):
         pos, om, pnl = main._build_order_stack(api, md, tl)
 
     assert isinstance(om, PaperOrderManager)
@@ -329,10 +358,11 @@ def test_build_order_stack_paper_mode_uses_paper_order_manager(tmp_path):
 
 # ── BUG-07: mid-session OAuth recovery ──────────────────────────────────────
 
+
 def test_check_mid_session_auth_noop_when_session_valid():
     """No reauth attempt when validate_oauth_session returns True."""
-    from unittest.mock import MagicMock, patch
     import logging
+    from unittest.mock import MagicMock, patch
 
     api = MagicMock()
     api.validate_oauth_session.return_value = True
@@ -348,8 +378,8 @@ def test_check_mid_session_auth_noop_when_session_valid():
 
 def test_check_mid_session_auth_reauth_succeeds_marks_attempted():
     """Session invalid → reauth succeeds → no exception, attempted flag set."""
-    from unittest.mock import MagicMock, patch
     import logging
+    from unittest.mock import MagicMock, patch
 
     api = MagicMock()
     api.validate_oauth_session.return_value = False
@@ -365,34 +395,34 @@ def test_check_mid_session_auth_reauth_succeeds_marks_attempted():
 def test_check_mid_session_auth_raises_when_reauth_fails():
     """BUG-07 regression: session invalid + reauth fails must raise _AuthSessionExpired,
     not call _halt_on_exception and silently continue with a broken API session."""
-    import pytest
-    from unittest.mock import MagicMock, patch
     import logging
+    from unittest.mock import MagicMock, patch
+
+    import pytest
 
     api = MagicMock()
     api.validate_oauth_session.return_value = False
     reauth_state = {"attempted": False}
     log = logging.getLogger("test_bug07_fail")
 
-    with patch("main._mid_session_reauth", return_value=False), \
-         pytest.raises(main._AuthSessionExpired):
+    with patch("main._mid_session_reauth", return_value=False), pytest.raises(main._AuthSessionExpired):
         main._check_mid_session_auth(api, log, None, reauth_state)
 
 
 def test_check_mid_session_auth_raises_immediately_when_already_attempted():
     """Second invalid-session probe (reauth already tried this session) must
     raise at once without calling _mid_session_reauth again."""
-    import pytest
-    from unittest.mock import MagicMock, patch
     import logging
+    from unittest.mock import MagicMock, patch
+
+    import pytest
 
     api = MagicMock()
     api.validate_oauth_session.return_value = False
     reauth_state = {"attempted": True}
     log = logging.getLogger("test_bug07_second")
 
-    with patch("main._mid_session_reauth") as mock_reauth, \
-         pytest.raises(main._AuthSessionExpired):
+    with patch("main._mid_session_reauth") as mock_reauth, pytest.raises(main._AuthSessionExpired):
         main._check_mid_session_auth(api, log, None, reauth_state)
 
     mock_reauth.assert_not_called()
@@ -400,14 +430,14 @@ def test_check_mid_session_auth_raises_immediately_when_already_attempted():
 
 def test_build_order_stack_live_mode_uses_live_order_manager(tmp_path):
     from unittest.mock import MagicMock, patch
+
     from trading_system.config import settings
     from trading_system.live.live_order_manager import LiveOrderManager
-    from trading_system.paper.paper_position_tracker import PaperPositionTracker
     from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+    from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
     api, md, tl = MagicMock(), FakeMD(), MagicMock()
-    with patch.object(settings, "PAPER_TRADE_MODE", False), \
-         patch.object(settings, "DATA_DIR", str(tmp_path)):
+    with patch.object(settings, "PAPER_TRADE_MODE", False), patch.object(settings, "DATA_DIR", str(tmp_path)):
         pos, om, pnl = main._build_order_stack(api, md, tl)
 
     assert isinstance(om, LiveOrderManager)

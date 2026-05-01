@@ -23,7 +23,7 @@ def _round_to_tick(price: float) -> float:
 class PaperPositionTracker:
     def __init__(self) -> None:
         self._positions: Dict[str, Dict] = {}  # symbol → position dict
-        self._unmarked: List[str] = []          # symbols skipped in last mark
+        self._unmarked: List[str] = []  # symbols skipped in last mark
 
     def add_position(self, order: Dict) -> None:
         sym = order["symbol"]
@@ -54,8 +54,7 @@ class PaperPositionTracker:
                 return
 
             # Recalculate weighted avg price when scaling in the same direction
-            same_direction = (old_qty > 0 and side in ("BUY", "B")) or \
-                             (old_qty < 0 and side in ("SELL", "S"))
+            same_direction = (old_qty > 0 and side in ("BUY", "B")) or (old_qty < 0 and side in ("SELL", "S"))
             if same_direction:
                 total_value = pos["avg_price"] * abs(old_qty) + price * qty
                 pos["avg_price"] = _round_to_tick(total_value / abs(new_qty))
@@ -103,7 +102,9 @@ class PaperPositionTracker:
                 self._unmarked.append(sym)
                 logger.warning(
                     "Unrealised P&L: LTP=0 for %s (qty=%d, avg=%.2f) — excluded from mark",
-                    sym, pos["qty"], pos["avg_price"],
+                    sym,
+                    pos["qty"],
+                    pos["avg_price"],
                 )
                 continue
             if pos["qty"] > 0:
@@ -117,20 +118,13 @@ class PaperPositionTracker:
         return list(self._unmarked)
 
     def get_open_positions(self) -> List[Dict]:
-        return [
-            {**pos, "abs_qty": abs(pos["qty"])}
-            for pos in self._positions.values()
-            if pos["qty"] != 0
-        ]
+        return [{**pos, "abs_qty": abs(pos["qty"])} for pos in self._positions.values() if pos["qty"] != 0]
 
     def has_open_positions(self) -> bool:
         return len(self._positions) > 0
 
     def save_state(self) -> Dict:
-        return {
-            "positions": self._positions,
-            "unmarked": self._unmarked
-        }
+        return {"positions": self._positions, "unmarked": self._unmarked}
 
     def restore_state(self, state: Dict) -> None:
         self._positions = state.get("positions", {})

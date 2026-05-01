@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any
 
 from trading_system.config import settings
 
@@ -54,10 +54,10 @@ class TerminalDashboard:
         """Blocking loop — run in a daemon thread."""
         try:
             from rich.console import Console
-            from rich.table import Table
+            from rich.layout import Layout
             from rich.live import Live
             from rich.panel import Panel
-            from rich.layout import Layout
+            from rich.table import Table
             from rich.text import Text
         except ImportError:
             logger.warning("rich not installed; terminal dashboard disabled")

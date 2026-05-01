@@ -19,10 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _empty_strat_stats() -> Dict[str, Dict]:
-    return {
-        s: {"trades": 0, "total_pnl": 0.0, "wins": 0}
-        for s in ("NIFTY", "BANKNIFTY")
-    }
+    return {s: {"trades": 0, "total_pnl": 0.0, "wins": 0} for s in ("NIFTY", "BANKNIFTY")}
 
 
 class PaperPnLEngine:
@@ -67,10 +64,10 @@ class PaperPnLEngine:
         self.total_trades += 1
         if won:
             self.winning_trades += 1
-        
+
         if strategy not in self._strategy_stats:
             self._strategy_stats[strategy] = {"trades": 0, "total_pnl": 0.0, "wins": 0}
-            
+
         ss = self._strategy_stats[strategy]
         ss["trades"] += 1
         ss["total_pnl"] += pnl
@@ -82,10 +79,10 @@ class PaperPnLEngine:
         self.daily_trades += 1
         if won:
             self.daily_wins += 1
-            
+
         if strategy not in self._daily_strategy_stats:
             self._daily_strategy_stats[strategy] = {"trades": 0, "total_pnl": 0.0, "wins": 0}
-            
+
         ds = self._daily_strategy_stats[strategy]
         ds["trades"] += 1
         ds["total_pnl"] += pnl
@@ -165,7 +162,6 @@ class PaperPnLEngine:
                 "win_rate": round(wr, 1),
             }
         return out
-
 
     def get_summary(self) -> Dict:
         unmarked = getattr(self.pt, "unmarked_symbols", [])
@@ -276,7 +272,10 @@ class PaperPnLEngine:
             self.daily_max_drawdown = state.get("daily_max_drawdown", 0.0)
         logger.info(
             "Restored P&L state: realised=₹%s day=₹%s trades=%d win_rate=%.0f%% max_dd=₹%s%s",
-            f"{self.realised_pnl:,.0f}", f"{self.daily_realised_pnl:,.0f}", self.total_trades, self.win_rate,
+            f"{self.realised_pnl:,.0f}",
+            f"{self.daily_realised_pnl:,.0f}",
+            self.total_trades,
+            self.win_rate,
             f"{self.max_drawdown:,.0f}",
             " [daily reset]" if reset_daily else "",
         )
@@ -285,7 +284,9 @@ class PaperPnLEngine:
         """Reset daily counters for a new trading day. Cumulative stats are untouched."""
         logger.info(
             "Daily reset: day_pnl=₹%s day_trades=%d day_wr=%.0f%%",
-            f"{self.daily_realised_pnl:,.0f}", self.daily_trades, self.daily_win_rate,
+            f"{self.daily_realised_pnl:,.0f}",
+            self.daily_trades,
+            self.daily_win_rate,
         )
         self.daily_realised_pnl = 0.0
         self.daily_trades = 0

@@ -1,11 +1,14 @@
 """Tests for PaperPnLEngine — record, save/restore, snapshot, summary."""
-import sys, os, json
+
+import json
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from trading_system.paper.paper_pnl_engine import PaperPnLEngine
-from trading_system.config import settings
-from trading_system.paper.paper_position_tracker import PaperPositionTracker
 from trading_system.core.trade_logger import TradeLogger
+from trading_system.paper.paper_pnl_engine import PaperPnLEngine
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
 
 class MockMD:
@@ -318,8 +321,8 @@ def test_max_drawdown_pct_zero_before_positive_peak():
 def test_max_drawdown_pct_tracks_peak_decline():
     """Bug F: pct = max_drawdown / peak_pnl * 100 once peak is positive."""
     pnl = _make()
-    pnl.record_trade("A", 10000, {})   # peak = 10000
-    pnl.record_trade("A", -500, {})    # drawdown = 500 → 5.0%
+    pnl.record_trade("A", 10000, {})  # peak = 10000
+    pnl.record_trade("A", -500, {})  # drawdown = 500 → 5.0%
     assert abs(pnl.max_drawdown_pct - 5.0) < 1e-9
     s = pnl.get_summary()
     assert s["max_drawdown_pct"] == 5.0
@@ -346,6 +349,7 @@ def test_save_restore_drawdown():
 
 def _cleanup():
     import shutil
+
     if os.path.isdir("/tmp/test_pnl_eng"):
         shutil.rmtree("/tmp/test_pnl_eng")
 

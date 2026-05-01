@@ -35,8 +35,8 @@ _QUEUE_MAX = 256
 
 @dataclass(frozen=True)
 class Alert:
-    event: str         # stable logical key, e.g. "combined_stop"
-    severity: str      # "critical" | "warning" | "info"
+    event: str  # stable logical key, e.g. "combined_stop"
+    severity: str  # "critical" | "warning" | "info"
     title: str
     body: str
 
@@ -73,7 +73,9 @@ class LogAlertChannel:
         logger.log(
             self._LEVEL.get(alert.severity, logging.INFO),
             "[ALERT:%s] %s — %s",
-            alert.event, alert.title, alert.body,
+            alert.event,
+            alert.title,
+            alert.body,
         )
         return True
 
@@ -101,7 +103,9 @@ class NtfyAlertChannel:
         self._dedup: dict[str, float] = {}
         self._dedup_lock = threading.Lock()
         self._worker = threading.Thread(
-            target=self._run, name="ntfy-alert-sender", daemon=True,
+            target=self._run,
+            name="ntfy-alert-sender",
+            daemon=True,
         )
         self._worker.start()
 
@@ -170,7 +174,8 @@ class NtfyAlertChannel:
         except Exception:
             logger.warning(
                 "ntfy alert post failed event=%s",
-                alert.event, exc_info=True,
+                alert.event,
+                exc_info=True,
             )
 
 
@@ -185,9 +190,7 @@ def build_channel(
         return NullAlertChannel()
     if channel_type == "ntfy":
         if not ntfy_topic_url:
-            logger.warning(
-                "alerts channel='ntfy' but ntfy_topic_url is empty; falling back to log"
-            )
+            logger.warning("alerts channel='ntfy' but ntfy_topic_url is empty; falling back to log")
             return LogAlertChannel()
         return NtfyAlertChannel(ntfy_topic_url)
     if channel_type == "log":

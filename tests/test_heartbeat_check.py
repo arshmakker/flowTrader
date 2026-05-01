@@ -1,18 +1,18 @@
 """LIVE-24: heartbeat watchdog tests."""
+
 import os
 import sys
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 
 from tools import heartbeat_check
 from trading_system.ops.alerts import NullAlertChannel
 
 try:
     from zoneinfo import ZoneInfo
+
     IST = ZoneInfo("Asia/Kolkata")
 except ImportError:
     IST = None
@@ -46,7 +46,10 @@ def test_off_hours_is_silent(tmp_path):
     # Don't even create the file — off-hours path should short-circuit.
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=_ist(8, 30),
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=_ist(8, 30),
     )
     assert rc == 0
     assert alerts.sent == []
@@ -57,7 +60,10 @@ def test_weekend_is_silent(tmp_path):
     snap = tmp_path / "pnl_snapshot.json"
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=_weekend_ist(10),
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=_weekend_ist(10),
     )
     assert rc == 0
     assert alerts.sent == []
@@ -70,7 +76,10 @@ def test_fresh_snapshot_healthy(tmp_path):
     _touch(str(snap), now=now, age_seconds=10)
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=now,
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=now,
     )
     assert rc == 0
     assert alerts.sent == []
@@ -83,7 +92,10 @@ def test_stale_snapshot_fires_alert(tmp_path):
     _touch(str(snap), now=now, age_seconds=400)
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=now,
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=now,
     )
     assert rc == 1
     assert len(alerts.sent) == 1
@@ -96,7 +108,10 @@ def test_missing_snapshot_fires_alert(tmp_path):
     snap = tmp_path / "never_written.json"
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=_ist(12, 0),
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=_ist(12, 0),
     )
     assert rc == 1
     assert len(alerts.sent) == 1
@@ -110,7 +125,10 @@ def test_after_close_is_silent(tmp_path):
     _touch(str(snap), now=now, age_seconds=10_000)
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=now,
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=now,
     )
     assert rc == 0
     assert alerts.sent == []
@@ -123,7 +141,10 @@ def test_boundary_fresh_at_threshold(tmp_path):
     _touch(str(snap), now=now, age_seconds=180)
     alerts = NullAlertChannel()
     rc = heartbeat_check.check_heartbeat(
-        str(snap), alerts, stale_sec=180, now=now,
+        str(snap),
+        alerts,
+        stale_sec=180,
+        now=now,
     )
     # age == stale_sec → not strictly greater than → healthy
     assert rc == 0
@@ -139,9 +160,11 @@ def test_main_flushes_alert_channel_before_exit(tmp_path, monkeypatch):
     class TrackingChannel:
         def __init__(self):
             self.sent = []
+
         def send(self, alert):
             self.sent.append(alert)
             return True
+
         def flush(self, timeout=5.0):
             flush_calls.append(timeout)
             return True

@@ -6,7 +6,10 @@ into ``settings.FEES_NIFTY_OPT`` — if those rates are revised (SEBI, NSE,
 Budget STT hike), these tests should fail loudly so a rate-change PR gets a
 paired test-pin update rather than silently shifting paper-PnL calibration.
 """
-import os, sys
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
@@ -14,13 +17,13 @@ import pytest
 from trading_system.config import settings
 from trading_system.core.fees import compute_taxes_and_fees
 
-
 # A canonical option symbol in Shoonya's tradingsymbol shape.
 _CE = "NFO|NIFTY17APR26C22000"
 _PE = "NFO|NIFTY17APR26P22000"
 
 
 # ── Side-asymmetry is load-bearing ─────────────────────────────────────
+
 
 def test_sell_leg_has_stt_no_stamp():
     f = compute_taxes_and_fees(_CE, "SELL", price=50.0, qty=650)
@@ -46,6 +49,7 @@ def test_short_side_aliases_accepted():
 
 
 # ── Each component pinned independently ────────────────────────────────
+
 
 def test_brokerage_is_flat_per_order():
     """Shoonya is flat ₹5, NOT tiered. Premium size mustn't scale brokerage."""
@@ -84,6 +88,7 @@ def test_stamp_buy_rate():
 
 # ── GST base is load-bearing: MUST exclude STT and stamp ───────────────
 
+
 def test_gst_excludes_stt_and_stamp():
     """Common implementation bug: GSTing the whole bill. The rule is
     GST = 18% × (brokerage + exch_txn + sebi) only — STT and stamp are
@@ -95,25 +100,22 @@ def test_gst_excludes_stt_and_stamp():
     # And: if we take the same leg as a BUY (stamp replaces STT), GST still
     # excludes stamp — the base is the same.
     f_buy = compute_taxes_and_fees(_CE, "BUY", price=50.0, qty=650)
-    assert f_buy["gst"] == pytest.approx(
-        (f_buy["brokerage"] + f_buy["exch_txn"] + f_buy["sebi"]) * 0.18, abs=0.01
-    )
+    assert f_buy["gst"] == pytest.approx((f_buy["brokerage"] + f_buy["exch_txn"] + f_buy["sebi"]) * 0.18, abs=0.01)
 
 
 # ── Total is the authoritative sum ─────────────────────────────────────
+
 
 def test_total_equals_sum_of_components():
     """Callers should use fees['total'] rather than re-summing — pin the
     invariant that total IS the sum (modulo paise rounding)."""
     f = compute_taxes_and_fees(_CE, "SELL", price=50.0, qty=650)
-    component_sum = (
-        f["brokerage"] + f["stt"] + f["exch_txn"]
-        + f["sebi"] + f["stamp"] + f["gst"]
-    )
+    component_sum = f["brokerage"] + f["stt"] + f["exch_txn"] + f["sebi"] + f["stamp"] + f["gst"]
     assert f["total"] == pytest.approx(component_sum, abs=0.01)
 
 
 # ── Worked examples against the numbers documented in the LIVE-12 brief ──
+
 
 def test_worked_example_10lot_sell_at_50():
     """10 lots NIFTY (qty=650) SELL CE @ ₹50 — roughly ₹68 all-in per leg.
@@ -154,6 +156,7 @@ def test_worked_example_10lot_buy_at_5_is_cheap():
 
 # ── Non-fill / edge-case inputs don't explode ──────────────────────────
 
+
 def test_zero_qty_returns_zero_fees():
     """Zero-qty leg can't have any cost. Kept defensive so the rejected-order
     code path in PaperOrderManager doesn't need its own zeroing logic."""
@@ -176,6 +179,7 @@ def test_put_symbol_recognised_as_option():
 
 
 # ── Rate-revision guard — if FEES_NIFTY_OPT is edited, these must track ──
+
 
 def test_rates_block_is_current_as_of_2026_04_24():
     """If you bump any of these rates, update the expectation here AND the

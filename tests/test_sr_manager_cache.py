@@ -1,9 +1,9 @@
 """tests/test_sr_manager_cache.py — BUG-17 regression: SRManager caches scan results."""
-import os
-import sys
-import tempfile
+
 import csv
+import os
 import pathlib
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -26,7 +26,7 @@ def _make_market_data_dir(base, date_str, ltp_values):
 def test_sr_cached_on_second_call(tmp_path):
     """BUG-17: second call with unchanged dirs must not re-read the CSV."""
     _make_market_data_dir(tmp_path, "20260105", [24000, 24100, 24200])  # Mon
-    _make_market_data_dir(tmp_path, "20260106", [24050, 24150])         # Tue
+    _make_market_data_dir(tmp_path, "20260106", [24050, 24150])  # Tue
 
     sr = SRManager(base_dir=str(tmp_path))
     high1, low1 = sr.get_20day_high_low("NIFTY")

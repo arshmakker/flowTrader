@@ -26,9 +26,7 @@ from typing import Dict
 from trading_system.config import settings
 
 
-def compute_taxes_and_fees(
-    symbol: str, side: str, price: float, qty: int
-) -> Dict[str, float]:
+def compute_taxes_and_fees(symbol: str, side: str, price: float, qty: int) -> Dict[str, float]:
     """Return the full six-component cost breakdown for a single options leg.
 
     Returns a dict with keys ``brokerage, stt, exch_txn, sebi, stamp, gst, total``.

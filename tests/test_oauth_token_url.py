@@ -10,10 +10,9 @@ The exchange URL is resolved in this priority order (api_helper.py:482-492):
 These tests pin that priority order so future refactors can't silently break it.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from api_helper import ShoonyaApiPy
-
 
 CANONICAL_DEFAULT_URL = "https://api.shoonya.com/NorenWClientAPI//GenAcsTok"
 

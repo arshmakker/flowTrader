@@ -1,13 +1,15 @@
 """Smoke tests — verify all source files import without syntax errors."""
-import sys
-import os
+
 import importlib
+import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
 def test_main_compiles():
     import py_compile
+
     py_compile.compile(
         os.path.join(os.path.dirname(__file__), "..", "main.py"),
         doraise=True,
@@ -16,6 +18,7 @@ def test_main_compiles():
 
 def test_strategy_runner_compiles():
     import py_compile
+
     py_compile.compile(
         os.path.join(os.path.dirname(__file__), "..", "strategy_runner.py"),
         doraise=True,
@@ -24,6 +27,7 @@ def test_strategy_runner_compiles():
 
 def test_api_helper_compiles():
     import py_compile
+
     py_compile.compile(
         os.path.join(os.path.dirname(__file__), "..", "api_helper.py"),
         doraise=True,
@@ -49,6 +53,7 @@ def test_all_trading_system_modules_import():
 def test_strategy_runner_imports():
     """strategy_runner.py should import without error."""
     import strategy_runner
+
     assert hasattr(strategy_runner, "is_market_hours")
     assert hasattr(strategy_runner, "get_weekly_expiry")
     assert hasattr(strategy_runner, "get_option_chain_data")

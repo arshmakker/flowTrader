@@ -6,19 +6,20 @@ mode. Every scenario here maps to a real live-mode failure mode
 (phantom positions, hidden positions, partial-fill qty drift, zombie
 zero-qty rows, malformed broker rows).
 """
-import os, sys
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import pytest
 
 from trading_system.ops.startup_reconcile import (
     QtyMismatch,
-    StartupReconciliationReport,
     reconcile_startup_positions,
 )
 
-
 # ── Helpers to build fake positions in each side's shape ───────────────
+
 
 def _engine_leg(qty: int, avg_price: float = 50.0) -> dict:
     """Shape of a PaperPositionTracker._positions entry."""
@@ -42,8 +43,8 @@ def _ic_engine_positions() -> dict:
     return {
         "NFO|NIFTY28APR26C24100": _engine_leg(-650),  # SC
         "NFO|NIFTY28APR26P24000": _engine_leg(-650),  # SP
-        "NFO|NIFTY28APR26C24200": _engine_leg(650),   # LC wing
-        "NFO|NIFTY28APR26P23900": _engine_leg(650),   # LP wing
+        "NFO|NIFTY28APR26C24200": _engine_leg(650),  # LC wing
+        "NFO|NIFTY28APR26P23900": _engine_leg(650),  # LP wing
     }
 
 
@@ -58,6 +59,7 @@ def _ic_broker_positions() -> list:
 
 
 # ── Happy paths ────────────────────────────────────────────────────────
+
 
 def test_both_flat_is_consistent():
     """Clean cold boot, no position either side."""
@@ -85,6 +87,7 @@ def test_matching_ic_is_consistent():
 
 # ── Divergence: engine has phantom positions ────────────────────────────
 
+
 def test_engine_has_position_broker_does_not_is_divergent():
     """Phantom: JSON says we have 4 legs, broker says 0. Broker won overnight
     (force-squared at 15:30, engine didn't see the update). Resuming would
@@ -107,6 +110,7 @@ def test_engine_has_one_extra_leg():
 
 
 # ── Divergence: broker has positions engine doesn't ────────────────────
+
 
 def test_broker_has_hidden_position_is_divergent():
     """Hidden: broker holds legs the engine doesn't know about — a manual
@@ -142,11 +146,11 @@ def test_multiple_discrepancies_all_reported():
     the full picture, not just the first failure."""
     engine = _ic_engine_positions()
     broker = [
-        _broker_leg("NIFTY28APR26C24100", -650),   # match
-        _broker_leg("NIFTY28APR26P24000", -300),   # qty mismatch
+        _broker_leg("NIFTY28APR26C24100", -650),  # match
+        _broker_leg("NIFTY28APR26P24000", -300),  # qty mismatch
         # LC wing (24200) missing — engine_only
-        _broker_leg("NIFTY28APR26C25000", 650),    # broker_only (mystery)
-        _broker_leg("NIFTY28APR26P23900", 650),    # match
+        _broker_leg("NIFTY28APR26C25000", 650),  # broker_only (mystery)
+        _broker_leg("NIFTY28APR26P23900", 650),  # match
     ]
     report = reconcile_startup_positions(engine, broker)
     assert report.consistent is False
@@ -158,13 +162,14 @@ def test_multiple_discrepancies_all_reported():
 
 # ── Zero-qty / malformed rows ──────────────────────────────────────────
 
+
 def test_zero_netqty_broker_rows_are_filtered():
     """Shoonya leaves flat-within-day positions in the response with
     netqty=0. They're audit rows, not exposure. Engine flat + broker rows
     all zero must reconcile as consistent."""
     broker = [
-        _broker_leg("NIFTY28APR26C24100", 0),   # day-flat
-        _broker_leg("NIFTY28APR26P24000", 0),   # day-flat
+        _broker_leg("NIFTY28APR26C24100", 0),  # day-flat
+        _broker_leg("NIFTY28APR26P24000", 0),  # day-flat
     ]
     report = reconcile_startup_positions({}, broker)
     assert report.consistent is True
@@ -184,8 +189,8 @@ def test_malformed_broker_rows_skipped_not_crashed():
     netqty, must be skipped defensively. The caller sees it as a
     consistent empty broker side if that was the only row — not crash."""
     malformed = [
-        {"stat": "Ok"},                                     # no tsym/exch
-        {"exch": "NFO", "tsym": "NIFTY28APR26C24100"},     # no netqty
+        {"stat": "Ok"},  # no tsym/exch
+        {"exch": "NFO", "tsym": "NIFTY28APR26C24100"},  # no netqty
         {"exch": "NFO", "tsym": "NIFTY28APR26C24100", "netqty": "not-a-number"},
         "a-string-not-a-dict",
     ]
@@ -196,6 +201,7 @@ def test_malformed_broker_rows_skipped_not_crashed():
 
 # ── Symbol normalization — engine uses EXCH|TSYM, broker splits them ───
 
+
 def test_symbol_normalization_matches_engine_format():
     """Broker returns tsym + exch as separate fields; engine stores them
     joined with a pipe. Reconciler must normalise the broker side to
@@ -204,5 +210,3 @@ def test_symbol_normalization_matches_engine_format():
     broker = [_broker_leg("NIFTY28APR26C24100", -650)]
     report = reconcile_startup_positions(engine, broker)
     assert report.consistent is True
-
-

@@ -4,6 +4,7 @@ TRADE_END = 15:10 — hard close for all non-expiring positions (20 min before 1
 TRADE_END_EXPIRY = 15:00 — early close for positions expiring today (avoids the
 final-30-min settlement squeeze on expiry day).
 """
+
 from __future__ import annotations
 
 from datetime import datetime

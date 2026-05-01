@@ -16,7 +16,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from trading_system.config import settings
 
@@ -78,13 +78,16 @@ class LiveOrderManager:
         buy_or_sell = buy_or_sell.upper()
         logger.info(
             "LIVE ORDER SUBMIT %s %s qty=%d price_type=%s",
-            buy_or_sell, tradingsymbol, quantity, price_type,
+            buy_or_sell,
+            tradingsymbol,
+            quantity,
+            price_type,
         )
 
         try:
             resp = self.api.place_order(
-                buy_or_sell=buy_or_sell[0],   # Shoonya expects 'B' or 'S'
-                product_type="I",             # intraday
+                buy_or_sell=buy_or_sell[0],  # Shoonya expects 'B' or 'S'
+                product_type="I",  # intraday
                 exchange="NFO",
                 tradingsymbol=tradingsymbol.split("|")[-1],
                 quantity=quantity,
@@ -103,7 +106,8 @@ class LiveOrderManager:
         if not order_id:
             logger.error(
                 "LIVE ORDER submit returned no order_id for %s (resp=%s)",
-                tradingsymbol, resp,
+                tradingsymbol,
+                resp,
             )
             return self._make_rejected(tradingsymbol, buy_or_sell, quantity, reason="no_order_id")
 
@@ -111,13 +115,17 @@ class LiveOrderManager:
             broker_order = self._await_terminal(order_id)
         except OrderPollingAbandoned as exc:
             logger.error("LIVE ORDER polling abandoned for %s: %s", order_id, exc)
-            persist_stuck_legs([{
-                "order_id": order_id,
-                "symbol": tradingsymbol,
-                "side": buy_or_sell,
-                "qty": quantity,
-                "reason": "polling_abandoned",
-            }])
+            persist_stuck_legs(
+                [
+                    {
+                        "order_id": order_id,
+                        "symbol": tradingsymbol,
+                        "side": buy_or_sell,
+                        "qty": quantity,
+                        "reason": "polling_abandoned",
+                    }
+                ]
+            )
             raise  # propagate — caller (iron_condor.py) must halt
 
         order = self._normalise(broker_order, tradingsymbol, buy_or_sell, quantity)
@@ -127,8 +135,11 @@ class LiveOrderManager:
 
         logger.info(
             "LIVE ORDER %s %s status=%s fill_qty=%d fill_price=%.2f",
-            buy_or_sell, tradingsymbol,
-            order["status"], order["fill_qty"], order["fill_price"],
+            buy_or_sell,
+            tradingsymbol,
+            order["status"],
+            order["fill_qty"],
+            order["fill_price"],
         )
         return order
 
@@ -175,11 +186,10 @@ class LiveOrderManager:
         return max(cash - used, 0.0)
 
     @staticmethod
-    def build_option_symbol(
-        symbol: str, expiry: str, strike: float, opt_type: str
-    ) -> str:
+    def build_option_symbol(symbol: str, expiry: str, strike: float, opt_type: str) -> str:
         """Identical to PaperOrderManager.build_option_symbol."""
         from datetime import datetime as _dt
+
         if hasattr(expiry, "strftime"):
             exp_str = expiry.strftime("%d%b%y").upper()
         else:
@@ -209,7 +219,9 @@ class LiveOrderManager:
                 consecutive_errors += 1
                 logger.warning(
                     "LIVE POLL error #%d for order %s: %s",
-                    consecutive_errors, order_id, exc,
+                    consecutive_errors,
+                    order_id,
+                    exc,
                 )
                 if consecutive_errors >= settings.MAX_POLL_ERRORS:
                     raise OrderPollingAbandoned(order_id, exc)
@@ -248,7 +260,7 @@ class LiveOrderManager:
             "fill_qty": fill_qty,
             "fill_price": fill_price,
             "status": status,
-            "stt": 0.0,       # computed post-fill by cost engine (LIVE-12)
+            "stt": 0.0,  # computed post-fill by cost engine (LIVE-12)
             "brokerage": 0.0,  # idem
             "timestamp": broker.get("exch_tm", datetime.now().isoformat()),
             "paper": False,
@@ -279,6 +291,7 @@ class LiveOrderManager:
 
 
 # ── Shared utility (used by iron_condor.py too) ──────────────────────────────
+
 
 def persist_stuck_legs(legs: list) -> None:
     """Append stuck leg records to data/stuck_legs.json for operator review."""

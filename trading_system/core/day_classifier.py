@@ -9,9 +9,9 @@ from VWAP. Classification is locked for the day — cannot be overridden.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from trading_system.config import settings
 
@@ -64,9 +64,12 @@ class DayClassifier:
         current = self.md.get_ltp(self.spot_key)
         if open_px <= 0 or current <= 0:
             self._result = DayClassification(
-                day_type="RANGING", confidence="LOW",
-                open_price=open_px, current_price=current,
-                move_pct=0.0, vwap_distance_pct=0.0,
+                day_type="RANGING",
+                confidence="LOW",
+                open_price=open_px,
+                current_price=current,
+                move_pct=0.0,
+                vwap_distance_pct=0.0,
                 classified_at=datetime.now().strftime("%H:%M:%S"),
             )
             return self._result

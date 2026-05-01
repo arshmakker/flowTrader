@@ -40,7 +40,8 @@ def main(argv=None) -> int:
         help="Path to engine paper_orders.csv",
     )
     parser.add_argument(
-        "--broker", required=True,
+        "--broker",
+        required=True,
         help="Path to broker contract-note CSV for the given date",
     )
     parser.add_argument(
@@ -49,11 +50,15 @@ def main(argv=None) -> int:
         help="Output JSON path; defaults to data/reconciliation_<date>.json",
     )
     parser.add_argument(
-        "--window-sec", type=float, default=rec.DEFAULT_MATCH_WINDOW_SEC,
+        "--window-sec",
+        type=float,
+        default=rec.DEFAULT_MATCH_WINDOW_SEC,
         help=f"Match window in seconds (default {rec.DEFAULT_MATCH_WINDOW_SEC}).",
     )
     parser.add_argument(
-        "--flag-pct", type=float, default=rec.DEFAULT_FLAG_PRICE_PCT,
+        "--flag-pct",
+        type=float,
+        default=rec.DEFAULT_FLAG_PRICE_PCT,
         help=f"Price drift threshold to flag (default {rec.DEFAULT_FLAG_PRICE_PCT}).",
     )
     args = parser.parse_args(argv)
@@ -76,7 +81,8 @@ def main(argv=None) -> int:
         return 2
 
     report = rec.reconcile(
-        engine, broker,
+        engine,
+        broker,
         window_sec=args.window_sec,
         flag_pct=args.flag_pct,
         date_iso=args.date,
@@ -84,11 +90,15 @@ def main(argv=None) -> int:
     rec.write_report(report, args.output)
 
     log.info(
-        "reconcile date=%s engine=%d broker=%d matched=%d unmatched_engine=%d "
-        "unmatched_broker=%d flagged=%d -> %s",
-        args.date, report.engine_leg_count, report.broker_leg_count,
-        len(report.matched), len(report.unmatched_engine),
-        len(report.unmatched_broker), len(report.flagged), args.output,
+        "reconcile date=%s engine=%d broker=%d matched=%d unmatched_engine=%d unmatched_broker=%d flagged=%d -> %s",
+        args.date,
+        report.engine_leg_count,
+        report.broker_leg_count,
+        len(report.matched),
+        len(report.unmatched_engine),
+        len(report.unmatched_broker),
+        len(report.flagged),
+        args.output,
     )
 
     # Non-zero exit when there's operator-actionable drift, so this can run

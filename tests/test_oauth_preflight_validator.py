@@ -11,7 +11,6 @@ import pytest
 
 from main import _validate_oauth_creds
 
-
 WORKING_CREDS = {
     "UID": "FA50394",
     "client_id": "FA50394_U",

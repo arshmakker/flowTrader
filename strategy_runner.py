@@ -5,15 +5,17 @@ Provides: market hours, NIFTY spot, option chain, eligible expiries, India VIX, 
 No strategy or regime logic; build new system per docs/agent.md.
 """
 
-import pandas as pd
+import json
 import logging
 import os
-import json
 from datetime import datetime, timedelta
-from typing import Dict, Optional, List
+from typing import Dict, Optional
+
+import pandas as pd
 
 try:
     from zoneinfo import ZoneInfo
+
     IST = ZoneInfo("Asia/Kolkata")
 except ImportError:
     IST = None
@@ -25,15 +27,18 @@ DAYS_TO_EXPIRY_MIN = 0
 
 try:
     from trading_system.config import settings as _settings
+
     INDIA_VIX_TOKEN_NSE = _settings.INDIA_VIX_TOKEN
 except ImportError:
     INDIA_VIX_TOKEN_NSE = "26017"
+
 
 def _get_holiday_set_ist():
     """Returns holiday ISO dates ('YYYY-MM-DD') from settings if available."""
     try:
         from trading_system.config import settings as _settings_local
-        holidays = getattr(_settings_local, 'TRADING_HOLIDAYS_IST', None)
+
+        holidays = getattr(_settings_local, "TRADING_HOLIDAYS_IST", None)
         return set(holidays) if holidays else set()
     except Exception:
         return set()
@@ -46,7 +51,6 @@ def is_trading_day_ist(now: Optional[datetime] = None) -> bool:
     if d.weekday() >= 5:
         return False
     return d.isoformat() not in _get_holiday_set_ist()
-
 
 
 def _get_date_object(date_or_datetime):
@@ -165,7 +169,7 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
     """Option chain for NIFTY for given expiry (DataFrame with strike, option_type, ltp, bid, ask, etc.)."""
     try:
         expiry_date_obj = _get_date_object(expiry_date)
-        expiry_str = expiry_date_obj.strftime("%d-%b-%Y").upper()
+        expiry_date_obj.strftime("%d-%b-%Y").upper()
         if symbol_manager.nse_fo is None:
             return pd.DataFrame()
         nifty_options = symbol_manager.nse_fo[
@@ -182,7 +186,9 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
         strike_interval = 50
         min_strike = int(spot_price) - count * strike_interval
         max_strike = int(spot_price) + count * strike_interval
-        options_df = options_df[(options_df["strikeprice"] >= min_strike) & (options_df["strikeprice"] <= max_strike)].copy()
+        options_df = options_df[
+            (options_df["strikeprice"] >= min_strike) & (options_df["strikeprice"] <= max_strike)
+        ].copy()
         if options_df.empty:
             return pd.DataFrame()
         chain_data = []
@@ -199,19 +205,21 @@ def get_option_chain_data(api, symbol_manager, spot_price, expiry_date, count=50
                 ask = float(quote.get("sp1", 0))
                 ltp = float(quote.get("lp", 0))
                 mid_price = (bid + ask) / 2 if bid > 0 and ask > 0 else ltp
-                chain_data.append({
-                    "strike": strike,
-                    "option_type": option_type,
-                    "tradingsymbol": tsym,
-                    "ltp": ltp,
-                    "bid": bid,
-                    "ask": ask,
-                    "mid_price": mid_price,
-                    "delta": 0.0,
-                    "oi": int(quote.get("oi", 0)),
-                    "volume": int(quote.get("v", 0)),
-                    "lot_size": int(option_row.get("lotsize", 50)),
-                })
+                chain_data.append(
+                    {
+                        "strike": strike,
+                        "option_type": option_type,
+                        "tradingsymbol": tsym,
+                        "ltp": ltp,
+                        "bid": bid,
+                        "ask": ask,
+                        "mid_price": mid_price,
+                        "delta": 0.0,
+                        "oi": int(quote.get("oi", 0)),
+                        "volume": int(quote.get("v", 0)),
+                        "lot_size": int(option_row.get("lotsize", 50)),
+                    }
+                )
             except Exception:
                 continue
         return pd.DataFrame(chain_data) if chain_data else pd.DataFrame()
@@ -280,6 +288,7 @@ def _muhurat_window_for_date(d) -> Optional["tuple[datetime, datetime]"]:
     loop."""
     try:
         from trading_system.config import settings as _settings_local
+
         sessions = getattr(_settings_local, "MUHURAT_SESSIONS", None) or []
     except Exception:
         return None
@@ -333,6 +342,7 @@ def is_tradable_now(now: Optional[datetime] = None) -> "tuple[bool, str]":
 
     try:
         from trading_system.config import settings as _cfg
+
         po_start = getattr(_cfg, "PRE_OPEN_START_IST", "09:00")
         po_end = getattr(_cfg, "PRE_OPEN_END_IST", "09:15")
     except ImportError:

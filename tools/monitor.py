@@ -3,16 +3,17 @@
 Continuous monitor for RegimeTrader main.py
 Shows: latest log entries, P&L snapshot, open positions, and issues
 """
-import time
-import os
+
 import json
-import sys
+import os
+import time
 from datetime import datetime
 
 LOG_DIR = "logs"
 DATA_DIR = "data"
 SNAPSHOT_FILE = os.path.join(DATA_DIR, "pnl_snapshot.json")
 POSITION_FILE = os.path.join(DATA_DIR, "positions.json")
+
 
 def get_latest_log():
     """Get the most recent log file."""
@@ -23,87 +24,90 @@ def get_latest_log():
             return None
         latest = sorted(log_files)[-1]
         return os.path.join(LOG_DIR, latest)
-    except:
+    except Exception:
         return None
+
 
 def read_last_lines(filepath, n=20):
     """Read last n lines of a file efficiently."""
     try:
-        with open(filepath, 'rb') as f:
+        with open(filepath, "rb") as f:
             f.seek(0, 2)
             file_size = f.tell()
             block_size = 1024
-            data = b''
-            while len(data) < file_size and len(data.split(b'\n')) < n + 1:
+            data = b""
+            while len(data) < file_size and len(data.split(b"\n")) < n + 1:
                 seek_pos = max(0, file_size - len(data) - block_size)
                 f.seek(seek_pos)
                 data = f.read(file_size - seek_pos) + data
-            lines = data.decode('utf-8', errors='ignore').split('\n')
+            lines = data.decode("utf-8", errors="ignore").split("\n")
             return [l for l in lines if l.strip()][-n:]
-    except:
+    except Exception:
         return []
+
 
 def read_snapshot():
     """Read P&L snapshot."""
     try:
         with open(SNAPSHOT_FILE) as f:
             return json.load(f)
-    except:
+    except Exception:
         return None
+
 
 def read_positions():
     """Read position file for open positions."""
     try:
         with open(POSITION_FILE) as f:
             return json.load(f)
-    except:
+    except Exception:
         return None
+
 
 def check_process():
     """Check if main.py is running."""
     try:
         import subprocess
-        result = subprocess.run(['pgrep', '-f', 'python.*main.py'], capture_output=True, text=True)
-        return result.stdout.strip() != ''
-    except:
+
+        result = subprocess.run(["pgrep", "-f", "python.*main.py"], capture_output=True, text=True)
+        return result.stdout.strip() != ""
+    except Exception:
         return False
+
 
 def extract_issues(log_lines):
     """Extract issues from recent log lines."""
-    issues = {
-        'rejections': [],
-        'warnings': [],
-        'errors': [],
-        'trades': []
-    }
+    issues = {"rejections": [], "warnings": [], "errors": [], "trades": []}
     for line in log_lines:
-        if 'WARNING' in line or 'refusing entry' in line.lower():
-            issues['rejections'].append(line)
-        elif 'ERROR' in line:
-            issues['errors'].append(line)
-        elif 'Trade closed' in line or 'harvest' in line.lower():
-            issues['trades'].append(line)
+        if "WARNING" in line or "refusing entry" in line.lower():
+            issues["rejections"].append(line)
+        elif "ERROR" in line:
+            issues["errors"].append(line)
+        elif "Trade closed" in line or "harvest" in line.lower():
+            issues["trades"].append(line)
     return issues
+
 
 def format_pnl(snapshot):
     """Format P&L for display."""
     if not snapshot:
         return "No P&L data"
-    total = snapshot.get('total_pnl', 0)
-    realised = snapshot.get('realised_pnl', 0)
-    unrealised = snapshot.get('unrealised_pnl', 0)
-    trades = snapshot.get('total_trades', 0)
-    wr = snapshot.get('win_rate_pct', 0)
+    total = snapshot.get("total_pnl", 0)
+    realised = snapshot.get("realised_pnl", 0)
+    unrealised = snapshot.get("unrealised_pnl", 0)
+    trades = snapshot.get("total_trades", 0)
+    wr = snapshot.get("win_rate_pct", 0)
     return f"Total: ₹{total:.2f} | Realised: ₹{realised:.2f} | Unrealised: ₹{unrealised:.2f} | Trades: {trades} | WR: {wr:.1f}%"
+
 
 def main():
     print("RegimeTrader Monitor — Press Ctrl+C to stop\n")
     while True:
-        os.system('clear' if os.name == 'posix' else 'cls')
+        os.system("clear" if os.name == "posix" else "cls")
 
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"RegimeTrader Monitor — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*80}\n")
+        print(f"{'=' * 80}\n")
 
         # Process status
         running = check_process()
@@ -115,7 +119,7 @@ def main():
         snapshot = read_snapshot()
         if snapshot:
             print(f"  {format_pnl(snapshot)}")
-            daily = snapshot.get('daily', {})
+            daily = snapshot.get("daily", {})
             if daily:
                 print(f"  Daily: ₹{daily.get('realised_pnl', 0):.2f} | Trades: {daily.get('trades', 0)}")
         else:
@@ -125,10 +129,10 @@ def main():
         # Open Positions
         print("OPEN POSITIONS:")
         positions = read_positions()
-        if positions and 'strategies' in positions:
-            for inst, data in positions['strategies'].items():
-                if data.get('active'):
-                    pos = data.get('position', {})
+        if positions and "strategies" in positions:
+            for inst, data in positions["strategies"].items():
+                if data.get("active"):
+                    pos = data.get("position", {})
                     print(f"  {inst}: Active | Expiry: {pos.get('expiry_date', 'N/A')}")
                 else:
                     print(f"  {inst}: Flat")
@@ -155,18 +159,18 @@ def main():
         if latest_log:
             lines = read_last_lines(latest_log, 50)
             issues = extract_issues(lines)
-            if issues['errors']:
+            if issues["errors"]:
                 print("  ERRORS:")
-                for e in issues['errors'][-3:]:
+                for e in issues["errors"][-3:]:
                     print(f"    {e}")
-            if issues['rejections']:
+            if issues["rejections"]:
                 print(f"  REJECTIONS (last 3 of {len(issues['rejections'])}):")
-                for r in issues['rejections'][-3:]:
+                for r in issues["rejections"][-3:]:
                     print(f"    {r}")
-            if not issues['errors'] and not issues['rejections']:
+            if not issues["errors"] and not issues["rejections"]:
                 print("  No issues detected")
 
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print("Refreshing in 30s... (Ctrl+C to stop)")
 
         try:
@@ -174,6 +178,7 @@ def main():
         except KeyboardInterrupt:
             print("\nMonitor stopped.")
             break
+
 
 if __name__ == "__main__":
     main()

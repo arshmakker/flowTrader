@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import sys
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-import sys
 
 # Ensure repo root is importable when run as a script from tools/
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -66,9 +66,7 @@ def find_non_trading_day_dirs(base: Path) -> list[Candidate]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(
-        description="Delete market_data_YYYYMMDD folders that are weekends/holidays."
-    )
+    ap = argparse.ArgumentParser(description="Delete market_data_YYYYMMDD folders that are weekends/holidays.")
     ap.add_argument("--base", default=".", help="Base directory to scan (default: repo root).")
     ap.add_argument("--dry-run", action="store_true", help="Print what would be deleted, but do not delete anything.")
     args = ap.parse_args()

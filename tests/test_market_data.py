@@ -1,4 +1,5 @@
 """Tests for MarketData — get_open_price fallback, is_open_price_reliable."""
+
 import os
 import sys
 
@@ -27,6 +28,7 @@ def test_get_open_price_fallback_to_ltp_and_unreliable():
 
 def test_is_open_price_reliable_true_when_open_from_api():
     """When API returns valid 'o', symbol is not in _open_price_fallback."""
+
     class MockAPI:
         def get_quotes(self, exchange=None, token=None):
             return {"o": "24100.0", "lp": "24200.0"}
@@ -76,16 +78,18 @@ def test_empty_o_string_does_not_silently_use_lp():
             return {"lp": "24050.0"}
 
     md = MarketData(MockAPI(), None)
-    open_px = md.get_open_price(settings.NIFTY_SYMBOL)
+    md.get_open_price(settings.NIFTY_SYMBOL)
     assert md.is_open_price_reliable(settings.NIFTY_SYMBOL) is False
 
 
 # ── LIVE-06: get_quote_book ─────────────────────────────────────────────
 
+
 class _FakeSymbolManager:
     """Returns a fixed token for any tradingsymbol so _resolve_token succeeds
     on NFO legs in tests. Without this, _resolve_token falls back to returning
     the tsym itself, which get_quote_book then treats as 'unresolved'."""
+
     def get_token_info(self, name, exchange=None):
         return {"token": "12345"}
 
@@ -98,8 +102,10 @@ def test_get_quote_book_parses_shoonya_response():
         def get_quotes(self, exchange=None, token=None):
             return {
                 "lp": "20.5",
-                "bp1": "20.0", "sp1": "21.0",
-                "bq1": "1500", "sq1": "1800",
+                "bp1": "20.0",
+                "sp1": "21.0",
+                "bq1": "1500",
+                "sq1": "1800",
             }
 
     md = MarketData(MockAPI(), _FakeSymbolManager())
@@ -124,8 +130,10 @@ def test_get_quote_book_zero_bid_marks_untradable():
         def get_quotes(self, exchange=None, token=None):
             return {
                 "lp": "20.0",
-                "bp1": "0", "sp1": "21.0",
-                "bq1": "0", "sq1": "1800",
+                "bp1": "0",
+                "sp1": "21.0",
+                "bq1": "0",
+                "sq1": "1800",
             }
 
     md = MarketData(MockAPI(), _FakeSymbolManager())

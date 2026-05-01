@@ -1,13 +1,16 @@
 """tests/test_ic_lifecycle.py — BUG-03 and BUG-04 regressions (tracker unwind on exit and rollback)."""
-import sys, os
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
+from trading_system.config import settings
+from trading_system.core.iron_condor import IronCondorStrategy
 from trading_system.paper.paper_order_manager import PaperOrderManager
 from trading_system.paper.paper_position_tracker import PaperPositionTracker
-from trading_system.core.iron_condor import IronCondorStrategy
-from trading_system.config import settings
 
 
 @pytest.fixture(autouse=True)
@@ -19,6 +22,7 @@ def _force_sequential_entry(monkeypatch):
 
 class FakeMD:
     """Minimal MarketData double: returns fixed LTPs keyed by symbol."""
+
     def __init__(self, prices):
         self._prices = prices
 
@@ -31,6 +35,7 @@ class FakeMD:
 
 class FakeSR:
     """No-op SR manager — returns strikes unchanged."""
+
     def apply_buffer(self, strike, sr_high, sr_low, opt_type, step):
         return strike
 
@@ -40,8 +45,8 @@ def _prices_for_22000():
     return {
         "NFO|NIFTY19MAR26C22150": 18.0,  # sc — SELL
         "NFO|NIFTY19MAR26P21850": 18.0,  # sp — SELL
-        "NFO|NIFTY19MAR26C22200": 5.0,   # lc — BUY
-        "NFO|NIFTY19MAR26P21800": 5.0,   # lp — BUY
+        "NFO|NIFTY19MAR26C22200": 5.0,  # lc — BUY
+        "NFO|NIFTY19MAR26P21800": 5.0,  # lp — BUY
     }
 
 

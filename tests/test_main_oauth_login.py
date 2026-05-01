@@ -10,9 +10,10 @@ unit coverage before:
    env-var -> in-process Selenium -> external subprocess -> manual-paste
    fallback chain. CLAUDE.md flags this as load-bearing; order matters.
 """
+
+import logging
 import os
 import sys
-import logging
 
 import pytest
 
@@ -20,8 +21,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import main
 
-
 # -------------------- _extract_auth_code --------------------
+
 
 def test_extract_from_auth_code_label():
     assert main._extract_auth_code("Auth Code: abc123def") == "abc123def"
@@ -117,10 +118,15 @@ class FakeApi:
         return f"{oauth_url}?client_id={client_id}"
 
     def exchange_auth_code(self, auth_code, secret_code, client_id, uid, token_url=""):
-        self.exchange_calls.append({
-            "auth_code": auth_code, "secret_code": secret_code,
-            "client_id": client_id, "uid": uid, "token_url": token_url,
-        })
+        self.exchange_calls.append(
+            {
+                "auth_code": auth_code,
+                "secret_code": secret_code,
+                "client_id": client_id,
+                "uid": uid,
+                "token_url": token_url,
+            }
+        )
         if not self.exchange_results:
             return None
         return self.exchange_results.pop(0)
@@ -133,8 +139,12 @@ class FakeApi:
 def clean_env(monkeypatch):
     """Ensure no SHOONYA_* env var leaks into the test from the host shell."""
     for k in (
-        "SHOONYA_AUTH_CODE", "SHOONYA_AUTH_CODE_CMD", "SHOONYA_AUTH_CODE_TIMEOUT",
-        "SHOONYA_TOKEN_URL", "SHOONYA_OAUTH_API_HOST", "SHOONYA_OAUTH_WS",
+        "SHOONYA_AUTH_CODE",
+        "SHOONYA_AUTH_CODE_CMD",
+        "SHOONYA_AUTH_CODE_TIMEOUT",
+        "SHOONYA_TOKEN_URL",
+        "SHOONYA_OAUTH_API_HOST",
+        "SHOONYA_OAUTH_WS",
         "SHOONYA_OAUTH_REAUTH_ATTEMPTS",
     ):
         monkeypatch.delenv(k, raising=False)
@@ -145,9 +155,11 @@ def clean_env(monkeypatch):
 def no_disk_writes(monkeypatch):
     """Prevent _save_creds from touching the real cred.yml during tests."""
     saved = {}
+
     def _fake_save(creds, path="cred.yml"):
         saved["creds"] = dict(creds)
         saved["path"] = path
+
     monkeypatch.setattr(main, "_save_creds", _fake_save)
     return saved
 
@@ -200,9 +212,11 @@ def test_env_auth_code_takes_priority_over_selenium(clean_env, no_disk_writes, m
     """SHOONYA_AUTH_CODE env var must short-circuit the Selenium branch even when Selenium is configured."""
     monkeypatch.setenv("SHOONYA_AUTH_CODE", "env_override_code_42")
     selenium_called = {"count": 0}
+
     def fake_fetch(c):
         selenium_called["count"] += 1
         return "selenium_code_should_not_be_used"
+
     monkeypatch.setattr(main.shoonya_selenium_auth, "is_configured", lambda c: True)
     monkeypatch.setattr(main.shoonya_selenium_auth, "fetch_auth_code", fake_fetch)
     _patch_subprocess_fetch(monkeypatch, code="subprocess_should_not_be_used")
@@ -219,9 +233,11 @@ def test_env_auth_code_takes_priority_over_selenium(clean_env, no_disk_writes, m
 def test_selenium_used_when_env_empty_and_configured(clean_env, no_disk_writes, monkeypatch, log):
     """No env var + Selenium configured -> Selenium wins; subprocess fallback stays untouched."""
     subprocess_called = {"count": 0}
+
     def fake_sub(c, l):
         subprocess_called["count"] += 1
         return "subprocess_code_should_not_be_used"
+
     _patch_selenium(monkeypatch, configured=True, code="selenium_code_ok")
     monkeypatch.setattr(main, "_fetch_auth_code_from_command", fake_sub)
 
@@ -325,12 +341,15 @@ def test_configures_service_host_before_auth(clean_env, no_disk_writes, monkeypa
 # tokens that survive shlex.split as literal argv entries are refused with a
 # warning and an empty return, not silently exec'd as positional args.
 
+
 def test_auth_code_cmd_with_shell_and_chain_is_refused(clean_env, monkeypatch, caplog, log):
     """The exact cred.yml shape that broke 2026-04-28 must refuse with a clear log line."""
     creds = {"auth_code_cmd": "cd /tmp && /usr/bin/python3 script.py"}
+
     # Guard: ensure no real subprocess is spawned even if the refusal regresses.
     def _never_spawn(*args, **kwargs):
         raise AssertionError("subprocess.Popen must not be called when shell tokens leak")
+
     monkeypatch.setattr(main.subprocess, "Popen", _never_spawn)
 
     with caplog.at_level(logging.WARNING, logger="test_main_oauth_login"):
@@ -342,19 +361,24 @@ def test_auth_code_cmd_with_shell_and_chain_is_refused(clean_env, monkeypatch, c
     )
 
 
-@pytest.mark.parametrize("cmd", [
-    "python a.py; python b.py",          # ;
-    "python a.py | grep code",            # |
-    "python a.py || python fallback.py",  # ||
-    "python a.py > /tmp/out",             # >
-    "python a.py < /tmp/in",              # <
-    "python a.py &",                      # & (background)
-])
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "python a.py; python b.py",  # ;
+        "python a.py | grep code",  # |
+        "python a.py || python fallback.py",  # ||
+        "python a.py > /tmp/out",  # >
+        "python a.py < /tmp/in",  # <
+        "python a.py &",  # & (background)
+    ],
+)
 def test_auth_code_cmd_other_shell_tokens_refused(clean_env, monkeypatch, cmd, log):
     """Refusal covers the full set of bash control tokens that shlex preserves as separate argv entries."""
     creds = {"auth_code_cmd": cmd}
+
     def _never_spawn(*args, **kwargs):
         raise AssertionError(f"subprocess.Popen must not be called for: {cmd!r}")
+
     monkeypatch.setattr(main.subprocess, "Popen", _never_spawn)
     assert main._fetch_auth_code_from_command(creds, log) == ""
 
@@ -367,10 +391,13 @@ def test_auth_code_cmd_clean_argv_is_not_refused(clean_env, monkeypatch, log):
     class _FakeProc:
         stdout = None
         returncode = 0
+
         def poll(self):
             return 0
+
         def communicate(self, timeout=3):
             return ("", "")
+
         def terminate(self):
             pass
 

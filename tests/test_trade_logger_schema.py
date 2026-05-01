@@ -5,10 +5,15 @@ TRADE_COLUMNS (schema drift from an older logger version), the logger must
 archive the stale file to paper_trades_legacy.csv and start fresh rather than
 appending misaligned rows to the old header.
 """
-import sys, os, csv, shutil
+
+import csv
+import os
+import shutil
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from trading_system.core.trade_logger import TradeLogger, TRADE_COLUMNS
+from trading_system.core.trade_logger import TRADE_COLUMNS, TradeLogger
 
 
 def _tmpdir(name):
@@ -49,12 +54,36 @@ def test_drifted_header_is_archived_and_replaced():
     path = os.path.join(d, "paper_trades.csv")
     legacy_path = os.path.join(d, "paper_trades_legacy.csv")
     old_header = [
-        "trade_id", "date", "time_entry", "time_exit", "strategy", "instrument",
-        "direction", "strike_1", "strike_2", "strike_3", "strike_4",
-        "entry_price", "exit_price", "gross_pnl", "costs", "net_pnl",
-        "exit_reason", "duration_mins", "lots", "vix_entry", "regime_entry",
-        "day_type", "vwap_bias", "rsi_signal", "pcr_signal", "max_pain",
-        "signal_confidence", "daily_target", "target_hit_today", "paper",
+        "trade_id",
+        "date",
+        "time_entry",
+        "time_exit",
+        "strategy",
+        "instrument",
+        "direction",
+        "strike_1",
+        "strike_2",
+        "strike_3",
+        "strike_4",
+        "entry_price",
+        "exit_price",
+        "gross_pnl",
+        "costs",
+        "net_pnl",
+        "exit_reason",
+        "duration_mins",
+        "lots",
+        "vix_entry",
+        "regime_entry",
+        "day_type",
+        "vwap_bias",
+        "rsi_signal",
+        "pcr_signal",
+        "max_pain",
+        "signal_confidence",
+        "daily_target",
+        "target_hit_today",
+        "paper",
     ]
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
@@ -89,10 +118,7 @@ def test_second_drift_gets_timestamped_legacy_path():
 
     # Original legacy still present; a timestamped variant also exists.
     assert os.path.exists(legacy_path)
-    timestamped = [
-        f for f in os.listdir(d)
-        if f.startswith("paper_trades_legacy_") and f.endswith(".csv")
-    ]
+    timestamped = [f for f in os.listdir(d) if f.startswith("paper_trades_legacy_") and f.endswith(".csv")]
     assert len(timestamped) == 1
 
 

@@ -4,6 +4,7 @@ Covers the follow-on to the 2026-04-20 audit gap where only aggregate trade
 rows were logged, making per-leg entry/exit fills unrecoverable after the
 process exited.
 """
+
 import csv
 import os
 import sys
@@ -11,8 +12,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from trading_system.paper.paper_order_manager import (
-    PaperOrderManager,
     _ORDERS_CSV_COLUMNS,
+    PaperOrderManager,
 )
 
 
@@ -86,12 +87,14 @@ def test_rejected_order_suspicious_ltp_is_persisted(tmp_path):
 
 def test_multiple_orders_append_without_duplicating_header(tmp_path):
     csv_path = str(tmp_path / "paper_orders.csv")
-    md = _MD({
-        "NFO|NIFTY19MAR26C22150": 18.0,
-        "NFO|NIFTY19MAR26P21850": 17.0,
-        "NFO|NIFTY19MAR26C22200": 5.0,
-        "NFO|NIFTY19MAR26P21800": 5.5,
-    })
+    md = _MD(
+        {
+            "NFO|NIFTY19MAR26C22150": 18.0,
+            "NFO|NIFTY19MAR26P21850": 17.0,
+            "NFO|NIFTY19MAR26C22200": 5.0,
+            "NFO|NIFTY19MAR26P21800": 5.5,
+        }
+    )
     om = PaperOrderManager(md, position_tracker=None, orders_csv_path=csv_path)
 
     om.place_order("NFO|NIFTY19MAR26C22150", "SELL", 65)

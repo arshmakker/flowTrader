@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 REQUIRED_KEYS = ("selenium_user_id", "selenium_password", "selenium_totp_secret")
 DEFAULT_LOGIN_URL_TEMPLATE = (
-    "https://trade.shoonya.com/OAuthlogin/investor-entry-level/login"
-    "?api_key={client_id}&route_to=abc"
+    "https://trade.shoonya.com/OAuthlogin/investor-entry-level/login?api_key={client_id}&route_to=abc"
 )
 
 
@@ -80,11 +79,11 @@ def fetch_auth_code(creds: Mapping, timeout_sec: int = 60) -> str:
         return ""
 
     try:
+        import pyotp
         from selenium import webdriver
         from selenium.webdriver.common.by import By
-        from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
-        import pyotp
+        from selenium.webdriver.support.ui import WebDriverWait
     except ImportError as exc:
         logger.error("Selenium auth: dependency import failed (%s); run pip install -r requirements.txt", exc)
         return ""
@@ -130,9 +129,7 @@ def fetch_auth_code(creds: Mapping, timeout_sec: int = 60) -> str:
         otp_value = pyotp.TOTP(totp_secret).now()
         _fast_fill(visible_inputs[2], otp_value)
 
-        wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='LOGIN']"))
-        ).click()
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='LOGIN']"))).click()
         logger.info("Selenium auth: credentials submitted, capturing auth code")
 
         start = time.time()
@@ -148,9 +145,7 @@ def fetch_auth_code(creds: Mapping, timeout_sec: int = 60) -> str:
                 if new_otp != otp_value:
                     logger.info("Selenium auth: timeout, retrying with fresh OTP")
                     _fast_fill(visible_inputs[2], new_otp)
-                    wait.until(
-                        EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='LOGIN']"))
-                    ).click()
+                    wait.until(EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='LOGIN']"))).click()
                     start = time.time()
                     otp_value = new_otp
                     continue

@@ -11,7 +11,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Any, Dict, Optional
 
 import pandas as pd
@@ -29,6 +29,7 @@ class QuoteBook:
     the sizes available at those levels. ``mid`` is ``(bid+ask)/2`` — meaningful
     only when both sides are valid (use ``is_tradable``).
     """
+
     symbol: str
     bid: float
     ask: float
@@ -47,10 +48,7 @@ class QuoteBook:
     def is_tradable(self) -> bool:
         """Both sides quoted, non-zero size. Callers pre-checking liquidity
         for an order should still compare against their own qty requirement."""
-        return (
-            self.bid > 0 and self.ask > 0 and self.ask >= self.bid
-            and self.bid_qty > 0 and self.ask_qty > 0
-        )
+        return self.bid > 0 and self.ask > 0 and self.ask >= self.bid and self.bid_qty > 0 and self.ask_qty > 0
 
 
 class MarketData:
@@ -150,15 +148,15 @@ class MarketData:
                             ask = float(quote.get("sp1", 0) or 0)
                         except (TypeError, ValueError):
                             bid = ask = 0.0
-                        if (
-                            self._is_valid_option_ltp(bid)
-                            and self._is_valid_option_ltp(ask)
-                            and ask >= bid > 0
-                        ):
+                        if self._is_valid_option_ltp(bid) and self._is_valid_option_ltp(ask) and ask >= bid > 0:
                             mid = (bid + ask) / 2.0
                             logger.info(
                                 "get_ltp: suspicious lp %.2f for %s; using bid-ask mid %.2f (bid=%.2f ask=%.2f)",
-                                ltp, symbol_key, mid, bid, ask,
+                                ltp,
+                                symbol_key,
+                                mid,
+                                bid,
+                                ask,
                             )
                             self._last_valid_option_ltp[symbol_key] = mid
                             self._ltp_cache[symbol_key] = (mid, now)
@@ -168,13 +166,14 @@ class MarketData:
                         if fallback > 0:
                             logger.warning(
                                 "get_ltp: suspicious option LTP %.2f for %s; using last valid %.2f",
-                                ltp, symbol_key, fallback
+                                ltp,
+                                symbol_key,
+                                fallback,
                             )
                             self._ltp_cache[symbol_key] = (fallback, now)
                             return fallback
                         logger.error(
-                            "get_ltp: suspicious option LTP %.2f for %s; no valid fallback available",
-                            ltp, symbol_key
+                            "get_ltp: suspicious option LTP %.2f for %s; no valid fallback available", ltp, symbol_key
                         )
                         return 0.0
                     self._last_valid_option_ltp[symbol_key] = ltp
@@ -225,8 +224,10 @@ class MarketData:
 
         return QuoteBook(
             symbol=symbol_key,
-            bid=bid, ask=ask,
-            bid_qty=bid_qty, ask_qty=ask_qty,
+            bid=bid,
+            ask=ask,
+            bid_qty=bid_qty,
+            ask_qty=ask_qty,
         )
 
     def _resolve_token(self, exchange: str, name: str) -> str:
@@ -271,7 +272,8 @@ class MarketData:
             logger.warning(
                 "get_open_price(%s): API 'o' field missing — falling back to LTP %.2f. "
                 "Day classification will see 0%% move and always classify as RANGING.",
-                symbol, ltp,
+                symbol,
+                ltp,
             )
             self._open_price_fallback.add(symbol)
             return ltp
@@ -286,8 +288,7 @@ class MarketData:
             try:
                 nfo = self.sm.nse_fo
                 idx_opts = nfo[
-                    (nfo["symbol"] == settings.NIFTY_SYMBOL)
-                    & (nfo["instrument"].isin(["OPTIDX", "FUTIDX"]))
+                    (nfo["symbol"] == settings.NIFTY_SYMBOL) & (nfo["instrument"].isin(["OPTIDX", "FUTIDX"]))
                 ]
                 if not idx_opts.empty and "expiry" in idx_opts.columns:
                     today = datetime.today().date()
@@ -302,12 +303,14 @@ class MarketData:
         # Secondary: strategy_runner helper
         try:
             from strategy_runner import get_next_available_expiry
+
             return get_next_available_expiry(self.sm)
         except Exception:
             pass
 
         # Last resort: next Thursday (kept for offline/test scenarios only)
         from datetime import timedelta
+
         today = datetime.today().date()
         days_ahead = (3 - today.weekday()) % 7
         if days_ahead == 0:
@@ -330,8 +333,10 @@ class MarketData:
             start_epoch = str(int(today_start.timestamp()))
 
             bars = self.api.get_time_price_series(
-                exchange="NSE", token=self.NIFTY_SPOT_TOKEN,
-                starttime=start_epoch, interval=15,
+                exchange="NSE",
+                token=self.NIFTY_SPOT_TOKEN,
+                starttime=start_epoch,
+                interval=15,
             )
 
             if not bars or not isinstance(bars, list):
@@ -340,13 +345,15 @@ class MarketData:
             rows = []
             for b in bars:
                 try:
-                    rows.append({
-                        "open": float(b.get("into", 0)),
-                        "high": float(b.get("inth", 0)),
-                        "low": float(b.get("intl", 0)),
-                        "close": float(b.get("intc", 0)),
-                        "volume": int(float(b.get("v", 0))),
-                    })
+                    rows.append(
+                        {
+                            "open": float(b.get("into", 0)),
+                            "high": float(b.get("inth", 0)),
+                            "low": float(b.get("intl", 0)),
+                            "close": float(b.get("intc", 0)),
+                            "volume": int(float(b.get("v", 0))),
+                        }
+                    )
                 except (ValueError, TypeError):
                     continue
 
@@ -393,7 +400,7 @@ class MarketData:
                         return int(info["lotsize"])
         except Exception:
             logger.debug("get_lot_size failed for %s", symbol_key)
-        
+
         # Fallback to settings
         if "NIFTY" in symbol_key:
             return settings.NIFTY_LOT_SIZE

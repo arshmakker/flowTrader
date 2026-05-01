@@ -107,7 +107,6 @@ class TestNtfyAlertChannel:
         """LIVE-24: short-lived scripts must be able to wait for queued alerts
         to actually POST before the interpreter tears down the daemon worker."""
         import threading
-        import time as _time
 
         release = threading.Event()
         calls: list[bytes] = []
@@ -184,9 +183,7 @@ class TestBuildChannel:
         assert isinstance(chan, LogAlertChannel)
 
     def test_ntfy_with_url_returns_ntfy(self):
-        chan = build_channel(
-            enabled=True, channel_type="ntfy", ntfy_topic_url="https://ntfy.sh/t"
-        )
+        chan = build_channel(enabled=True, channel_type="ntfy", ntfy_topic_url="https://ntfy.sh/t")
         assert isinstance(chan, NtfyAlertChannel)
 
     def test_unknown_type_falls_back_to_null(self):

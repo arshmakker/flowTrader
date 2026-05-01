@@ -4,18 +4,21 @@ Pins the ``is_tradable_now`` authority that RegimeFilter.get_regime_gate
 consults before permitting new entries. Every refusal path needs a
 recognisable ``reason`` tag so IC_REJECT records stay searchable in logs.
 """
-import os, sys
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from datetime import datetime
 
 try:
     from zoneinfo import ZoneInfo
+
     IST = ZoneInfo("Asia/Kolkata")
 except ImportError:  # pragma: no cover — Python<3.9 fallback, not used in CI
     IST = None
 
-import pytest
 
 from strategy_runner import is_tradable_now
 from trading_system.config import settings
@@ -28,6 +31,7 @@ def _ist(y, m, d, hh=0, mm=0):
 
 
 # ── Happy path ─────────────────────────────────────────────────────────
+
 
 def test_regular_session_is_tradable():
     """Wednesday 2026-04-22 at 11:00 — mid-session on a known trading day
@@ -45,6 +49,7 @@ def test_session_open_boundary_is_tradable():
 
 
 # ── Intra-day refusals ─────────────────────────────────────────────────
+
 
 def test_pre_open_refused():
     ok, reason = is_tradable_now(now=_ist(2026, 4, 22, 9, 5))
@@ -72,6 +77,7 @@ def test_after_close_refused_later():
 
 # ── Calendar refusals ──────────────────────────────────────────────────
 
+
 def test_saturday_refused():
     """2026-04-25 is a Saturday — weekend regardless of time of day."""
     ok, reason = is_tradable_now(now=_ist(2026, 4, 25, 11, 0))
@@ -95,11 +101,13 @@ def test_configured_holiday_refused():
 
 # ── Muhurat session ────────────────────────────────────────────────────
 
+
 def test_muhurat_inside_window_is_tradable(monkeypatch):
     """Muhurat session is the only tradable slice on its date, even if that
     date happens to also be flagged as a holiday elsewhere."""
     monkeypatch.setattr(
-        settings, "MUHURAT_SESSIONS",
+        settings,
+        "MUHURAT_SESSIONS",
         [{"date": "2026-11-08", "open": "18:15", "close": "19:15"}],
         raising=False,
     )
@@ -110,7 +118,8 @@ def test_muhurat_inside_window_is_tradable(monkeypatch):
 
 def test_muhurat_outside_window_refused(monkeypatch):
     monkeypatch.setattr(
-        settings, "MUHURAT_SESSIONS",
+        settings,
+        "MUHURAT_SESSIONS",
         [{"date": "2026-11-08", "open": "18:15", "close": "19:15"}],
         raising=False,
     )
@@ -123,7 +132,8 @@ def test_muhurat_outside_window_refused(monkeypatch):
 def test_muhurat_end_boundary_refused(monkeypatch):
     """Half-open window: close time itself is NOT tradable."""
     monkeypatch.setattr(
-        settings, "MUHURAT_SESSIONS",
+        settings,
+        "MUHURAT_SESSIONS",
         [{"date": "2026-11-08", "open": "18:15", "close": "19:15"}],
         raising=False,
     )
@@ -138,7 +148,8 @@ def test_muhurat_overrides_weekend(monkeypatch):
     # 2026-11-08 is a Sunday.
     assert datetime(2026, 11, 8).weekday() == 6
     monkeypatch.setattr(
-        settings, "MUHURAT_SESSIONS",
+        settings,
+        "MUHURAT_SESSIONS",
         [{"date": "2026-11-08", "open": "18:15", "close": "19:15"}],
         raising=False,
     )
@@ -151,7 +162,8 @@ def test_malformed_muhurat_entry_is_skipped(monkeypatch):
     """Operator typo in MUHURAT_SESSIONS must not crash the loop — it should
     fall through to the ordinary weekend/holiday/session checks."""
     monkeypatch.setattr(
-        settings, "MUHURAT_SESSIONS",
+        settings,
+        "MUHURAT_SESSIONS",
         [{"date": "2026-04-22", "open": "not-a-time", "close": "11:30"}],
         raising=False,
     )
@@ -163,9 +175,11 @@ def test_malformed_muhurat_entry_is_skipped(monkeypatch):
 
 # ── RegimeFilter integration — tradability is the FIRST gate ───────────
 
+
 class _StubApi:
     """Minimal api stub that get_regime_gate only touches via get_vix, which
     we bypass by seeding the filter's VIX cache + history directly."""
+
     def get_quotes(self, *_args, **_kwargs):
         return {"lp": 0.0}
 
@@ -176,6 +190,7 @@ def _ready_filter(vix_value=18.0):
     minutes; the history must sit INSIDE that window, not before it.
     History uses wall-clock (time.time()) so it survives process restarts."""
     import time
+
     rf = RegimeFilter(api=_StubApi())
     now_wall = time.time()
     rf._vix_cache = (vix_value, time.monotonic())
@@ -245,6 +260,7 @@ def test_vix_history_save_restore_carries_over():
 def test_vix_history_restore_drops_stale_entries():
     """Entries older than IC_VIX_STABLE_MINS + 5 min are pruned on restore."""
     from trading_system.config import settings
+
     rf = RegimeFilter(api=_StubApi())
     now = _time_mod.time()
     window = settings.IC_VIX_STABLE_MINS * 60
@@ -258,9 +274,7 @@ def test_vix_history_restore_drops_stale_entries():
 
     rf2 = RegimeFilter(api=_StubApi())
     rf2.restore_state(state)
-    assert len(rf2._vix_history) == 2, (
-        f"stale entry must be pruned on restore; got {len(rf2._vix_history)} entries"
-    )
+    assert len(rf2._vix_history) == 2, f"stale entry must be pruned on restore; got {len(rf2._vix_history)} entries"
 
 
 def test_vix_stable_8min_window_excludes_pre_classify_volatile_data(monkeypatch):
@@ -269,6 +283,7 @@ def test_vix_stable_8min_window_excludes_pre_classify_volatile_data(monkeypatch)
     and kept blocking entries until ~11:15. The 8-min window only checks
     post-classify calm data, unblocking morning entries by ~10:38."""
     import time
+
     rf = RegimeFilter(api=_StubApi())
     now = time.time()
 
@@ -284,9 +299,7 @@ def test_vix_stable_8min_window_excludes_pre_classify_volatile_data(monkeypatch)
 
     # 8-min window only sees the calm samples → stable
     monkeypatch.setattr(settings, "IC_VIX_STABLE_MINS", 8)
-    assert rf.is_vix_stable() is True, (
-        "8-min window should exclude pre-classify volatile data and report stable"
-    )
+    assert rf.is_vix_stable() is True, "8-min window should exclude pre-classify volatile data and report stable"
 
     # 15-min window sweeps in the volatile samples → unstable (prior blocking behavior)
     monkeypatch.setattr(settings, "IC_VIX_STABLE_MINS", 15)

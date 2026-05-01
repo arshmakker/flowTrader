@@ -8,6 +8,7 @@ A failing check blocks go-live; the verdict is GO LIVE only if all checks pass.
 import logging
 from datetime import datetime
 from typing import Dict, List, Optional
+
 import pandas as pd
 
 from trading_system.config import settings
@@ -56,11 +57,7 @@ class GoLiveEvaluator:
         c["plausible_win_rate"] = self._plausible_win_rate(summary)
         c["live_reconciled_trades"] = self._live_reconciled(reconciliation_reports)
 
-        days_traded = (
-            trades_df["date"].nunique()
-            if not trades_df.empty and "date" in trades_df.columns
-            else 0
-        )
+        days_traded = trades_df["date"].nunique() if not trades_df.empty and "date" in trades_df.columns else 0
         c["min_days"] = days_traded >= settings.GL_MIN_DAYS
         c["max_drawdown_ok"] = summary.get("max_drawdown_pct", 0) < settings.GL_MAX_DD_PCT
         c["slippage_simulated"] = self._slippage_applied(orders_df)

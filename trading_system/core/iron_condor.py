@@ -10,8 +10,8 @@ Iron Condor Strategist — implements the core Nifty/BankNifty strategist logic 
 import logging
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple, List
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
 from trading_system.config import settings
 from trading_system.core.margin import estimate_ic_required_margin
@@ -27,16 +27,26 @@ logger = logging.getLogger(__name__)
 # entries after those should be refused if the cap is consumed.
 _RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED")
 
-_EXPIRY_RE = re.compile(r'(\d{2})([A-Z]{3})(\d{2})', re.IGNORECASE)
+_EXPIRY_RE = re.compile(r"(\d{2})([A-Z]{3})(\d{2})", re.IGNORECASE)
 _MONTH_MAP = {
-    "JAN": "01", "FEB": "02", "MAR": "03", "APR": "04",
-    "MAY": "05", "JUN": "06", "JUL": "07", "AUG": "08",
-    "SEP": "09", "OCT": "10", "NOV": "11", "DEC": "12",
+    "JAN": "01",
+    "FEB": "02",
+    "MAR": "03",
+    "APR": "04",
+    "MAY": "05",
+    "JUN": "06",
+    "JUL": "07",
+    "AUG": "08",
+    "SEP": "09",
+    "OCT": "10",
+    "NOV": "11",
+    "DEC": "12",
 }
+
 
 @dataclass
 class IC_Position:
-    instrument: str # 'NIFTY' | 'BANKNIFTY'
+    instrument: str  # 'NIFTY' | 'BANKNIFTY'
     sc_sym: str
     sp_sym: str
     lc_sym: str
@@ -79,8 +89,9 @@ class IC_Position:
             obj.expiry_date = cls._infer_expiry_from_symbol(obj.sc_sym)
         return obj
 
+
 class IronCondorStrategy:
-    def __init__(self, order_manager: Any, market_data: Any, instrument: str = 'NIFTY'):
+    def __init__(self, order_manager: Any, market_data: Any, instrument: str = "NIFTY"):
         self.om = order_manager
         self.md = market_data
         self.instrument = instrument
@@ -113,7 +124,8 @@ class IronCondorStrategy:
             logger.info(
                 "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
                 "harvest/adjustment re-entries unlimited; persisted across crash-restart).",
-                self.instrument, settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN,
+                self.instrument,
+                settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN,
             )
 
     def _min_credit(self) -> float:
@@ -171,7 +183,10 @@ class IronCondorStrategy:
                 "IC_REJECT reason=SHAKEDOWN_ENTRY_CAP instrument=%s count=%d cap=%d "
                 "date=%s last_exit=%s — proving-period fresh-entry cap reached; "
                 "no qualifying harvest/adjustment re-entry signal.",
-                self.instrument, self._entries_today_count, cap, today,
+                self.instrument,
+                self._entries_today_count,
+                cap,
+                today,
                 self._last_exit_reason or "(none)",
             )
             return False
@@ -219,14 +234,16 @@ class IronCondorStrategy:
                     rollback.get("status"),
                     rollback.get("reason", ""),
                 )
-                stuck.append({
-                    "symbol": symbol,
-                    "original_side": side,
-                    "rollback_side": rollback_side,
-                    "intended_qty": fq,
-                    "reversed_qty": rollback.get("fill_qty", 0),
-                    "reason": rollback.get("reason", ""),
-                })
+                stuck.append(
+                    {
+                        "symbol": symbol,
+                        "original_side": side,
+                        "rollback_side": rollback_side,
+                        "intended_qty": fq,
+                        "reversed_qty": rollback.get("fill_qty", 0),
+                        "reason": rollback.get("reason", ""),
+                    }
+                )
                 continue
             tracker = getattr(self.om, "tracker", None)
             if tracker is not None:
@@ -278,22 +295,30 @@ class IronCondorStrategy:
             if reversed_qty < fq:
                 logger.error(
                     "IC %s partial-fill reversal incomplete for %s %s: reversed %d of %d",
-                    self.instrument, reverse_side, symbol, reversed_qty, fq,
+                    self.instrument,
+                    reverse_side,
+                    symbol,
+                    reversed_qty,
+                    fq,
                 )
-                stuck.append({
-                    "symbol": symbol,
-                    "original_side": side,
-                    "intended_qty": fq,
-                    "reversed_qty": reversed_qty,
-                    "reason": "partial_fill_reversal_incomplete",
-                })
+                stuck.append(
+                    {
+                        "symbol": symbol,
+                        "original_side": side,
+                        "intended_qty": fq,
+                        "reversed_qty": reversed_qty,
+                        "reason": "partial_fill_reversal_incomplete",
+                    }
+                )
             else:
                 tracker = getattr(self.om, "tracker", None)
                 if tracker is not None:
                     try:
                         tracker.close_position(symbol, reverse.get("fill_price", 0.0))
                     except Exception:
-                        logger.exception("IC %s tracker unwind failed after partial fill of %s", self.instrument, symbol)
+                        logger.exception(
+                            "IC %s tracker unwind failed after partial fill of %s", self.instrument, symbol
+                        )
 
         event_record = {
             "symbol": "(entry-partial-fill-event)",
@@ -386,8 +411,14 @@ class IronCondorStrategy:
             logger.error(
                 "IC_REJECT reason=INSUFFICIENT_MARGIN instrument=%s required=%.2f "
                 "available=%.2f wing_width=%.2f credit=%.2f qty=%d lots=%d lot_size=%d",
-                self.instrument, required, available,
-                wing_width, net_credit_unit, qty, lots, lot_size,
+                self.instrument,
+                required,
+                available,
+                wing_width,
+                net_credit_unit,
+                qty,
+                lots,
+                lot_size,
             )
             return False
         return True
@@ -400,18 +431,20 @@ class IronCondorStrategy:
             return settings.VIX_NORMAL_OTM, settings.VIX_NORMAL_WIDTH
         return settings.VIX_HIGH_OTM, settings.VIX_HIGH_WIDTH
 
-    def calculate_strikes(self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any) -> Tuple[float, float, float, float]:
+    def calculate_strikes(
+        self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any
+    ) -> Tuple[float, float, float, float]:
         """Calculates 4 strikes (SC, SP, LC, LP) based on VIX and S/R buffer."""
         otm_dist, width = self.get_vix_tier_params(vix)
-        step = settings.NIFTY_STRIKE_STEP if self.instrument == 'NIFTY' else settings.BANKNIFTY_STRIKE_STEP
-        
+        step = settings.NIFTY_STRIKE_STEP if self.instrument == "NIFTY" else settings.BANKNIFTY_STRIKE_STEP
+
         # Initial OTM strikes
         sc = round((spot + otm_dist) / step) * step
         sp = round((spot - otm_dist) / step) * step
-        
+
         # Apply 20-day S/R Buffer (50 points)
-        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, 'CE', step=step)
-        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, 'PE', step=step)
+        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, "CE", step=step)
+        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, "PE", step=step)
 
         # LIVE-29: cap S/R-adjusted strikes so a wide 20-day range can't push
         # them into illiquid far-OTM territory where credit collapses.
@@ -421,16 +454,22 @@ class IronCondorStrategy:
             sp_min = round((spot - cap_otm) / step) * step
             if sc > sc_max:
                 logger.warning(
-                    "IC %s S/R cap: SC %.0f → %.0f (%.0f OTM > cap %d); "
-                    "20-day range too wide, clamping to liquid zone",
-                    self.instrument, sc, sc_max, sc - spot, cap_otm,
+                    "IC %s S/R cap: SC %.0f → %.0f (%.0f OTM > cap %d); 20-day range too wide, clamping to liquid zone",
+                    self.instrument,
+                    sc,
+                    sc_max,
+                    sc - spot,
+                    cap_otm,
                 )
                 sc = sc_max
             if sp < sp_min:
                 logger.warning(
-                    "IC %s S/R cap: SP %.0f → %.0f (%.0f OTM > cap %d); "
-                    "20-day range too wide, clamping to liquid zone",
-                    self.instrument, sp, sp_min, spot - sp, cap_otm,
+                    "IC %s S/R cap: SP %.0f → %.0f (%.0f OTM > cap %d); 20-day range too wide, clamping to liquid zone",
+                    self.instrument,
+                    sp,
+                    sp_min,
+                    spot - sp,
+                    cap_otm,
                 )
                 sp = sp_min
 
@@ -444,7 +483,9 @@ class IronCondorStrategy:
 
     # ── Entry ───────────────────────────────────────────────────────────
 
-    def enter(self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any, expiry: str, lots: int) -> bool:
+    def enter(
+        self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any, expiry: str, lots: int
+    ) -> bool:
         # LIVE-25 dispatch: operator flips settings.IC_ENTRY_MODE to 'hedge_first'
         # to route through enter_hedge_first (wings-as-MKT then shorts-as-LMT).
         # Default stays 'sequential' (the legacy path) until the proving period
@@ -464,10 +505,10 @@ class IronCondorStrategy:
         lp_sym = self.om.build_option_symbol(self.instrument, expiry, lp, "PE")
 
         prices = {
-            'sc': self.md.get_ltp(sc_sym),
-            'sp': self.md.get_ltp(sp_sym),
-            'lc': self.md.get_ltp(lc_sym),
-            'lp': self.md.get_ltp(lp_sym)
+            "sc": self.md.get_ltp(sc_sym),
+            "sp": self.md.get_ltp(sp_sym),
+            "lc": self.md.get_ltp(lc_sym),
+            "lp": self.md.get_ltp(lp_sym),
         }
 
         if any(p <= 0 for p in prices.values()):
@@ -477,8 +518,8 @@ class IronCondorStrategy:
         # Calculate Max Profit & Net Credit
         # Max profit of spread = Net Credit collected
         # For IC, max profit = (Collected Premium) * LotSize
-        net_credit_unit = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
-        
+        net_credit_unit = (prices["sc"] + prices["sp"]) - (prices["lc"] + prices["lp"])
+
         # Credit Rule: net_credit >= per-instrument min credit floor
         width = abs(lc - sc)
         min_credit = self._min_credit()
@@ -507,15 +548,16 @@ class IronCondorStrategy:
         # LIVE-13: reject if per-leg qty exceeds NSE freeze limit, which would
         # rejection-cascade leg 3 or 4 mid-entry and land us in LIVE-03's
         # rollback path. Prevention is cheap; detection mid-entry is expensive.
-        freeze_qty = (
-            settings.FREEZE_QTY_NIFTY if self.instrument == 'NIFTY'
-            else settings.FREEZE_QTY_BANKNIFTY
-        )
+        freeze_qty = settings.FREEZE_QTY_NIFTY if self.instrument == "NIFTY" else settings.FREEZE_QTY_BANKNIFTY
         if qty > freeze_qty:
             logger.error(
                 "IC_REJECT reason=FREEZE_QTY_BREACH instrument=%s qty=%d freeze_qty=%d "
                 "lots=%d lot_size=%d. Reduce IC_LOT_SIZE or split the entry.",
-                self.instrument, qty, freeze_qty, lots, lot_size,
+                self.instrument,
+                qty,
+                freeze_qty,
+                lots,
+                lot_size,
             )
             return False
 
@@ -551,7 +593,11 @@ class IronCondorStrategy:
             if status == "REJECTED" or (status == "CANCELED" and fill_qty == 0):
                 logger.error(
                     "IC %s entry aborted: leg %s %s clean-rejected (status=%s, reason=%s)",
-                    self.instrument, side, symbol, status, order.get("reason", ""),
+                    self.instrument,
+                    side,
+                    symbol,
+                    status,
+                    order.get("reason", ""),
                 )
                 self._rollback_partial_entry(placed_orders)
                 return False
@@ -559,7 +605,11 @@ class IronCondorStrategy:
             # CANCELED with a partial fill — reverse what filled, then halt.
             logger.error(
                 "IC %s entry aborted: leg %s %s partial fill %d/%d",
-                self.instrument, side, symbol, fill_qty, qty,
+                self.instrument,
+                side,
+                symbol,
+                fill_qty,
+                qty,
             )
             self._handle_partial_fill_halt(placed_orders)
             return False
@@ -572,22 +622,38 @@ class IronCondorStrategy:
         now = datetime.now()
         self._position = IC_Position(
             instrument=self.instrument,
-            sc_sym=sc_sym, sp_sym=sp_sym, lc_sym=lc_sym, lp_sym=lp_sym,
-            sc_strike=sc, sp_strike=sp, lc_strike=lc, lp_strike=lp,
-            max_profit=max_profit, entry_credit=net_credit_unit,
-            lots=lots, entry_time=now.strftime("%H:%M:%S"),
+            sc_sym=sc_sym,
+            sp_sym=sp_sym,
+            lc_sym=lc_sym,
+            lp_sym=lp_sym,
+            sc_strike=sc,
+            sp_strike=sp,
+            lc_strike=lc,
+            lp_strike=lp,
+            max_profit=max_profit,
+            entry_credit=net_credit_unit,
+            lots=lots,
+            entry_time=now.strftime("%H:%M:%S"),
             expiry_date=expiry_iso,
             entry_date=now.strftime("%Y-%m-%d"),
         )
-        logger.info(f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})")
+        logger.info(
+            f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})"
+        )
         self._record_session_entry()
         return True
 
     # ── LIVE-25: Hedge-first entry ──────────────────────────────────────
 
     def enter_hedge_first(
-        self, spot: float, vix: float, sr_high: float, sr_low: float,
-        sr_manager: Any, expiry: str, lots: int,
+        self,
+        spot: float,
+        vix: float,
+        sr_high: float,
+        sr_low: float,
+        sr_manager: Any,
+        expiry: str,
+        lots: int,
     ) -> bool:
         """
         LIVE-25: hedge-first IC entry. Wings (LC+LP) go as MKT first; shorts
@@ -626,7 +692,9 @@ class IronCondorStrategy:
             if book is None or not book.is_tradable:
                 logger.warning(
                     "IC %s hedge-first: leg %s book untradable (book=%s) — refusing entry",
-                    self.instrument, leg, book,
+                    self.instrument,
+                    leg,
+                    book,
                 )
                 return False
 
@@ -634,14 +702,13 @@ class IronCondorStrategy:
         qty = lots * lot_size
 
         # LIVE-13: freeze-qty guard mirrors the legacy enter() path.
-        freeze_qty = (
-            settings.FREEZE_QTY_NIFTY if self.instrument == "NIFTY"
-            else settings.FREEZE_QTY_BANKNIFTY
-        )
+        freeze_qty = settings.FREEZE_QTY_NIFTY if self.instrument == "NIFTY" else settings.FREEZE_QTY_BANKNIFTY
         if qty > freeze_qty:
             logger.error(
                 "IC_REJECT reason=FREEZE_QTY_BREACH instrument=%s qty=%d freeze_qty=%d",
-                self.instrument, qty, freeze_qty,
+                self.instrument,
+                qty,
+                freeze_qty,
             )
             return False
 
@@ -649,10 +716,7 @@ class IronCondorStrategy:
         # used here is the bid/ask-book estimate (same signal the credit
         # floor check uses below) — available at this point, pre-fill.
         wing_width_hf = abs(lc - sc)
-        pre_entry_credit_for_margin = (
-            books["sc"].bid + books["sp"].bid
-            - books["lc"].ask - books["lp"].ask
-        )
+        pre_entry_credit_for_margin = books["sc"].bid + books["sp"].bid - books["lc"].ask - books["lp"].ask
         if not self._pre_entry_margin_ok(
             wing_width=wing_width_hf,
             lot_size=lot_size,
@@ -664,17 +728,19 @@ class IronCondorStrategy:
 
         # Pre-entry credit sanity — use bid/ask mids instead of LTP (LIVE-06).
         # Shorts at bid (we sell into bid); wings at ask (we buy from ask).
-        pre_entry_credit_unit = (
-            books["sc"].bid + books["sp"].bid
-            - books["lc"].ask - books["lp"].ask
-        )
+        pre_entry_credit_unit = books["sc"].bid + books["sp"].bid - books["lc"].ask - books["lp"].ask
         min_credit = self._min_credit()
         if pre_entry_credit_unit < min_credit:
             logger.info(
                 "IC %s hedge-first: pre-entry book credit %.2f < min_credit %.2f "
                 "(SC_bid=%.2f SP_bid=%.2f LC_ask=%.2f LP_ask=%.2f)",
-                self.instrument, pre_entry_credit_unit, min_credit,
-                books["sc"].bid, books["sp"].bid, books["lc"].ask, books["lp"].ask,
+                self.instrument,
+                pre_entry_credit_unit,
+                min_credit,
+                books["sc"].bid,
+                books["sp"].bid,
+                books["lc"].ask,
+                books["lp"].ask,
             )
             return False
 
@@ -698,16 +764,36 @@ class IronCondorStrategy:
         except OrderPollingAbandoned as exc:
             stuck = []
             if lc_order is None:
-                stuck.append({"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned_pre_status"})
+                stuck.append(
+                    {
+                        "symbol": lc_sym,
+                        "side": "BUY",
+                        "qty": qty,
+                        "phase": "1_wings",
+                        "reason": "polling_abandoned_pre_status",
+                    }
+                )
             else:
-                stuck.append({"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned_after_lc_returned", "lc_status": lc_order.get("status")})
-            stuck.append({"symbol": lp_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned"})
+                stuck.append(
+                    {
+                        "symbol": lc_sym,
+                        "side": "BUY",
+                        "qty": qty,
+                        "phase": "1_wings",
+                        "reason": "polling_abandoned_after_lc_returned",
+                        "lc_status": lc_order.get("status"),
+                    }
+                )
+            stuck.append(
+                {"symbol": lp_sym, "side": "BUY", "qty": qty, "phase": "1_wings", "reason": "polling_abandoned"}
+            )
             persist_stuck_legs(stuck)
             self._last_rollback_stuck_legs = stuck
             logger.critical(
                 "IC %s Phase 1 OrderPollingAbandoned: in-flight wings (LC,LP). "
                 "Stuck-legs persisted for startup reconcile. exc=%s",
-                self.instrument, exc,
+                self.instrument,
+                exc,
             )
             raise
 
@@ -734,8 +820,12 @@ class IronCondorStrategy:
                 "(LC status=%s fill=%d/%d, LP status=%s fill=%d/%d) — "
                 "unwound partial exposure, halting; no shorts submitted",
                 self.instrument,
-                lc_order.get("status"), lc_qty_filled, qty,
-                lp_order.get("status"), lp_qty_filled, qty,
+                lc_order.get("status"),
+                lc_qty_filled,
+                qty,
+                lp_order.get("status"),
+                lp_qty_filled,
+                qty,
             )
             return False
 
@@ -759,12 +849,13 @@ class IronCondorStrategy:
         # entering with stale data is worse than skipping a cycle.
         fresh_sc = self.md.get_quote_book(sc_sym)
         fresh_sp = self.md.get_quote_book(sp_sym)
-        if (fresh_sc is None or not fresh_sc.is_tradable
-                or fresh_sp is None or not fresh_sp.is_tradable):
+        if fresh_sc is None or not fresh_sc.is_tradable or fresh_sp is None or not fresh_sp.is_tradable:
             logger.error(
                 "IC %s Phase 3: short-leg re-quote untradable "
                 "(sc_book=%s sp_book=%s) — unwinding wings, retry next signal",
-                self.instrument, fresh_sc, fresh_sp,
+                self.instrument,
+                fresh_sc,
+                fresh_sp,
             )
             self.om.place_order(lc_sym, "SELL", qty, price=books["lc"].bid)
             self.om.place_order(lp_sym, "SELL", qty, price=books["lp"].bid)
@@ -782,8 +873,14 @@ class IronCondorStrategy:
             logger.error(
                 "IC %s Phase 3: projected credit %.2f < min_credit %.2f after wings filled "
                 "at LC=%.2f LP=%.2f with SC_limit=%.2f SP_limit=%.2f — fallback=%s; unwinding wings",
-                self.instrument, projected_net_credit_unit, min_credit,
-                lc_fill, lp_fill, sc_limit, sp_limit, settings.IC_PHASE3_FALLBACK,
+                self.instrument,
+                projected_net_credit_unit,
+                min_credit,
+                lc_fill,
+                lp_fill,
+                sc_limit,
+                sp_limit,
+                settings.IC_PHASE3_FALLBACK,
             )
             # 'refuse' is the only implemented fallback. 'widen' / 'accept'
             # are checklist options for future tuning — they reuse this unwind.
@@ -803,20 +900,63 @@ class IronCondorStrategy:
             sp_order = self.om.place_order(sp_sym, "SELL", qty, price_type="LMT", price=sp_limit)
         except OrderPollingAbandoned as exc:
             stuck = [
-                {"symbol": lc_sym, "side": "BUY", "qty": qty, "phase": "4_shorts_abandoned", "reason": "filled_wing_to_unwind", "fill_price": lc_fill},
-                {"symbol": lp_sym, "side": "BUY", "qty": qty, "phase": "4_shorts_abandoned", "reason": "filled_wing_to_unwind", "fill_price": lp_fill},
+                {
+                    "symbol": lc_sym,
+                    "side": "BUY",
+                    "qty": qty,
+                    "phase": "4_shorts_abandoned",
+                    "reason": "filled_wing_to_unwind",
+                    "fill_price": lc_fill,
+                },
+                {
+                    "symbol": lp_sym,
+                    "side": "BUY",
+                    "qty": qty,
+                    "phase": "4_shorts_abandoned",
+                    "reason": "filled_wing_to_unwind",
+                    "fill_price": lp_fill,
+                },
             ]
             if sc_order is None:
-                stuck.append({"symbol": sc_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned_pre_status", "limit_price": sc_limit})
+                stuck.append(
+                    {
+                        "symbol": sc_sym,
+                        "side": "SELL",
+                        "qty": qty,
+                        "phase": "4_shorts_abandoned",
+                        "reason": "polling_abandoned_pre_status",
+                        "limit_price": sc_limit,
+                    }
+                )
             else:
-                stuck.append({"symbol": sc_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned_after_sc_returned", "sc_status": sc_order.get("status"), "limit_price": sc_limit})
-            stuck.append({"symbol": sp_sym, "side": "SELL", "qty": qty, "phase": "4_shorts_abandoned", "reason": "polling_abandoned", "limit_price": sp_limit})
+                stuck.append(
+                    {
+                        "symbol": sc_sym,
+                        "side": "SELL",
+                        "qty": qty,
+                        "phase": "4_shorts_abandoned",
+                        "reason": "polling_abandoned_after_sc_returned",
+                        "sc_status": sc_order.get("status"),
+                        "limit_price": sc_limit,
+                    }
+                )
+            stuck.append(
+                {
+                    "symbol": sp_sym,
+                    "side": "SELL",
+                    "qty": qty,
+                    "phase": "4_shorts_abandoned",
+                    "reason": "polling_abandoned",
+                    "limit_price": sp_limit,
+                }
+            )
             persist_stuck_legs(stuck)
             self._last_rollback_stuck_legs = stuck
             logger.critical(
                 "IC %s Phase 4 OrderPollingAbandoned: wings filled + shorts in-flight. "
                 "Stuck-legs persisted (4 legs) for manual reconcile. exc=%s",
-                self.instrument, exc,
+                self.instrument,
+                exc,
             )
             raise
 
@@ -835,8 +975,12 @@ class IronCondorStrategy:
                 "IC %s Phase 5b: short(s) did not fill cleanly (SC status=%s fill=%d/%d, "
                 "SP status=%s fill=%d/%d); unwinding filled portions + both wings",
                 self.instrument,
-                sc_order.get("status"), sc_fill_qty, qty,
-                sp_order.get("status"), sp_fill_qty, qty,
+                sc_order.get("status"),
+                sc_fill_qty,
+                qty,
+                sp_order.get("status"),
+                sp_fill_qty,
+                qty,
             )
             if sc_fill_qty > 0:
                 self.om.place_order(sc_sym, "BUY", sc_fill_qty, price=float(sc_order["fill_price"]))
@@ -861,24 +1005,21 @@ class IronCondorStrategy:
             if sc_fill_qty > 0 or sp_fill_qty > 0:
                 self._consecutive_partial_fails += 1
                 cap = settings.IC_PARTIAL_FAIL_CAP
-                partial_legs = [
-                    {"symbol": sc_sym, "side": "SELL", "fill_qty": sc_fill_qty, "requested_qty": qty},
-                    {"symbol": sp_sym, "side": "SELL", "fill_qty": sp_fill_qty, "requested_qty": qty},
-                ]
                 if self._consecutive_partial_fails >= cap:
                     logger.critical(
                         "IC %s Phase-5b partial-fill cap reached "
                         "(%d consecutive ≥ cap %d) — suspending adjustments for today.",
                         self.instrument,
-                        self._consecutive_partial_fails, cap,
+                        self._consecutive_partial_fails,
+                        cap,
                     )
                     self._phase5b_suspended = True
                 else:
                     logger.warning(
-                        "IC %s Phase-5b partial-fill (%d/%d) — skipping this "
-                        "cycle, will retry on next signal.",
+                        "IC %s Phase-5b partial-fill (%d/%d) — skipping this cycle, will retry on next signal.",
                         self.instrument,
-                        self._consecutive_partial_fails, cap,
+                        self._consecutive_partial_fails,
+                        cap,
                     )
             return False
 
@@ -891,8 +1032,13 @@ class IronCondorStrategy:
             logger.error(
                 "IC %s Phase 5a: post-fill credit %.2f < min_credit %.2f "
                 "(SC=%.2f SP=%.2f LC=%.2f LP=%.2f); unwinding all 4 legs",
-                self.instrument, actual_net_credit_unit, min_credit,
-                sc_fill, sp_fill, lc_fill, lp_fill,
+                self.instrument,
+                actual_net_credit_unit,
+                min_credit,
+                sc_fill,
+                sp_fill,
+                lc_fill,
+                lp_fill,
             )
             self.om.place_order(sc_sym, "BUY", qty, price=sc_fill)
             self.om.place_order(sp_sym, "BUY", qty, price=sp_fill)
@@ -912,16 +1058,31 @@ class IronCondorStrategy:
         now = datetime.now()
         self._position = IC_Position(
             instrument=self.instrument,
-            sc_sym=sc_sym, sp_sym=sp_sym, lc_sym=lc_sym, lp_sym=lp_sym,
-            sc_strike=sc, sp_strike=sp, lc_strike=lc, lp_strike=lp,
-            max_profit=max_profit, entry_credit=actual_net_credit_unit,
-            lots=lots, entry_time=now.strftime("%H:%M:%S"),
+            sc_sym=sc_sym,
+            sp_sym=sp_sym,
+            lc_sym=lc_sym,
+            lp_sym=lp_sym,
+            sc_strike=sc,
+            sp_strike=sp,
+            lc_strike=lc,
+            lp_strike=lp,
+            max_profit=max_profit,
+            entry_credit=actual_net_credit_unit,
+            lots=lots,
+            entry_time=now.strftime("%H:%M:%S"),
             expiry_date=expiry_iso,
             entry_date=now.strftime("%Y-%m-%d"),
         )
         logger.info(
             "IC %s ENTERED (hedge-first): SC=%s SP=%s LC=%s LP=%s | Credit=%.2f | Lots=%d (LotSize=%d)",
-            self.instrument, sc, sp, lc, lp, actual_net_credit_unit, lots, lot_size,
+            self.instrument,
+            sc,
+            sp,
+            lc,
+            lp,
+            actual_net_credit_unit,
+            lots,
+            lot_size,
         )
         self._record_session_entry()
         return True
@@ -931,21 +1092,21 @@ class IronCondorStrategy:
     def monitor(self) -> Optional[Dict]:
         if not self.is_active():
             return None
-        
+
         pos = self._position
         prices = {
-            'sc': self.md.get_ltp(pos.sc_sym),
-            'sp': self.md.get_ltp(pos.sp_sym),
-            'lc': self.md.get_ltp(pos.lc_sym),
-            'lp': self.md.get_ltp(pos.lp_sym)
+            "sc": self.md.get_ltp(pos.sc_sym),
+            "sp": self.md.get_ltp(pos.sp_sym),
+            "lc": self.md.get_ltp(pos.lc_sym),
+            "lp": self.md.get_ltp(pos.lp_sym),
         }
 
         if any(p <= 0 for p in prices.values()):
             return None
 
-        current_premium = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
+        current_premium = (prices["sc"] + prices["sp"]) - (prices["lc"] + prices["lp"])
         pnl_unit = pos.entry_credit - current_premium
-        
+
         # Get actual lot size from master via market data
         lot_size = self.md.get_lot_size(pos.sc_sym)
         total_pnl = pnl_unit * pos.lots * lot_size
@@ -965,11 +1126,11 @@ class IronCondorStrategy:
         # Roll tested side OTM and safe side closer if overall position in profit
         if total_pnl > 0:
             # Check for breach
-            spot = self.md.get_ltp(settings.NIFTY_SPOT_KEY if self.instrument == 'NIFTY' else "NSE|Nifty Bank")
+            spot = self.md.get_ltp(settings.NIFTY_SPOT_KEY if self.instrument == "NIFTY" else "NSE|Nifty Bank")
             breached = spot >= pos.sc_strike or spot <= pos.sp_strike
             if breached:
                 logger.info(f"IC {self.instrument} ADJUSTING: Spot={spot} breached strike. Rolling to cost-neutral.")
-                return self.exit("ADJUSTMENT_REQUIRED", total_pnl) # Close to re-enter with adjusted strikes
+                return self.exit("ADJUSTMENT_REQUIRED", total_pnl)  # Close to re-enter with adjusted strikes
 
         return None
 
@@ -977,23 +1138,23 @@ class IronCondorStrategy:
         """Calculate current unrealised P&L for the active position."""
         if not self._position:
             return 0.0
-        
+
         pos = self._position
         prices = {
-            'sc': self.md.get_ltp(pos.sc_sym),
-            'sp': self.md.get_ltp(pos.sp_sym),
-            'lc': self.md.get_ltp(pos.lc_sym),
-            'lp': self.md.get_ltp(pos.lp_sym)
+            "sc": self.md.get_ltp(pos.sc_sym),
+            "sp": self.md.get_ltp(pos.sp_sym),
+            "lc": self.md.get_ltp(pos.lc_sym),
+            "lp": self.md.get_ltp(pos.lp_sym),
         }
 
-        # If any LTP is missing/zero, we return 0.0 to avoid bad exits, 
+        # If any LTP is missing/zero, we return 0.0 to avoid bad exits,
         # though in a force_exit we might want to be more aggressive.
         if any(p <= 0 for p in prices.values()):
             return 0.0
 
-        current_premium = (prices['sc'] + prices['sp']) - (prices['lc'] + prices['lp'])
+        current_premium = (prices["sc"] + prices["sp"]) - (prices["lc"] + prices["lp"])
         pnl_unit = pos.entry_credit - current_premium
-        
+
         lot_size = self.md.get_lot_size(pos.sc_sym)
         return pnl_unit * pos.lots * lot_size
 
@@ -1019,16 +1180,23 @@ class IronCondorStrategy:
             if fq < qty:
                 logger.error(
                     "IC %s EXIT INCOMPLETE: %s %s filled %d/%d (status=%s, reason=%s)",
-                    self.instrument, side, sym, fq, qty,
-                    order.get("status"), order.get("reason", ""),
+                    self.instrument,
+                    side,
+                    sym,
+                    fq,
+                    qty,
+                    order.get("status"),
+                    order.get("reason", ""),
                 )
-                exit_stuck.append({
-                    "symbol": sym,
-                    "original_side": self._opposite_side(side),
-                    "intended_qty": qty,
-                    "reversed_qty": fq,
-                    "reason": "exit_leg_incomplete",
-                })
+                exit_stuck.append(
+                    {
+                        "symbol": sym,
+                        "original_side": self._opposite_side(side),
+                        "intended_qty": qty,
+                        "reversed_qty": fq,
+                        "reason": "exit_leg_incomplete",
+                    }
+                )
                 # Stop attempting further close legs — position state is ambiguous.
                 break
             if tracker is not None:
@@ -1042,10 +1210,10 @@ class IronCondorStrategy:
             persist_stuck_legs(exit_stuck)
 
         logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={pnl:.2f}")
-        
+
         # Align with TradeLogger.TRADE_COLUMNS
-        # Columns: trade_id, date, time_entry, time_exit, instrument, 
-        # sc_strike, sp_strike, lc_strike, lp_strike, entry_credit, exit_price, 
+        # Columns: trade_id, date, time_entry, time_exit, instrument,
+        # sc_strike, sp_strike, lc_strike, lp_strike, entry_credit, exit_price,
         # gross_pnl, net_pnl, exit_reason, lots, peak_pnl, vix_entry, day_type, paper
         result = {
             "instrument": self.instrument,
@@ -1057,8 +1225,8 @@ class IronCondorStrategy:
             "lc_strike": pos.lc_strike,
             "lp_strike": pos.lp_strike,
             "entry_credit": round(pos.entry_credit, 2),
-            "pnl": pnl,           # Used by PnLEngine
-            "net_pnl": pnl,       # Used by TradeLogger
+            "pnl": pnl,  # Used by PnLEngine
+            "net_pnl": pnl,  # Used by TradeLogger
             "exit_reason": reason,
             "lots": pos.lots,
             "peak_pnl": round(pos.peak_pnl, 2),
@@ -1080,11 +1248,7 @@ class IronCondorStrategy:
         # SHAKEDOWN-03a: counter persists alongside the position so a same-day
         # crash-restart cannot silently rebudget an exhausted entry cap.
         today = datetime.now().date().isoformat()
-        has_counter_state = bool(
-            settings.SHAKEDOWN_MODE
-            and self._entries_today_date
-            and self._entries_today_count > 0
-        )
+        has_counter_state = bool(settings.SHAKEDOWN_MODE and self._entries_today_date and self._entries_today_count > 0)
         # Incident 2026-04-27 12:32:46: with SHAKEDOWN_MODE=False the harvest
         # re-entry sentinel was never persisted, so the first entry attempt
         # after any restart looked like a fresh entry to the Phase-5b policy.
@@ -1092,10 +1256,7 @@ class IronCondorStrategy:
         # morning had 4 successful PROFIT_HARVEST exits. Persist independently
         # of the SHAKEDOWN gate; the date check at restore protects against
         # stale-day carryover regardless of mode.
-        has_reentry_state = bool(
-            self._last_exit_reason
-            and self._last_exit_date == today
-        )
+        has_reentry_state = bool(self._last_exit_reason and self._last_exit_date == today)
         if not self._position and not has_counter_state and not has_reentry_state:
             return None
         payload: Dict[str, Any] = {}
@@ -1132,12 +1293,16 @@ class IronCondorStrategy:
         if settings.SHAKEDOWN_MODE and self._entries_today_count > 0:
             logger.info(
                 "SHAKEDOWN: %s entry counter restored: count=%d/%d date=%s last_exit=%s",
-                self.instrument, self._entries_today_count,
-                settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN, today,
+                self.instrument,
+                self._entries_today_count,
+                settings.IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN,
+                today,
                 self._last_exit_reason or "(none)",
             )
         elif self._last_exit_reason:
             logger.info(
                 "%s re-entry sentinel restored: last_exit=%s date=%s",
-                self.instrument, self._last_exit_reason, self._last_exit_date,
+                self.instrument,
+                self._last_exit_reason,
+                self._last_exit_date,
             )

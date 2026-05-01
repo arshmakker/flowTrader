@@ -2,13 +2,14 @@
 Regime Filter — monitors India VIX and stability (agents.md).
 """
 
-import time
 import logging
-from typing import Any, Dict, Tuple, Optional, List
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
+
 
 class RegimeFilter:
     def __init__(self, api: Any):
@@ -64,11 +65,7 @@ class RegimeFilter:
             return
         now = time.time()
         cutoff = now - (settings.IC_VIX_STABLE_MINS * 60 + 300)
-        self._vix_history = [
-            (float(t), float(v))
-            for t, v in state.get("vix_history", [])
-            if float(t) >= cutoff
-        ]
+        self._vix_history = [(float(t), float(v)) for t, v in state.get("vix_history", []) if float(t) >= cutoff]
         logger.info(
             "Restored VIX history: %d samples (oldest %.0fs ago)",
             len(self._vix_history),
@@ -88,6 +85,7 @@ class RegimeFilter:
         # holidays, or muhurat-date-outside-window. Put this first — no
         # point consulting VIX or day type if we can't place an order.
         from strategy_runner import is_tradable_now
+
         tradable, reason = is_tradable_now()
         if not tradable:
             logger.info(f"Entry Gate BLOCKED: market not tradable (reason={reason})")
@@ -95,7 +93,7 @@ class RegimeFilter:
 
         vix = self.get_vix()
 
-        if day_type != 'RANGING':
+        if day_type != "RANGING":
             logger.info(f"Entry Gate BLOCKED: Day type is {day_type} (not RANGING)")
             return False
 
@@ -106,7 +104,8 @@ class RegimeFilter:
         if instrument == "NIFTY" and vix < settings.IC_NIFTY_MIN_VIX:
             logger.info(
                 "Entry Gate BLOCKED: NIFTY VIX %.1f < %.1f structural credit floor",
-                vix, settings.IC_NIFTY_MIN_VIX,
+                vix,
+                settings.IC_NIFTY_MIN_VIX,
             )
             return False
 

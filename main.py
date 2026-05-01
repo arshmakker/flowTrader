@@ -5,43 +5,41 @@ Wires all modules together for high-frequency Nifty/BankNifty IC trading.
 """
 
 import atexit
-import os
-import sys
 import logging
-import threading
-import time as _time
+import os
 import re
 import shlex
 import subprocess
+import sys
+import time as _time
 import urllib.parse
-import yaml
-from datetime import datetime, time as dtime, timedelta
+from datetime import datetime, timedelta
 from typing import Optional
 
-from api_helper import ShoonyaApiPy
-from symbol_manager import SymbolManager
-from data_collector import DataCollector
-from strategy_runner import is_market_hours, is_market_closed_ist, is_trading_day_ist
+import yaml
 
+from api_helper import ShoonyaApiPy
+from data_collector import DataCollector
+from strategy_runner import is_market_closed_ist, is_market_hours, is_trading_day_ist
+from symbol_manager import SymbolManager
+from trading_system.auth import shoonya_selenium_auth
 from trading_system.config import settings
-from trading_system.core.regime_filter import RegimeFilter
+from trading_system.core import position_persistence
 from trading_system.core.day_classifier import DayClassifier
-from trading_system.core.signal_engine import SignalEngine
-from trading_system.core.iron_condor import IronCondorStrategy
-from trading_system.core.risk_manager import RiskManager
 from trading_system.core.expiry_manager import ExpiryManager
+from trading_system.core.iron_condor import IronCondorStrategy
+from trading_system.core.regime_filter import RegimeFilter
+from trading_system.core.risk_manager import RiskManager
+from trading_system.core.signal_engine import SignalEngine
 from trading_system.core.sr_manager import SRManager
 from trading_system.core.trade_logger import TradeLogger
-from trading_system.core import position_persistence
 from trading_system.existing.market_data import MarketData
-from trading_system.auth import shoonya_selenium_auth
+from trading_system.live.live_order_manager import LiveOrderManager
 from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
 from trading_system.ops.startup_reconcile import reconcile_startup_positions
-
 from trading_system.paper.paper_order_manager import PaperOrderManager
-from trading_system.paper.paper_position_tracker import PaperPositionTracker
 from trading_system.paper.paper_pnl_engine import PaperPnLEngine
-from trading_system.live.live_order_manager import LiveOrderManager
+from trading_system.paper.paper_position_tracker import PaperPositionTracker
 
 DEFAULT_AUTH_CODE_SCRIPT = "/Users/arshdeep/git/Shoonya_oAuth_API.py/tests/getAuthCode.py"
 
@@ -82,7 +80,7 @@ def _acquire_pid_lock() -> None:
     if os.path.exists(pid_path):
         try:
             existing_pid = int(open(pid_path).read().strip())
-            os.kill(existing_pid, 0)   # signal 0 = check existence only
+            os.kill(existing_pid, 0)  # signal 0 = check existence only
             # Process exists. Check if it is still trading by snapshot age.
             snapshot_age = None
             if os.path.exists(snapshot_path):
@@ -101,7 +99,7 @@ def _acquire_pid_lock() -> None:
                     f"delete {pid_path} and retry."
                     if snapshot_age is not None
                     else f"ERROR: RegimeTrader already running (PID {existing_pid}). "
-                         f"If the process is dead, delete {pid_path} and retry.",
+                    f"If the process is dead, delete {pid_path} and retry.",
                     file=sys.stderr,
                 )
                 sys.exit(1)
@@ -170,12 +168,14 @@ def _check_kill_switch(strats, pnl_engine, risk, log, alerts=None) -> bool:
         return False
     log.critical("HALT FILE DETECTED — initiating emergency stop.")
     if alerts is not None:
-        alerts.send(Alert(
-            event="halt_file_detected",
-            severity="warning",
-            title="RegimeTrader: halt file triggered",
-            body="Operator dropped data/HALT — initiating emergency flatten and exit.",
-        ))
+        alerts.send(
+            Alert(
+                event="halt_file_detected",
+                severity="warning",
+                title="RegimeTrader: halt file triggered",
+                body="Operator dropped data/HALT — initiating emergency flatten and exit.",
+            )
+        )
     _force_exit_all(strats, pnl_engine, risk)
     try:
         os.remove(settings.HALT_FILE)
@@ -194,7 +194,7 @@ def _force_exit_all(strats, pnl_engine, risk):
         if s.is_active():
             result = s.force_exit()
             if result:
-                pnl_engine.record_trade(s.instrument, result['pnl'], result)
+                pnl_engine.record_trade(s.instrument, result["pnl"], result)
 
 
 def _evaluate_stop_checks(strats, pnl_engine, risk, log):
@@ -240,12 +240,14 @@ def _halt_on_exception(exc, risk, log, alerts=None):
         exc_info=True,
     )
     if alerts is not None:
-        alerts.send(Alert(
-            event="unhandled_exception",
-            severity="critical",
-            title="RegimeTrader: main loop halted on exception",
-            body=f"{type(exc).__name__}: {exc}. Trading halted. See logs for traceback.",
-        ))
+        alerts.send(
+            Alert(
+                event="unhandled_exception",
+                severity="critical",
+                title="RegimeTrader: main loop halted on exception",
+                body=f"{type(exc).__name__}: {exc}. Trading halted. See logs for traceback.",
+            )
+        )
 
 
 class _AuthSessionExpired(Exception):
@@ -263,9 +265,7 @@ def _check_mid_session_auth(api, log, alerts, reauth_state) -> None:
     if api.validate_oauth_session():
         return
     if reauth_state["attempted"]:
-        raise _AuthSessionExpired(
-            "OAuth session invalid; reauth already attempted this session — giving up"
-        )
+        raise _AuthSessionExpired("OAuth session invalid; reauth already attempted this session — giving up")
     reauth_state["attempted"] = True
     log.warning("OAuth session invalid mid-session; attempting one reauth")
     if not _mid_session_reauth(api, log, alerts=alerts):
@@ -280,10 +280,7 @@ def _mid_session_reauth(api, log, alerts=None) -> bool:
     uid = str(creds.get("UID", "")).strip()
     client_id = str(creds.get("client_id", "")).strip()
     secret_code = str(creds.get("Secret_Code", "")).strip()
-    token_url = (
-        os.environ.get("SHOONYA_TOKEN_URL", "").strip()
-        or str(creds.get("token_url", "")).strip()
-    )
+    token_url = os.environ.get("SHOONYA_TOKEN_URL", "").strip() or str(creds.get("token_url", "")).strip()
 
     auth_code = os.environ.get("SHOONYA_AUTH_CODE", "").strip()
     if not auth_code and shoonya_selenium_auth.is_configured(creds):
@@ -447,8 +444,10 @@ def _find_past_expiry(strats, today_iso):
             out.append(s)
     return out
 
+
 def setup_logging() -> None:
     from logging.handlers import RotatingFileHandler
+
     os.makedirs(settings.LOG_DIR, exist_ok=True)
     log_path = os.path.join(settings.LOG_DIR, f"ic_system_{datetime.now().strftime('%Y%m%d')}.log")
     formatter = logging.Formatter(settings.LOG_FORMAT)
@@ -462,9 +461,11 @@ def setup_logging() -> None:
     ch.setFormatter(formatter)
     root.addHandler(ch)
 
+
 def _load_creds(path="cred.yml"):
     with open(path, "r") as f:
         return yaml.safe_load(f) or {}
+
 
 def _save_creds(creds, path="cred.yml"):
     with open(path, "w") as f:
@@ -474,15 +475,18 @@ def _save_creds(creds, path="cred.yml"):
     # any local read (backup process, log scrape, container layer).
     os.chmod(path, 0o600)
 
+
 def _mask_secret(value):
     s = str(value or "")
     if len(s) <= 8:
         return "***"
     return f"{s[:4]}...{s[-4:]}"
 
+
 def _is_oauth_configured(creds):
     required = ("oauth_url", "client_id", "Secret_Code", "UID")
     return all(str(creds.get(k, "")).strip() for k in required)
+
 
 def _extract_auth_code(text):
     raw = str(text or "")
@@ -502,6 +506,7 @@ def _extract_auth_code(text):
         return lines[0]
     return ""
 
+
 def _resolve_auth_code_cmd(creds):
     cmd = os.environ.get("SHOONYA_AUTH_CODE_CMD", "").strip() or str(creds.get("auth_code_cmd", "")).strip()
     if cmd:
@@ -510,11 +515,14 @@ def _resolve_auth_code_cmd(creds):
         return f'python3 "{DEFAULT_AUTH_CODE_SCRIPT}"'
     return ""
 
+
 def _fetch_auth_code_from_command(creds, log):
     cmd = _resolve_auth_code_cmd(creds)
     if not cmd:
         return ""
-    timeout_raw = os.environ.get("SHOONYA_AUTH_CODE_TIMEOUT", "").strip() or str(creds.get("auth_code_timeout", "180")).strip()
+    timeout_raw = (
+        os.environ.get("SHOONYA_AUTH_CODE_TIMEOUT", "").strip() or str(creds.get("auth_code_timeout", "180")).strip()
+    )
     try:
         timeout = max(30, int(timeout_raw))
     except ValueError:
@@ -614,6 +622,7 @@ def _fetch_auth_code_from_command(creds, log):
         log.warning("Auth code command completed but no auth code found in output.")
     return ""
 
+
 def _initialize_api_legacy(api, creds):
     factor2 = os.environ.get("TWOFA", "").strip()
     if not factor2:
@@ -627,9 +636,14 @@ def _initialize_api_legacy(api, creds):
         imei=creds["imei"],
     )
     if not result or (isinstance(result, dict) and str(result.get("stat", "")).lower() != "ok"):
-        detail = api.get_last_broker_error() or (result.get("emsg") if isinstance(result, dict) else "") or "Unknown login failure"
+        detail = (
+            api.get_last_broker_error()
+            or (result.get("emsg") if isinstance(result, dict) else "")
+            or "Unknown login failure"
+        )
         raise RuntimeError(f"Shoonya legacy login failed: {detail}")
     return api
+
 
 def _validate_oauth_creds(creds, log):
     """Pre-flight sanity check on cred.yml OAuth fields.
@@ -653,10 +667,7 @@ def _validate_oauth_creds(creds, log):
             len(secret_code),
         )
 
-    token_url = (
-        os.environ.get("SHOONYA_TOKEN_URL", "").strip()
-        or str(creds.get("token_url", "")).strip()
-    )
+    token_url = os.environ.get("SHOONYA_TOKEN_URL", "").strip() or str(creds.get("token_url", "")).strip()
     if token_url and "api.shoonya.com" not in token_url:
         if "trade.shoonya.com" in token_url:
             log.warning(
@@ -668,8 +679,7 @@ def _validate_oauth_creds(creds, log):
             )
         else:
             log.warning(
-                "OAuth pre-flight: token_url is on an unrecognized host: %s. "
-                "Working host is api.shoonya.com.",
+                "OAuth pre-flight: token_url is on an unrecognized host: %s. Working host is api.shoonya.com.",
                 token_url,
             )
 
@@ -680,10 +690,7 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
     client_id = str(creds.get("client_id", "")).strip()
     secret_code = str(creds.get("Secret_Code", "")).strip()
     oauth_url = str(creds.get("oauth_url", "")).strip()
-    token_url = (
-        os.environ.get("SHOONYA_TOKEN_URL", "").strip()
-        or str(creds.get("token_url", "")).strip()
-    )
+    token_url = os.environ.get("SHOONYA_TOKEN_URL", "").strip() or str(creds.get("token_url", "")).strip()
     oauth_api_host = (
         os.environ.get("SHOONYA_OAUTH_API_HOST", "").strip()
         or str(creds.get("oauth_api_host", "")).strip()
@@ -696,7 +703,10 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
     )
     account_id = str(creds.get("Account_ID", "")).strip() or uid
     access_token = str(creds.get("Access_token", "")).strip()
-    retry_raw = os.environ.get("SHOONYA_OAUTH_REAUTH_ATTEMPTS", "").strip() or str(creds.get("oauth_reauth_attempts", "2")).strip()
+    retry_raw = (
+        os.environ.get("SHOONYA_OAUTH_REAUTH_ATTEMPTS", "").strip()
+        or str(creds.get("oauth_reauth_attempts", "2")).strip()
+    )
     try:
         oauth_reauth_attempts = max(1, int(retry_raw))
     except ValueError:
@@ -727,7 +737,11 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
     for attempt in range(1, oauth_reauth_attempts + 1):
         auth_code = os.environ.get("SHOONYA_AUTH_CODE", "").strip()
         if not auth_code and shoonya_selenium_auth.is_configured(creds):
-            log.info("OAuth re-auth attempt %s/%s: capturing auth code via in-process Selenium.", attempt, oauth_reauth_attempts)
+            log.info(
+                "OAuth re-auth attempt %s/%s: capturing auth code via in-process Selenium.",
+                attempt,
+                oauth_reauth_attempts,
+            )
             auth_code = shoonya_selenium_auth.fetch_auth_code(creds)
         if not auth_code:
             auth_code = _fetch_auth_code_from_command(creds, log)
@@ -738,7 +752,9 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
         token_data = api.exchange_auth_code(auth_code, secret_code, client_id, uid, token_url=token_url)
         if not token_data:
             detail = api.get_last_broker_error() or "Unknown token exchange failure"
-            log.warning("OAuth re-auth attempt %s/%s failed at token exchange: %s", attempt, oauth_reauth_attempts, detail)
+            log.warning(
+                "OAuth re-auth attempt %s/%s failed at token exchange: %s", attempt, oauth_reauth_attempts, detail
+            )
             continue
 
         new_access_token, user_id, _refresh_token, new_account_id = token_data
@@ -752,7 +768,9 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
             return api
 
         detail = api.get_last_broker_error() or "Unknown validation failure"
-        log.warning("OAuth re-auth attempt %s/%s failed at session validation: %s", attempt, oauth_reauth_attempts, detail)
+        log.warning(
+            "OAuth re-auth attempt %s/%s failed at session validation: %s", attempt, oauth_reauth_attempts, detail
+        )
 
     # Final fallback: manual code entry.
     log.info("Open this URL, complete login, then paste the auth code:\n%s", oauth_login_url)
@@ -761,31 +779,39 @@ def _initialize_api_oauth(api, creds, log, alerts=None):
     if not token_data:
         detail = api.get_last_broker_error() or "Unknown token exchange failure"
         if alerts is not None:
-            alerts.send(Alert(
-                event="oauth_auth_failure",
-                severity="critical",
-                title="RegimeTrader: OAuth login failed",
-                body=f"All auth paths exhausted. Token exchange failure: {detail}",
-            ))
+            alerts.send(
+                Alert(
+                    event="oauth_auth_failure",
+                    severity="critical",
+                    title="RegimeTrader: OAuth login failed",
+                    body=f"All auth paths exhausted. Token exchange failure: {detail}",
+                )
+            )
         raise RuntimeError(f"OAuth token exchange failed: {detail}")
     new_access_token, user_id, _refresh_token, new_account_id = token_data
     api.inject_oauth_header(new_access_token, user_id, new_account_id)
     if not api.validate_oauth_session():
         detail = api.get_last_broker_error() or "Unknown validation failure"
         if alerts is not None:
-            alerts.send(Alert(
-                event="oauth_auth_failure",
-                severity="critical",
-                title="RegimeTrader: OAuth validation failed",
-                body=f"Token exchange succeeded but session validation failed: {detail}",
-            ))
+            alerts.send(
+                Alert(
+                    event="oauth_auth_failure",
+                    severity="critical",
+                    title="RegimeTrader: OAuth validation failed",
+                    body=f"Token exchange succeeded but session validation failed: {detail}",
+                )
+            )
         raise RuntimeError(f"OAuth session validation failed after token exchange: {detail}")
     creds["Access_token"] = new_access_token
     creds["Account_ID"] = new_account_id
     creds["UID"] = user_id
     _save_creds(creds)
-    log.info("OAuth login successful (manual fallback); access token cached to cred.yml (%s).", _mask_secret(new_access_token))
+    log.info(
+        "OAuth login successful (manual fallback); access token cached to cred.yml (%s).",
+        _mask_secret(new_access_token),
+    )
     return api
+
 
 def initialize_api(log, alerts=None) -> ShoonyaApiPy:
     creds = _load_creds()
@@ -794,11 +820,12 @@ def initialize_api(log, alerts=None) -> ShoonyaApiPy:
         return _initialize_api_oauth(api, creds, log, alerts=alerts)
     return _initialize_api_legacy(api, creds)
 
+
 def run():
     setup_logging()
     log = logging.getLogger("main")
-    _acquire_pid_lock()   # LIVE-20: fail fast if already running
-    _require_live_ack()   # SHAKEDOWN: live mode requires explicit operator handshake
+    _acquire_pid_lock()  # LIVE-20: fail fast if already running
+    _require_live_ack()  # SHAKEDOWN: live mode requires explicit operator handshake
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
     _log_holiday_calendar(log)
 
@@ -808,31 +835,31 @@ def run():
     api = initialize_api(log, alerts=alerts)
     sm = SymbolManager(api)
     sm.load_symbol_files()
-    
+
     collector = DataCollector(api, sm)
     md = MarketData(api, sm)
-    
+
     # Core Components
     regime = RegimeFilter(api)
     signals = SignalEngine()
     # BUG-08: one classifier per instrument — BANKNIFTY regime should not be
     # gated on NIFTY's day type.
     classifiers = {
-        'NIFTY': DayClassifier(md, signals, settings.NIFTY_SYMBOL, settings.NIFTY_SPOT_KEY),
-        'BANKNIFTY': DayClassifier(md, signals, settings.BANKNIFTY_SYMBOL, settings.BANKNIFTY_SPOT_KEY),
+        "NIFTY": DayClassifier(md, signals, settings.NIFTY_SYMBOL, settings.NIFTY_SPOT_KEY),
+        "BANKNIFTY": DayClassifier(md, signals, settings.BANKNIFTY_SYMBOL, settings.BANKNIFTY_SPOT_KEY),
     }
     risk = RiskManager(alerts=alerts)
     expiry_mgr = ExpiryManager(sm)
     sr_mgr = SRManager()
     trade_logger = TradeLogger()
-    
+
     pos_mgr, order_mgr, pnl_engine = _build_order_stack(api, md, trade_logger)
 
     # Strategies
-    nifty_ic = IronCondorStrategy(order_mgr, md, 'NIFTY')
-    banknifty_ic = IronCondorStrategy(order_mgr, md, 'BANKNIFTY')
+    nifty_ic = IronCondorStrategy(order_mgr, md, "NIFTY")
+    banknifty_ic = IronCondorStrategy(order_mgr, md, "BANKNIFTY")
     strats = [nifty_ic, banknifty_ic]
-    strats_map = {'NIFTY': nifty_ic, 'BANKNIFTY': banknifty_ic}
+    strats_map = {"NIFTY": nifty_ic, "BANKNIFTY": banknifty_ic}
 
     # Restore any carried-overnight positions + P&L state.
     meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk, regime_filter=regime)
@@ -876,7 +903,9 @@ def run():
             expiry = getattr(s._position, "expiry_date", "")
             log.error(
                 "Past-expiry position: %s expired %s (today=%s). Hard-close was missed on expiry day.",
-                s.instrument, expiry, startup_today_iso,
+                s.instrument,
+                expiry,
+                startup_today_iso,
             )
         log.error(
             "HALTED at startup: %d past-expiry position(s) require manual settlement at the NSE "
@@ -908,14 +937,16 @@ def run():
             "Past-abnormal-exit position(s): %s. Previous session ended with reason=%r "
             "at %s; restart crossed a non-trading day.",
             ", ".join(open_syms) or "(tracker-only)",
-            last_reason, last_saved_at,
+            last_reason,
+            last_saved_at,
         )
         log.error(
             "HALTED at startup: abnormal shutdown (reason=%r) on %s left open positions that were "
             "carried across a non-trading day. Weekend-flatten was bypassed. Manual reconciliation "
             "required — inspect marks vs next-session open and close intentionally, or clear state "
             "if positions were already closed out-of-band.",
-            last_reason, last_saved_at,
+            last_reason,
+            last_saved_at,
         )
         risk.halted = True
         risk.stop_hit_at = datetime.now()
@@ -933,12 +964,14 @@ def run():
         except Exception:
             log.exception("HALTED at startup: get_positions() call failed; cannot verify broker state")
             if alerts is not None:
-                alerts.send(Alert(
-                    event="startup_reconcile_failed",
-                    severity="critical",
-                    title="RegimeTrader startup halted - broker query failed",
-                    body="get_positions() raised; engine cannot verify broker state. Inspect and clear.",
-                ))
+                alerts.send(
+                    Alert(
+                        event="startup_reconcile_failed",
+                        severity="critical",
+                        title="RegimeTrader startup halted - broker query failed",
+                        body="get_positions() raised; engine cannot verify broker state. Inspect and clear.",
+                    )
+                )
             risk.halted = True
             risk.stop_hit_at = datetime.now()
             return
@@ -952,197 +985,222 @@ def run():
                 report.summary(),
             )
             if alerts is not None:
-                alerts.send(Alert(
-                    event="startup_reconcile_divergent",
-                    severity="critical",
-                    title="RegimeTrader startup halted - broker/engine divergence",
-                    body=report.summary(),
-                ))
+                alerts.send(
+                    Alert(
+                        event="startup_reconcile_divergent",
+                        severity="critical",
+                        title="RegimeTrader startup halted - broker/engine divergence",
+                        body=report.summary(),
+                    )
+                )
             risk.halted = True
             risk.stop_hit_at = datetime.now()
             return
 
-    day_classes = {'NIFTY': None, 'BANKNIFTY': None}
+    day_classes = {"NIFTY": None, "BANKNIFTY": None}
     collection_started = False
     _auth_state = {"attempted": False}
     _last_session_check = 0.0
 
     log.info("Entering main loop...")
-    
+
     try:
         while True:
-          try:
-            # LIVE-19: operator emergency stop — checked before anything else.
-            if _check_kill_switch(strats, pnl_engine, risk, log, alerts=alerts):
-                position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk, regime,
-                    session_status=position_persistence.SESSION_FLAT,
-                    shutdown_reason="kill-switch",
-                )
-                sys.exit(0)
-
-            # BUG-07: periodic OAuth health check. Broker guarantees no mid-session
-            # expiry, but if it does happen: one automated reauth, then crash loudly.
-            _now_wall = _time.time()
-            if _now_wall - _last_session_check >= _SESSION_CHECK_INTERVAL:
-                _last_session_check = _now_wall
-                _check_mid_session_auth(api, log, alerts, _auth_state)
-
-            now = datetime.now()
-            now_t = now.time()
-
-            # 1. Market Hours & Data Collection
-            if not collection_started and is_market_hours():
-                collector.start_collection()
-                collection_started = True
-
-            if is_market_closed_ist():
-                log.info("Market closed. Exiting loop.")
-                break
-
-            # LIVE-11: intra-day margin shortfall. SEBI peak-margin snapshots
-            # hit at random intervals; a position that passed LIVE-10's
-            # pre-entry check can still hit shortfall if spot moves or SPAN
-            # re-prices. Halt new entries on any broker-reported shortfall;
-            # existing positions keep being monitored/harvested.
-            if not settings.PAPER_TRADE_MODE and not risk.halted:
-                shortfall = order_mgr.get_margin_shortfall()
-                if shortfall > 0:
-                    log.critical("LIVE-11 intraday margin shortfall ₹%.2f — halting new entries.", shortfall)
-                    if alerts is not None:
-                        alerts.send(Alert(
-                            event="intraday_margin_shortfall",
-                            severity="critical",
-                            title="RegimeTrader: intraday margin shortfall",
-                            body=f"Broker reports margin shortfall of Rs {shortfall:,.2f}. New entries halted; reconcile against broker before clearing.",
-                        ))
-                    risk.halted = True
-                    risk.stop_hit_at = datetime.now()
-
-            # 2a. Expiry-day early close (TRADE_END_EXPIRY = 15:00).
-            #     Fires 10 min before TRADE_END to avoid the expiry settlement squeeze.
-            if now_t >= datetime.strptime(settings.TRADE_END_EXPIRY, "%H:%M").time():
-                expiring_early = _find_expiring_today(strats, datetime.now().date().isoformat())
-                if expiring_early:
-                    _force_exit_all(expiring_early, pnl_engine, risk)
-                    log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring_early))
-
-            # 2b. End-of-day: flatten remaining positions; also flatten if
-            #     next day is not a trading day or if next-session DTE would
-            #     drop below IC_DTE_THRESHOLD.
-            if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
-                today_date = datetime.now().date()
-                today_iso = today_date.isoformat()
-                tomorrow = datetime.now() + timedelta(days=1)
-                next_day_is_trading = is_trading_day_ist(tomorrow)
-                # Fix #4: Overnight-DTE block. Close any position whose DTE at
-                # the next trading session would be below IC_DTE_THRESHOLD.
-                # Catches the Fri→Mon weekend-gap case where calendar DTE
-                # collapses (Fri=4 → Mon=1 for a Tue weekly).
-                next_session = _next_trading_session_date(today_date)
-                if next_session is not None:
-                    near_expiry_next = _find_near_dte_at_next_session(
-                        strats, next_session, settings.IC_DTE_THRESHOLD
+            try:
+                # LIVE-19: operator emergency stop — checked before anything else.
+                if _check_kill_switch(strats, pnl_engine, risk, log, alerts=alerts):
+                    position_persistence.save(
+                        strats_map,
+                        pos_mgr,
+                        pnl_engine,
+                        risk,
+                        regime,
+                        session_status=position_persistence.SESSION_FLAT,
+                        shutdown_reason="kill-switch",
                     )
-                    if near_expiry_next:
-                        _force_exit_all(near_expiry_next, pnl_engine, risk)
-                        log.info(
-                            "Pre-near-expiry close: force-exited %d position(s) "
-                            "whose DTE at next session (%s) would be < %d.",
-                            len(near_expiry_next), next_session.isoformat(),
-                            settings.IC_DTE_THRESHOLD,
+                    sys.exit(0)
+
+                # BUG-07: periodic OAuth health check. Broker guarantees no mid-session
+                # expiry, but if it does happen: one automated reauth, then crash loudly.
+                _now_wall = _time.time()
+                if _now_wall - _last_session_check >= _SESSION_CHECK_INTERVAL:
+                    _last_session_check = _now_wall
+                    _check_mid_session_auth(api, log, alerts, _auth_state)
+
+                now = datetime.now()
+                now_t = now.time()
+
+                # 1. Market Hours & Data Collection
+                if not collection_started and is_market_hours():
+                    collector.start_collection()
+                    collection_started = True
+
+                if is_market_closed_ist():
+                    log.info("Market closed. Exiting loop.")
+                    break
+
+                # LIVE-11: intra-day margin shortfall. SEBI peak-margin snapshots
+                # hit at random intervals; a position that passed LIVE-10's
+                # pre-entry check can still hit shortfall if spot moves or SPAN
+                # re-prices. Halt new entries on any broker-reported shortfall;
+                # existing positions keep being monitored/harvested.
+                if not settings.PAPER_TRADE_MODE and not risk.halted:
+                    shortfall = order_mgr.get_margin_shortfall()
+                    if shortfall > 0:
+                        log.critical("LIVE-11 intraday margin shortfall ₹%.2f — halting new entries.", shortfall)
+                        if alerts is not None:
+                            alerts.send(
+                                Alert(
+                                    event="intraday_margin_shortfall",
+                                    severity="critical",
+                                    title="RegimeTrader: intraday margin shortfall",
+                                    body=f"Broker reports margin shortfall of Rs {shortfall:,.2f}. New entries halted; reconcile against broker before clearing.",
+                                )
+                            )
+                        risk.halted = True
+                        risk.stop_hit_at = datetime.now()
+
+                # 2a. Expiry-day early close (TRADE_END_EXPIRY = 15:00).
+                #     Fires 10 min before TRADE_END to avoid the expiry settlement squeeze.
+                if now_t >= datetime.strptime(settings.TRADE_END_EXPIRY, "%H:%M").time():
+                    expiring_early = _find_expiring_today(strats, datetime.now().date().isoformat())
+                    if expiring_early:
+                        _force_exit_all(expiring_early, pnl_engine, risk)
+                        log.info("Expiry-day close: force-exited %d expiring position(s).", len(expiring_early))
+
+                # 2b. End-of-day: flatten remaining positions; also flatten if
+                #     next day is not a trading day or if next-session DTE would
+                #     drop below IC_DTE_THRESHOLD.
+                if now_t >= datetime.strptime(settings.TRADE_END, "%H:%M").time():
+                    today_date = datetime.now().date()
+                    today_date.isoformat()
+                    tomorrow = datetime.now() + timedelta(days=1)
+                    next_day_is_trading = is_trading_day_ist(tomorrow)
+                    # Fix #4: Overnight-DTE block. Close any position whose DTE at
+                    # the next trading session would be below IC_DTE_THRESHOLD.
+                    # Catches the Fri→Mon weekend-gap case where calendar DTE
+                    # collapses (Fri=4 → Mon=1 for a Tue weekly).
+                    next_session = _next_trading_session_date(today_date)
+                    if next_session is not None:
+                        near_expiry_next = _find_near_dte_at_next_session(
+                            strats, next_session, settings.IC_DTE_THRESHOLD
                         )
-                if not next_day_is_trading:
-                    _force_exit_all(strats, pnl_engine, risk)
-                    log.info("Pre-holiday/weekend close: force-exited all positions.")
+                        if near_expiry_next:
+                            _force_exit_all(near_expiry_next, pnl_engine, risk)
+                            log.info(
+                                "Pre-near-expiry close: force-exited %d position(s) "
+                                "whose DTE at next session (%s) would be < %d.",
+                                len(near_expiry_next),
+                                next_session.isoformat(),
+                                settings.IC_DTE_THRESHOLD,
+                            )
+                    if not next_day_is_trading:
+                        _force_exit_all(strats, pnl_engine, risk)
+                        log.info("Pre-holiday/weekend close: force-exited all positions.")
+                    if pnl_engine:
+                        pnl_engine.write_snapshot()
+                    if collection_started:
+                        collector.stop_collection()
+                        collection_started = False
+                    flat_now = position_persistence.is_flat(strats_map, pos_mgr)
+                    position_persistence.save(
+                        strats_map,
+                        pos_mgr,
+                        pnl_engine,
+                        risk,
+                        regime,
+                        session_status=(
+                            position_persistence.SESSION_FLAT if flat_now else position_persistence.SESSION_ACTIVE
+                        ),
+                        shutdown_reason="eod",
+                        flat_verified_at=datetime.now().isoformat() if flat_now else None,
+                    )
+                    log.info(
+                        "Daily session ended.%s",
+                        " All positions closed." if not next_day_is_trading else " Positions carried overnight.",
+                    )
+                    break
+
+                # 3. Day Classification (10:30 AM) — per instrument (BUG-08).
+                if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time():
+                    for inst, clf in classifiers.items():
+                        if day_classes[inst] is None:
+                            day_classes[inst] = clf.classify()
+                            log.info(
+                                "Day Classified %s: %s (%s)",
+                                inst,
+                                day_classes[inst].day_type,
+                                day_classes[inst].confidence,
+                            )
+
+                # 4. Monitoring & Harvest Cycle (runs pre-classification so carried positions are watched).
+                for s in strats:
+                    if s.is_active():
+                        result = s.monitor()
+                        if result:
+                            pnl_engine.record_trade(s.instrument, result["pnl"], result)
+
+                # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
+                _evaluate_stop_checks(strats, pnl_engine, risk, log)
+
+                # 6. Entry Logic (requires per-instrument classification).
+                if not risk.halted:
+                    for s in strats:
+                        dc = day_classes.get(s.instrument)
+                        if dc is None:
+                            continue  # pre-classify time for this instrument
+                        if s.is_active():
+                            continue
+                        if not regime.get_regime_gate(dc.day_type, s.instrument):
+                            continue
+                        # Fetch context for entry
+                        spot_key = settings.NIFTY_SPOT_KEY if s.instrument == "NIFTY" else settings.BANKNIFTY_SPOT_KEY
+                        spot = md.get_ltp(spot_key)
+                        vix = regime.get_vix()
+                        sr_high, sr_low = sr_mgr.get_20day_high_low(s.instrument)
+                        expiry = expiry_mgr.get_expiry(s.instrument)
+
+                        if spot > 0 and expiry:
+                            s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
+
+                # BUG-05: escalate any stuck-rollback events from this cycle's entries.
+                _drain_rollback_failures(strats, risk)
+
+                # Keep live P&L fresh for dashboards (realised + unrealised).
+                # LIVE-01/LIVE-24: snapshot must refresh in both modes so the
+                # heartbeat watchdog sees a live process.
                 if pnl_engine:
                     pnl_engine.write_snapshot()
-                if collection_started:
-                    collector.stop_collection()
-                    collection_started = False
-                flat_now = position_persistence.is_flat(strats_map, pos_mgr)
+
+                # Persist position + P&L state so a crash/restart can resume cleanly.
                 position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk, regime,
-                    session_status=(
-                        position_persistence.SESSION_FLAT if flat_now
-                        else position_persistence.SESSION_ACTIVE
-                    ),
-                    shutdown_reason="eod",
-                    flat_verified_at=datetime.now().isoformat() if flat_now else None,
-                )
-                log.info("Daily session ended.%s", " All positions closed." if not next_day_is_trading else " Positions carried overnight.")
-                break
-
-            # 3. Day Classification (10:30 AM) — per instrument (BUG-08).
-            if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time():
-                for inst, clf in classifiers.items():
-                    if day_classes[inst] is None:
-                        day_classes[inst] = clf.classify()
-                        log.info(
-                            "Day Classified %s: %s (%s)",
-                            inst, day_classes[inst].day_type, day_classes[inst].confidence,
-                        )
-
-            # 4. Monitoring & Harvest Cycle (runs pre-classification so carried positions are watched).
-            for s in strats:
-                if s.is_active():
-                    result = s.monitor()
-                    if result:
-                        pnl_engine.record_trade(s.instrument, result['pnl'], result)
-
-            # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
-            _evaluate_stop_checks(strats, pnl_engine, risk, log)
-
-            # 6. Entry Logic (requires per-instrument classification).
-            if not risk.halted:
-                for s in strats:
-                    dc = day_classes.get(s.instrument)
-                    if dc is None:
-                        continue  # pre-classify time for this instrument
-                    if s.is_active():
-                        continue
-                    if not regime.get_regime_gate(dc.day_type, s.instrument):
-                        continue
-                    # Fetch context for entry
-                    spot_key = settings.NIFTY_SPOT_KEY if s.instrument == 'NIFTY' else settings.BANKNIFTY_SPOT_KEY
-                    spot = md.get_ltp(spot_key)
-                    vix = regime.get_vix()
-                    sr_high, sr_low = sr_mgr.get_20day_high_low(s.instrument)
-                    expiry = expiry_mgr.get_expiry(s.instrument)
-
-                    if spot > 0 and expiry:
-                        s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
-
-            # BUG-05: escalate any stuck-rollback events from this cycle's entries.
-            _drain_rollback_failures(strats, risk)
-
-            # Keep live P&L fresh for dashboards (realised + unrealised).
-            # LIVE-01/LIVE-24: snapshot must refresh in both modes so the
-            # heartbeat watchdog sees a live process.
-            if pnl_engine:
-                pnl_engine.write_snapshot()
-
-            # Persist position + P&L state so a crash/restart can resume cleanly.
-            position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk, regime,
-                session_status=position_persistence.SESSION_ACTIVE,
-            )
-
-            _time.sleep(settings.SIGNAL_RECHECK_SEC)
-          except _AuthSessionExpired:
-            raise  # bypass halt — crash loudly so the operator knows auth is broken
-          except Exception as exc:
-            # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
-            _halt_on_exception(exc, risk, log, alerts=alerts)
-            try:
-                position_persistence.save(
-                    strats_map, pos_mgr, pnl_engine, risk, regime,
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    regime,
                     session_status=position_persistence.SESSION_ACTIVE,
-                    shutdown_reason="exception-halt",
                 )
-            except Exception:
-                log.exception("Failed to persist state after halt")
-            _time.sleep(settings.SIGNAL_RECHECK_SEC)
+
+                _time.sleep(settings.SIGNAL_RECHECK_SEC)
+            except _AuthSessionExpired:
+                raise  # bypass halt — crash loudly so the operator knows auth is broken
+            except Exception as exc:
+                # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
+                _halt_on_exception(exc, risk, log, alerts=alerts)
+                try:
+                    position_persistence.save(
+                        strats_map,
+                        pos_mgr,
+                        pnl_engine,
+                        risk,
+                        regime,
+                        session_status=position_persistence.SESSION_ACTIVE,
+                        shutdown_reason="exception-halt",
+                    )
+                except Exception:
+                    log.exception("Failed to persist state after halt")
+                _time.sleep(settings.SIGNAL_RECHECK_SEC)
 
     except _AuthSessionExpired as exc:
         log.critical("OAuth session expired mid-session and reauth failed: %s — exiting", exc)
@@ -1175,16 +1233,18 @@ def run():
         try:
             flat_now = position_persistence.is_flat(strats_map, pos_mgr)
             position_persistence.save(
-                strats_map, pos_mgr, pnl_engine, risk, regime,
-                session_status=(
-                    position_persistence.SESSION_FLAT if flat_now
-                    else position_persistence.SESSION_ACTIVE
-                ),
+                strats_map,
+                pos_mgr,
+                pnl_engine,
+                risk,
+                regime,
+                session_status=(position_persistence.SESSION_FLAT if flat_now else position_persistence.SESSION_ACTIVE),
                 shutdown_reason="shutdown",
                 flat_verified_at=datetime.now().isoformat() if flat_now else None,
             )
         except Exception:
             log.exception("Failed to persist state on shutdown")
+
 
 if __name__ == "__main__":
     run()

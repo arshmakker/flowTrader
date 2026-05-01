@@ -11,12 +11,7 @@ from trading_system.auth import shoonya_selenium_auth as auth
 def test_is_configured_false_when_keys_missing():
     assert auth.is_configured({}) is False
     assert auth.is_configured({"selenium_user_id": "x"}) is False
-    assert (
-        auth.is_configured(
-            {"selenium_user_id": "x", "selenium_password": "y"}
-        )
-        is False
-    )
+    assert auth.is_configured({"selenium_user_id": "x", "selenium_password": "y"}) is False
 
 
 def test_is_configured_false_when_value_blank():
@@ -47,10 +42,7 @@ def test_is_configured_true_when_all_keys_present():
 
 def test_build_login_url_uses_default_template_with_client_id():
     url = auth._build_login_url({"client_id": "FA50394_U"})
-    assert url == (
-        "https://trade.shoonya.com/OAuthlogin/investor-entry-level/login"
-        "?api_key=FA50394_U&route_to=abc"
-    )
+    assert url == ("https://trade.shoonya.com/OAuthlogin/investor-entry-level/login?api_key=FA50394_U&route_to=abc")
 
 
 def test_build_login_url_uses_custom_template():

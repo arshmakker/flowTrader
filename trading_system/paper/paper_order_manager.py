@@ -23,18 +23,35 @@ logger = logging.getLogger(__name__)
 # ops/reconcile.py can diff every charge against the broker contract note
 # rather than eating a fat opaque "costs" delta.
 _ORDERS_CSV_COLUMNS = [
-    "timestamp", "order_id", "symbol", "side", "quantity",
+    "timestamp",
+    "order_id",
+    "symbol",
+    "side",
+    "quantity",
     "fill_price",
-    "stt", "brokerage", "exch_txn", "sebi", "stamp", "gst", "taxes_total",
-    "status", "reason", "paper",
+    "stt",
+    "brokerage",
+    "exch_txn",
+    "sebi",
+    "stamp",
+    "gst",
+    "taxes_total",
+    "status",
+    "reason",
+    "paper",
 ]
 
 # Zero-cost stub used on REJECTED/CANCELED orders that never filled — no
 # charges apply since no trade happened. Kept as a single dict so every
 # non-fill path stays consistent.
 _ZERO_FEES = {
-    "stt": 0.0, "brokerage": 0.0, "exch_txn": 0.0,
-    "sebi": 0.0, "stamp": 0.0, "gst": 0.0, "taxes_total": 0.0,
+    "stt": 0.0,
+    "brokerage": 0.0,
+    "exch_txn": 0.0,
+    "sebi": 0.0,
+    "stamp": 0.0,
+    "gst": 0.0,
+    "taxes_total": 0.0,
 }
 
 
@@ -55,9 +72,7 @@ class PaperOrderManager:
         self.md = market_data
         self.tracker = position_tracker
         self.orders: list[Dict] = []
-        self._orders_csv_path = orders_csv_path or os.path.join(
-            settings.DATA_DIR, "paper_orders.csv"
-        )
+        self._orders_csv_path = orders_csv_path or os.path.join(settings.DATA_DIR, "paper_orders.csv")
         self._ensure_orders_csv_header()
 
     def _ensure_orders_csv_header(self) -> None:
@@ -100,9 +115,7 @@ class PaperOrderManager:
         return 0.0
 
     @staticmethod
-    def build_option_symbol(
-        symbol: str, expiry: str, strike: float, opt_type: str
-    ) -> str:
+    def build_option_symbol(symbol: str, expiry: str, strike: float, opt_type: str) -> str:
         """
         Build a Shoonya-style trading symbol.
         Format: NIFTY17MAR26C23850  (DDMMMYYtypeSTRIKE)
@@ -110,6 +123,7 @@ class PaperOrderManager:
         expiry can be a date object or string like '17-MAR-2026'.
         """
         from datetime import datetime as _dt
+
         if hasattr(expiry, "strftime"):
             exp_str = expiry.strftime("%d%b%y").upper()
         else:
@@ -122,7 +136,12 @@ class PaperOrderManager:
         return f"NFO|{symbol}{exp_str}{ot}{int(strike)}"
 
     def _limit_not_reached_cancel(
-        self, symbol: str, side: str, qty: int, limit_price: float, ltp: float,
+        self,
+        symbol: str,
+        side: str,
+        qty: int,
+        limit_price: float,
+        ltp: float,
     ) -> Dict:
         """LIVE-25 Phase 4: LMT order whose limit was never crossed by the book
         gets CANCELED (no fill). Mirrors Shoonya's behavior when a timeout-IOC
@@ -138,11 +157,15 @@ class PaperOrderManager:
         bid_at_cancel = qb.bid if qb is not None else None
         canceled = {
             "order_id": self._next_id(),
-            "symbol": symbol, "side": side, "quantity": qty,
-            "fill_qty": 0, "fill_price": 0.0,
+            "symbol": symbol,
+            "side": side,
+            "quantity": qty,
+            "fill_qty": 0,
+            "fill_price": 0.0,
             **_ZERO_FEES,
             "status": "CANCELED",
-            "timestamp": datetime.now().isoformat(), "paper": True,
+            "timestamp": datetime.now().isoformat(),
+            "paper": True,
             "reason": "limit_not_reached",
             "limit_price": limit_price,
             "ltp_at_submit": ltp,
@@ -152,7 +175,12 @@ class PaperOrderManager:
         bid_str = f"{bid_at_cancel:.2f}" if bid_at_cancel is not None else "n/a"
         logger.info(
             "PAPER ORDER CANCELED %s %s qty=%d limit=%.2f ltp=%.2f bid=%s — limit not reached",
-            side, symbol, qty, limit_price, ltp, bid_str,
+            side,
+            symbol,
+            qty,
+            limit_price,
+            ltp,
+            bid_str,
         )
         return canceled
 
@@ -233,11 +261,15 @@ class PaperOrderManager:
                 logger.error("Paper LMT order for %s rejected: no price provided", tradingsymbol)
                 rejected = {
                     "order_id": self._next_id(),
-                    "symbol": tradingsymbol, "side": buy_or_sell, "quantity": quantity,
-                    "fill_qty": 0, "fill_price": 0.0,
+                    "symbol": tradingsymbol,
+                    "side": buy_or_sell,
+                    "quantity": quantity,
+                    "fill_qty": 0,
+                    "fill_price": 0.0,
                     **_ZERO_FEES,
                     "status": "REJECTED",
-                    "timestamp": datetime.now().isoformat(), "paper": True,
+                    "timestamp": datetime.now().isoformat(),
+                    "paper": True,
                     "reason": "limit_price_missing",
                 }
                 self._append_order_csv(rejected)
@@ -287,8 +319,16 @@ class PaperOrderManager:
         self._append_order_csv(order)
         logger.info(
             "PAPER ORDER %s %s %d @ %.2f (fees=₹%.2f stt=%.2f brok=%.2f exch=%.2f sebi=%.2f stamp=%.2f gst=%.2f)",
-            buy_or_sell, tradingsymbol, quantity, fill,
-            fees["total"], fees["stt"], fees["brokerage"],
-            fees["exch_txn"], fees["sebi"], fees["stamp"], fees["gst"],
+            buy_or_sell,
+            tradingsymbol,
+            quantity,
+            fill,
+            fees["total"],
+            fees["stt"],
+            fees["brokerage"],
+            fees["exch_txn"],
+            fees["sebi"],
+            fees["stamp"],
+            fees["gst"],
         )
         return order

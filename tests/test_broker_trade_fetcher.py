@@ -5,6 +5,7 @@ broker ships under a different key on day-1 of shakedown, the failure mode is
 visible here: legs come back empty or malformed, and the constants in
 ``broker_trade_fetcher`` are the single point of update.
 """
+
 import os
 import sys
 from datetime import datetime

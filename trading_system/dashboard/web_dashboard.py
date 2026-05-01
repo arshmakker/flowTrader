@@ -196,7 +196,7 @@ class WebDashboard:
 
     def _create_app(self):
         try:
-            from flask import Flask, jsonify, Response
+            from flask import Flask, Response, jsonify
         except ImportError:
             logger.error("flask not installed — web dashboard unavailable")
             return None
@@ -253,6 +253,7 @@ class WebDashboard:
                 summary = pnl.get_summary() if pnl else {}
                 trades_path = os.path.join(settings.DATA_DIR, "paper_trades.csv")
                 import pandas as pd
+
                 if os.path.exists(trades_path):
                     df = pd.read_csv(trades_path)
                 else:

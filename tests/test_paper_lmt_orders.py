@@ -5,18 +5,19 @@ the limit is at or above the ask; a SELL LMT only if the limit is at or below
 the bid. Otherwise the order is CANCELED (reason='limit_not_reached') which
 is paper's equivalent of a live limit that times out without trading through.
 """
+
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from trading_system.config import settings
 from trading_system.paper.paper_order_manager import PaperOrderManager
 
 
 class _MD:
     def __init__(self, prices):
         self._prices = prices
+
     def get_ltp(self, sym):
         return self._prices.get(sym, 0.0)
 
@@ -87,6 +88,7 @@ def test_canceled_lmt_persists_to_csv(tmp_path):
     (LIVE-08) sees 'engine tried X limit, broker confirms no trade' rather
     than an unexplained missing row."""
     import csv
+
     csv_path = str(tmp_path / "paper_orders.csv")
     om = PaperOrderManager(_MD({"NFO|X": 18.0}), position_tracker=None, orders_csv_path=csv_path)
 
@@ -104,6 +106,7 @@ def test_lmt_cancel_does_not_create_position(tmp_path):
     """Position tracker must not acquire a phantom position when the LMT
     doesn't fill — this is the whole point of the CANCELED branch."""
     from trading_system.paper.paper_position_tracker import PaperPositionTracker
+
     tracker = PaperPositionTracker()
     csv_path = str(tmp_path / "paper_orders.csv")
     om = PaperOrderManager(_MD({"NFO|X": 18.0}), position_tracker=tracker, orders_csv_path=csv_path)
@@ -124,6 +127,7 @@ def test_lmt_cancel_does_not_create_position(tmp_path):
 #   10:59:19 — limit=147.50, ltp=147.50 (real) → cancel
 # Both same root: paper_bid was below the limit by exactly `slip`. Fix: gate
 # fills on `price` vs `LTP` directly; slip applies only to fill price.
+
 
 def test_sell_lmt_at_ltp_fills(tmp_path):
     """SELL @ LTP must fill at LTP. This is what the IC short-leg code submits
@@ -185,6 +189,7 @@ def test_buy_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
 # caller side: pass `price=books[*].ask` for wing BUYs and `price=books[*].bid`
 # for wing unwinds. Tests below confirm the order manager honors the fallback
 # in MKT path the same way it does in LMT path.
+
 
 def test_buy_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
     """BUY MKT with get_ltp=0 and `price=X` provided: substitution sets ltp ← X,

@@ -1,9 +1,12 @@
 """Tests for DayClassifier — trending, ranging, edge cases, locking, reset."""
-import sys, os
+
+import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from trading_system.config import settings
-from trading_system.core.day_classifier import DayClassifier, DayClassification
+from trading_system.core.day_classifier import DayClassifier
 
 
 class MockMD:
@@ -126,7 +129,7 @@ def test_reset_unlocks():
     md = MockMD(24000, 24100)
     se = MockSE(24050)
     dc = DayClassifier(md, se)
-    first = dc.classify()
+    dc.classify()
     dc.reset()
     md._current = 30000
     second = dc.classify()
@@ -147,9 +150,11 @@ def test_classifier_uses_per_instrument_symbol_and_spot_key():
         def get_open_price(self, sym):
             seen["open_sym"] = sym
             return 45000.0
+
         def get_ltp(self, key):
             seen["ltp_key"] = key
             return 45200.0
+
         def get_ohlcv_df(self):
             return None
 
@@ -190,10 +195,7 @@ def test_ohlcv_is_forwarded_to_vwap_engine():
     se = SpySE()
     dc = DayClassifier(md, se)
     dc.classify()
-    assert se.seen == [sentinel], (
-        f"classify() must forward md.get_ohlcv_df() to compute_vwap_value(); "
-        f"got {se.seen}"
-    )
+    assert se.seen == [sentinel], f"classify() must forward md.get_ohlcv_df() to compute_vwap_value(); got {se.seen}"
 
 
 def test_classification_dataclass_fields():

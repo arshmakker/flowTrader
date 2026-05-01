@@ -18,6 +18,7 @@ note (LIVE-12). This shim emits ``costs=0.0``; the reconciliation report's
 ``cost_delta`` will reflect engine-side costs vs zero until LIVE-12 wires a
 separate cost fetch. Price drift (LIVE-04) is unaffected.
 """
+
 from __future__ import annotations
 
 import logging
@@ -136,6 +137,8 @@ def fetch_trade_book_legs(api, date_iso: Optional[str] = None) -> List[Leg]:
     row_count = len(rows) if hasattr(rows, "__len__") else "?"
     logger.info(
         "get_trade_book: %s row(s) -> %d leg(s) for date=%s",
-        row_count, len(legs), date_iso or "*",
+        row_count,
+        len(legs),
+        date_iso or "*",
     )
     return legs

@@ -12,6 +12,7 @@ Mock conventions:
     - place_order returns whatever the test sets via side_effect
     - get_quote_book returns a QuoteBook fixture so Phase 3's math is deterministic
 """
+
 import os
 import sys
 from unittest.mock import MagicMock
@@ -19,6 +20,7 @@ from unittest.mock import MagicMock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
+
 from trading_system.config import settings
 from trading_system.core.iron_condor import IronCondorStrategy
 from trading_system.existing.market_data import QuoteBook
@@ -31,9 +33,7 @@ def _book(bid, ask, bid_qty=10_000, ask_qty=10_000, symbol=""):
 @pytest.fixture
 def mock_om():
     om = MagicMock()
-    om.build_option_symbol.side_effect = lambda inst, exp, strike, type: (
-        f"NFO|{inst}{exp}{type[0]}{int(strike)}"
-    )
+    om.build_option_symbol.side_effect = lambda inst, exp, strike, type: f"NFO|{inst}{exp}{type[0]}{int(strike)}"
     om.tracker = None
     om.get_available_margin.return_value = float("inf")
     return om
@@ -48,7 +48,7 @@ def mock_md():
 
 def _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0):
     """All four legs have tradable books that yield a healthy (sc+sp)-(lc+lp) credit."""
-    books = {}
+
     def _gqb(sym):
         if "C22150" in sym:
             return _book(bid=sc_bid, ask=sc_bid + 0.25, symbol=sym)
@@ -59,6 +59,7 @@ def _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0,
         if "P21800" in sym:
             return _book(bid=lp_ask - 0.25, ask=lp_ask, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
 
@@ -82,17 +83,23 @@ def _sr_mgr():
 
 # ── Happy path ────────────────────────────────────────────────────────
 
+
 def test_happy_path_all_four_legs_fill(mock_om, mock_md):
     """Clean books, wings fill at MKT, shorts fill at LMT → entry complete."""
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
     qty = settings.IC_LOT_SIZE * settings.NIFTY_LOT_SIZE  # 650
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol: return _fill(5.0, q)     # LC MKT fill at ask
-        if "P21800" in symbol: return _fill(5.0, q)     # LP MKT fill at ask
-        if "C22150" in symbol: return _fill(18.0, q)    # SC LMT fill at bid
-        if "P21850" in symbol: return _fill(18.0, q)    # SP LMT fill at bid
+        if "C22200" in symbol:
+            return _fill(5.0, q)  # LC MKT fill at ask
+        if "P21800" in symbol:
+            return _fill(5.0, q)  # LP MKT fill at ask
+        if "C22150" in symbol:
+            return _fill(18.0, q)  # SC LMT fill at bid
+        if "P21850" in symbol:
+            return _fill(18.0, q)  # SP LMT fill at bid
         raise AssertionError(f"unexpected order: {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -116,6 +123,7 @@ def test_happy_path_wings_placed_before_shorts(mock_om, mock_md):
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         calls_order.append(symbol)
         return _fill(18.0 if side == "SELL" else 5.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -131,16 +139,21 @@ def test_happy_path_wings_placed_before_shorts(mock_om, mock_md):
 
 # ── Phase 2: one wing fails ───────────────────────────────────────────
 
+
 def test_phase2_one_wing_fails_closes_other_wing_at_market(mock_om, mock_md):
     """LP wing fails → close LC at market and halt. No shorts submitted.
     Bounded loss = LC premium paid."""
     _configure_books_for_clean_ic(mock_md)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol and side == "BUY": return _fill(5.0, q)    # LC fills
-        if "P21800" in symbol and side == "BUY": return _rejected()       # LP rejected
-        if "C22200" in symbol and side == "SELL": return _fill(5.0, q)   # LC unwind close
+        if "C22200" in symbol and side == "BUY":
+            return _fill(5.0, q)  # LC fills
+        if "P21800" in symbol and side == "BUY":
+            return _rejected()  # LP rejected
+        if "C22200" in symbol and side == "SELL":
+            return _fill(5.0, q)  # LC unwind close
         raise AssertionError(f"unexpected order: {side} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -171,6 +184,7 @@ def test_phase2_both_wings_fail_nothing_to_unwind(mock_om, mock_md):
 
 # ── Phase 3: credit infeasible after wings ────────────────────────────
 
+
 def test_phase3_credit_infeasible_refuses_and_unwinds_wings(mock_om, mock_md):
     """Pre-entry credit check passes (quote book healthy) but wings fill at a
     price materially worse than quoted ask — simulates price drift between
@@ -193,6 +207,7 @@ def test_phase3_credit_infeasible_refuses_and_unwinds_wings(mock_om, mock_md):
         if side == "SELL" and price_type == "MKT":
             return _fill(14.5, q)
         raise AssertionError(f"unexpected: {side} {price_type} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -209,6 +224,7 @@ def test_phase3_credit_infeasible_refuses_and_unwinds_wings(mock_om, mock_md):
 
 # ── Phase 2 partial wing fill → halt-and-alert (BUG 2 regression) ─────
 
+
 def test_phase2_partial_wing_fill_halts_without_submitting_shorts(mock_om, mock_md):
     """LIVE-05 semantics: a wing that returns with fill_qty < qty means we
     have partial exposure. Close whatever filled on BOTH wings (the full leg
@@ -216,7 +232,7 @@ def test_phase2_partial_wing_fill_halts_without_submitting_shorts(mock_om, mock_
     predicate treated partial as 'not filled' and walked past the partial
     wing without closing it."""
     _configure_books_for_clean_ic(mock_md)
-    qty_full = settings.IC_LOT_SIZE * settings.NIFTY_LOT_SIZE  # 650
+    settings.IC_LOT_SIZE * settings.NIFTY_LOT_SIZE  # 650
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         # LC partial: COMPLETE but only 300 of 650 filled (live broker reports this).
@@ -229,6 +245,7 @@ def test_phase2_partial_wing_fill_halts_without_submitting_shorts(mock_om, mock_
         if side == "SELL" and price_type == "MKT":
             return _fill(5.0, q)
         raise AssertionError(f"unexpected: {side} {price_type} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -242,13 +259,13 @@ def test_phase2_partial_wing_fill_halts_without_submitting_shorts(mock_om, mock_
         sym = call.args[0]
         assert "C22150" not in sym and "P21850" not in sym
     # Partial LC was unwound at its actual fill_qty (300), not the full 650.
-    lc_sell_calls = [c for c in mock_om.place_order.call_args_list
-                     if "C22200" in c.args[0] and c.args[1] == "SELL"]
+    lc_sell_calls = [c for c in mock_om.place_order.call_args_list if "C22200" in c.args[0] and c.args[1] == "SELL"]
     assert len(lc_sell_calls) == 1
     assert lc_sell_calls[0].args[2] == 300, "partial wing must be closed at actual fill_qty"
 
 
 # ── Phase 5b: short timeout unwinds everything ────────────────────────
+
 
 def test_phase5b_both_shorts_cancel_unwinds_all(mock_om, mock_md):
     """Both shorts CANCELED (limit not reached / timed out) → close both wings
@@ -256,10 +273,14 @@ def test_phase5b_both_shorts_cancel_unwinds_all(mock_om, mock_md):
     _configure_books_for_clean_ic(mock_md)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if side == "BUY" and price_type == "MKT": return _fill(5.0, q)    # Wings fill
-        if side == "SELL" and price_type == "LMT": return _canceled()     # Shorts cancel
-        if side == "SELL" and price_type == "MKT": return _fill(5.0, q)   # Wing unwinds
+        if side == "BUY" and price_type == "MKT":
+            return _fill(5.0, q)  # Wings fill
+        if side == "SELL" and price_type == "LMT":
+            return _canceled()  # Shorts cancel
+        if side == "SELL" and price_type == "MKT":
+            return _fill(5.0, q)  # Wing unwinds
         raise AssertionError(f"unexpected: {side} {price_type} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -279,17 +300,22 @@ def test_phase5b_one_short_fills_one_cancels_unwinds_everything(mock_om, mock_md
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         if "C22200" in symbol or "P21800" in symbol:
-            if side == "BUY": return _fill(5.0, q)       # wing entry
-            if side == "SELL": return _fill(5.0, q)      # wing unwind
+            if side == "BUY":
+                return _fill(5.0, q)  # wing entry
+            if side == "SELL":
+                return _fill(5.0, q)  # wing unwind
         if "C22150" in symbol:
             short_calls["C22150"] += 1
-            if short_calls["C22150"] == 1: return _fill(18.0, q)   # first call: LMT fills
-            return _fill(18.0, q)                                   # second call: MKT buyback
+            if short_calls["C22150"] == 1:
+                return _fill(18.0, q)  # first call: LMT fills
+            return _fill(18.0, q)  # second call: MKT buyback
         if "P21850" in symbol:
             short_calls["P21850"] += 1
-            if short_calls["P21850"] == 1: return _canceled()       # first call: LMT canceled
+            if short_calls["P21850"] == 1:
+                return _canceled()  # first call: LMT canceled
             raise AssertionError("P21850 should not be called again")
         raise AssertionError(f"unexpected: {side} {price_type} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -305,11 +331,15 @@ def test_phase5b_one_short_fills_one_cancels_unwinds_everything(mock_om, mock_md
 
 # ── Untradable book on any leg → pre-entry refusal ─────────────────────
 
+
 def test_untradable_book_on_any_leg_refuses_before_submitting(mock_om, mock_md):
     """get_quote_book returns None for one leg → no orders placed."""
+
     def _gqb(sym):
-        if "P21800" in sym: return None  # LP quote unavailable
+        if "P21800" in sym:
+            return None  # LP quote unavailable
         return _book(18.0, 18.25, symbol=sym)
+
     mock_md.get_quote_book.side_effect = _gqb
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -322,12 +352,18 @@ def test_untradable_book_on_any_leg_refuses_before_submitting(mock_om, mock_md):
 def test_zero_bid_on_short_leg_refuses_pre_entry(mock_om, mock_md):
     """LIVE-06 motivating case: SC_bid = 0 (deep OTM with no buyers) means the
     short can't be sold at any reasonable price. Refuse before submitting."""
+
     def _gqb(sym):
-        if "C22150" in sym: return _book(bid=0.0, ask=1.0, symbol=sym)  # untradable short
-        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "C22150" in sym:
+            return _book(bid=0.0, ask=1.0, symbol=sym)  # untradable short
+        if "P21850" in sym:
+            return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -338,6 +374,7 @@ def test_zero_bid_on_short_leg_refuses_pre_entry(mock_om, mock_md):
 
 
 # ── LIVE-13 preserved under hedge-first ────────────────────────────────
+
 
 def test_freeze_qty_breach_refuses_under_hedge_first_too(mock_om, mock_md):
     """The LIVE-13 guard must fire in the hedge-first path as well."""
@@ -353,6 +390,7 @@ def test_freeze_qty_breach_refuses_under_hedge_first_too(mock_om, mock_md):
 
 # ── Phase 5a: post-fill credit under floor ─────────────────────────────
 
+
 def test_ic_entry_mode_sequential_does_not_route_to_hedge_first(mock_om, mock_md, monkeypatch):
     """With IC_ENTRY_MODE='sequential' (default), enter() must NOT call
     enter_hedge_first — regression guarding against an accidental default flip."""
@@ -361,9 +399,11 @@ def test_ic_entry_mode_sequential_does_not_route_to_hedge_first(mock_om, mock_md
 
     called = {"hedge_first": False}
     orig = s.enter_hedge_first
+
     def _spy(*a, **k):
         called["hedge_first"] = True
         return orig(*a, **k)
+
     monkeypatch.setattr(s, "enter_hedge_first", _spy)
 
     # Legacy path uses get_ltp, not get_quote_book — wire that up.
@@ -385,14 +425,17 @@ def test_ic_entry_mode_hedge_first_routes_through_enter_hedge_first(mock_om, moc
         if "C22200" in symbol or "P21800" in symbol:
             return _fill(5.0, q)
         return _fill(18.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     called = {"hedge_first": False}
     orig = s.enter_hedge_first
+
     def _spy(*a, **k):
         called["hedge_first"] = True
         return orig(*a, **k)
+
     monkeypatch.setattr(s, "enter_hedge_first", _spy)
 
     ok = s.enter(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
@@ -427,9 +470,12 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
         if "P21850" in symbol and side == "SELL" and price_type == "LMT":
             return _fill(8.0, q)
         # Unwind: shorts bought back at MKT, wings sold at MKT.
-        if side == "BUY" and price_type == "MKT": return _fill(8.0, q)
-        if side == "SELL" and price_type == "MKT": return _fill(8.0, q)
+        if side == "BUY" and price_type == "MKT":
+            return _fill(8.0, q)
+        if side == "SELL" and price_type == "MKT":
+            return _fill(8.0, q)
         raise AssertionError(f"unexpected: {side} {price_type} {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -450,6 +496,7 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
 # every place_order in the entry path now forwards a QuoteBook-derived price as
 # the fallback. Tests below pin the wiring at each phase boundary.
 
+
 def test_wing_buys_pass_book_ask_as_price_fallback(mock_om, mock_md):
     """Phase 1: LC and LP wing BUYs must pass `price=books[*].ask` so that
     a transient bad quote on a fresh strike doesn't reject the MKT order."""
@@ -457,13 +504,15 @@ def test_wing_buys_pass_book_ask_as_price_fallback(mock_om, mock_md):
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         return _fill(price if price > 0 else 5.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     wing_buy_calls = [
-        c for c in mock_om.place_order.call_args_list
+        c
+        for c in mock_om.place_order.call_args_list
         if ("C22200" in c.args[0] or "P21800" in c.args[0]) and c.args[1] == "BUY"
     ]
     assert len(wing_buy_calls) == 2, f"expected 2 wing BUYs, got {len(wing_buy_calls)}"
@@ -482,11 +531,15 @@ def test_phase5a_unwind_passes_price_fallback_on_all_four_legs(mock_om, mock_md)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         # Wings fill normally; shorts fill below Phase 3 projection → Phase 5a.
-        if side == "BUY" and "C22200" in symbol: return _fill(8.0, q)
-        if side == "BUY" and "P21800" in symbol: return _fill(8.0, q)
-        if side == "SELL" and price_type == "LMT": return _fill(8.0, q)
+        if side == "BUY" and "C22200" in symbol:
+            return _fill(8.0, q)
+        if side == "BUY" and "P21800" in symbol:
+            return _fill(8.0, q)
+        if side == "SELL" and price_type == "LMT":
+            return _fill(8.0, q)
         # Unwind orders — what we're testing. Just return a fill.
         return _fill(price if price > 0 else 8.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -496,8 +549,7 @@ def test_phase5a_unwind_passes_price_fallback_on_all_four_legs(mock_om, mock_md)
     unwind_calls = mock_om.place_order.call_args_list[-4:]
     for c in unwind_calls:
         assert c.kwargs.get("price", 0) > 0, (
-            f"Phase 5a unwind leg {c.args[0]} {c.args[1]} missing price= fallback; "
-            f"kwargs={c.kwargs}"
+            f"Phase 5a unwind leg {c.args[0]} {c.args[1]} missing price= fallback; kwargs={c.kwargs}"
         )
 
 
@@ -516,13 +568,16 @@ def _setup_phase5b_partial_fill(mock_om, mock_md):
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if side == "BUY" and "C22200" in symbol: return _fill(5.0, q)
-        if side == "BUY" and "P21800" in symbol: return _fill(5.0, q)
+        if side == "BUY" and "C22200" in symbol:
+            return _fill(5.0, q)
+        if side == "BUY" and "P21800" in symbol:
+            return _fill(5.0, q)
         if side == "SELL" and price_type == "LMT" and "C22150" in symbol:
             return _canceled()  # SC: cancel — bid drifted below limit
         if side == "SELL" and price_type == "LMT" and "P21850" in symbol:
             return _fill(18.0, q)  # SP: filled
         return _fill(price if price > 0 else 8.0, q)  # unwind
+
     mock_om.place_order.side_effect = place_side_effect
 
 
@@ -559,8 +614,7 @@ def test_harvest_reentry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
 
     assert ok is False
     assert s._last_rollback_stuck_legs == [], (
-        "harvest re-entry partial-fill must NOT halt the session — "
-        f"got stuck_legs={s._last_rollback_stuck_legs}"
+        f"harvest re-entry partial-fill must NOT halt the session — got stuck_legs={s._last_rollback_stuck_legs}"
     )
     assert s._consecutive_partial_fails == 1
 
@@ -607,11 +661,16 @@ def test_phase5b_suspended_does_not_block_fresh_entry(mock_om, mock_md):
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol: return _fill(5.0, q)
-        if "P21800" in symbol: return _fill(5.0, q)
-        if "C22150" in symbol: return _fill(18.0, q)
-        if "P21850" in symbol: return _fill(18.0, q)
+        if "C22200" in symbol:
+            return _fill(5.0, q)
+        if "P21800" in symbol:
+            return _fill(5.0, q)
+        if "C22150" in symbol:
+            return _fill(18.0, q)
+        if "P21850" in symbol:
+            return _fill(18.0, q)
         raise AssertionError(f"unexpected: {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -629,11 +688,16 @@ def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol: return _fill(5.0, q)
-        if "P21800" in symbol: return _fill(5.0, q)
-        if "C22150" in symbol: return _fill(18.0, q)
-        if "P21850" in symbol: return _fill(18.0, q)
+        if "C22200" in symbol:
+            return _fill(5.0, q)
+        if "P21800" in symbol:
+            return _fill(5.0, q)
+        if "C22150" in symbol:
+            return _fill(18.0, q)
+        if "P21850" in symbol:
+            return _fill(18.0, q)
         raise AssertionError(f"unexpected: {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -673,15 +737,21 @@ def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
         if "P21850" in sym:
             sp_calls["n"] += 1
             return _book(bid=17.80 if sp_calls["n"] >= 2 else 18.0, ask=18.50, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     placed = {}
+
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol: return _fill(5.0, q)
-        if "P21800" in symbol: return _fill(5.0, q)
+        if "C22200" in symbol:
+            return _fill(5.0, q)
+        if "P21800" in symbol:
+            return _fill(5.0, q)
         if "C22150" in symbol:
             placed["sc"] = price
             return _fill(price, q)
@@ -689,6 +759,7 @@ def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
             placed["sp"] = price
             return _fill(price, q)
         raise AssertionError(f"unexpected: {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -715,20 +786,28 @@ def test_phase3_refetch_above_initial_proceeds_with_higher_credit(mock_om, mock_
         if "C22150" in sym:
             sc_calls["n"] += 1
             return _book(bid=18.50 if sc_calls["n"] >= 2 else 18.0, ask=19.0, symbol=sym)
-        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21850" in sym:
+            return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     placed_sc = {"v": None}
+
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol or "P21800" in symbol: return _fill(5.0, q)
+        if "C22200" in symbol or "P21800" in symbol:
+            return _fill(5.0, q)
         if "C22150" in symbol:
             placed_sc["v"] = price
             return _fill(price, q)
-        if "P21850" in symbol: return _fill(price, q)
+        if "P21850" in symbol:
+            return _fill(price, q)
         raise AssertionError(f"unexpected: {symbol}")
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -753,16 +832,22 @@ def test_phase3_refetch_untradable_aborts_and_unwinds_wings(mock_om, mock_md):
             sc_calls["n"] += 1
             # First call (top-of-function) tradable; second (Phase 3) untradable.
             return None if sc_calls["n"] >= 2 else _book(bid=18.0, ask=18.25, symbol=sym)
-        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21850" in sym:
+            return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     place_calls = []
+
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         place_calls.append((symbol, side))
         return _fill(5.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -797,16 +882,22 @@ def test_phase3_refetch_below_min_credit_routes_through_existing_refuse(mock_om,
             # Initial 18.0 passes pre-entry credit (26 > 18); re-fetch 5.0
             # makes projected credit = (5+18)-(5+5) = 13, below 18 floor.
             return _book(bid=5.0 if sc_calls["n"] >= 2 else 18.0, ask=18.25, symbol=sym)
-        if "P21850" in sym: return _book(bid=18.0, ask=18.25, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21850" in sym:
+            return _book(bid=18.0, ask=18.25, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     place_calls = []
+
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         place_calls.append((symbol, side))
         return _fill(5.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
@@ -839,18 +930,25 @@ def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
     DRIFTED_BID = 17.70  # 0.30-pt drift — within today's observed 0.15-0.50 range
 
     def _gqb(sym):
-        if "C22150" in sym: return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
-        if "P21850" in sym: return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
-        if "C22200" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
-        if "P21800" in sym: return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "C22150" in sym:
+            return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
+        if "P21850" in sym:
+            return _book(bid=FRESH_BID, ask=FRESH_BID + 0.50, symbol=sym)
+        if "C22200" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
+        if "P21800" in sym:
+            return _book(bid=4.75, ask=5.0, symbol=sym)
         return None
+
     mock_md.get_quote_book.side_effect = _gqb
 
     submitted = {}
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol: return _fill(5.0, q)
-        if "P21800" in symbol: return _fill(5.0, q)
+        if "C22200" in symbol:
+            return _fill(5.0, q)
+        if "P21800" in symbol:
+            return _fill(5.0, q)
         if "C22150" in symbol:
             submitted["sc"] = price
             return _canceled() if price > DRIFTED_BID else _fill(DRIFTED_BID, q)
@@ -858,6 +956,7 @@ def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
             submitted["sp"] = price
             return _canceled() if price > DRIFTED_BID else _fill(DRIFTED_BID, q)
         return _fill(price if price > 0 else 8.0, q)
+
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")

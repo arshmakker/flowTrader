@@ -21,7 +21,7 @@ import csv
 import json
 import logging
 import os
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -34,12 +34,13 @@ DEFAULT_FLAG_PRICE_PCT = 0.02  # 2% per-leg price drift → flag
 @dataclass
 class Leg:
     """A normalized per-leg fill record. Both engine and broker rows use this."""
+
     timestamp: datetime
     symbol: str
-    side: str            # canonicalised to 'BUY' / 'SELL'
+    side: str  # canonicalised to 'BUY' / 'SELL'
     quantity: int
     fill_price: float
-    costs: float         # sum of whatever cost columns are present
+    costs: float  # sum of whatever cost columns are present
     source_row: Dict = field(default_factory=dict)
 
 

@@ -38,6 +38,7 @@ def _load_topic_from_cred() -> Optional[str]:
         return None
     try:
         import yaml
+
         with open(path) as f:
             data = yaml.safe_load(f) or {}
         url = data.get("ALERTS_NTFY_TOPIC_URL")
@@ -61,21 +62,39 @@ def run_smoke_test(topic_url: str) -> int:
 
     # ── (a) POST headers/body shape across all three severities ───────
     print("(a) severity headers - check your phone for 3 notifications with distinct priority/tags")
-    all_green &= _expect("info send",     ch.send(Alert("smoke_a_info",     "info",     "RT smoke (info)",     "Hello from smoke test - info severity")), True)
-    all_green &= _expect("warning send",  ch.send(Alert("smoke_a_warn",     "warning",  "RT smoke (warning)",  "Hello from smoke test - warning severity")), True)
-    all_green &= _expect("critical send", ch.send(Alert("smoke_a_critical", "critical", "RT smoke (critical)", "Hello from smoke test - critical severity")), True)
+    all_green &= _expect(
+        "info send",
+        ch.send(Alert("smoke_a_info", "info", "RT smoke (info)", "Hello from smoke test - info severity")),
+        True,
+    )
+    all_green &= _expect(
+        "warning send",
+        ch.send(Alert("smoke_a_warn", "warning", "RT smoke (warning)", "Hello from smoke test - warning severity")),
+        True,
+    )
+    all_green &= _expect(
+        "critical send",
+        ch.send(
+            Alert("smoke_a_critical", "critical", "RT smoke (critical)", "Hello from smoke test - critical severity")
+        ),
+        True,
+    )
     time.sleep(2.0)
 
     # ── (b) Async sender survives bursts + gaps in a long-lived process ─
     print("\n(b) burst-and-gap - 5 rapid sends + 3s sleep + confirm worker still alive")
     for i in range(5):
-        all_green &= _expect(f"burst {i}", ch.send(Alert(f"smoke_b_{i}", "info", f"burst {i+1}/5", f"burst message {i}")), True)
+        all_green &= _expect(
+            f"burst {i}", ch.send(Alert(f"smoke_b_{i}", "info", f"burst {i + 1}/5", f"burst message {i}")), True
+        )
     time.sleep(3.0)
     all_green &= _expect("worker thread alive after gap", ch._worker.is_alive(), True)
 
     # ── (c) flush() drains within-timeout - heartbeat script relies on this ─
     print("\n(c) flush() drain - enqueue 1 alert, immediately flush, assert drained")
-    all_green &= _expect("flush-target send", ch.send(Alert("smoke_c_flush", "info", "flush test", "should drain cleanly")), True)
+    all_green &= _expect(
+        "flush-target send", ch.send(Alert("smoke_c_flush", "info", "flush test", "should drain cleanly")), True
+    )
     drained = ch.flush(timeout=5.0)
     all_green &= _expect("flush returned True within 5s", drained, True)
     all_green &= _expect("queue empty after flush", ch._q.unfinished_tasks, 0)
@@ -102,9 +121,9 @@ def run_smoke_test(topic_url: str) -> int:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="LIVE-23 ntfy smoke test")
     parser.add_argument(
-        "--topic-url", default=None,
-        help="ntfy topic URL (e.g. https://ntfy.sh/your-topic). "
-             "Defaults to ALERTS_NTFY_TOPIC_URL from cred.yml.",
+        "--topic-url",
+        default=None,
+        help="ntfy topic URL (e.g. https://ntfy.sh/your-topic). Defaults to ALERTS_NTFY_TOPIC_URL from cred.yml.",
     )
     args = parser.parse_args(argv)
 

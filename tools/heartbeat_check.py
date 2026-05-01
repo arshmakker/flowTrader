@@ -29,9 +29,9 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from trading_system.ops.alerts import Alert, AlertChannel, build_channel
+from strategy_runner import get_now_ist, is_market_hours
 from trading_system.config import settings
-from strategy_runner import is_market_hours, get_now_ist
+from trading_system.ops.alerts import Alert, AlertChannel, build_channel
 
 DEFAULT_STALE_SEC = 180  # 3 minutes — main loop writes the snapshot every cycle (<60s)
 
@@ -52,6 +52,7 @@ def _load_ntfy_url_from_cred() -> Optional[str]:
         return None
     try:
         import yaml
+
         with open(cred_path) as f:
             data = yaml.safe_load(f) or {}
         url = data.get("ALERTS_NTFY_TOPIC_URL")
@@ -74,24 +75,27 @@ def check_heartbeat(
 
     age = _snapshot_age_seconds(snapshot_path, now)
     if age is None:
-        alerts.send(Alert(
-            event="heartbeat_missing",
-            severity="critical",
-            title="RegimeTrader heartbeat missing",
-            body=f"pnl_snapshot.json not found at {snapshot_path} during market hours.",
-        ))
+        alerts.send(
+            Alert(
+                event="heartbeat_missing",
+                severity="critical",
+                title="RegimeTrader heartbeat missing",
+                body=f"pnl_snapshot.json not found at {snapshot_path} during market hours.",
+            )
+        )
         return 1
 
     if age > stale_sec:
-        alerts.send(Alert(
-            event="heartbeat_stale",
-            severity="critical",
-            title="RegimeTrader heartbeat stale",
-            body=(
-                f"pnl_snapshot.json last updated {age:.0f}s ago "
-                f"(threshold {stale_sec}s). Main loop may be dead."
-            ),
-        ))
+        alerts.send(
+            Alert(
+                event="heartbeat_stale",
+                severity="critical",
+                title="RegimeTrader heartbeat stale",
+                body=(
+                    f"pnl_snapshot.json last updated {age:.0f}s ago (threshold {stale_sec}s). Main loop may be dead."
+                ),
+            )
+        )
         return 1
 
     return 0
@@ -100,11 +104,14 @@ def check_heartbeat(
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="RegimeTrader heartbeat watchdog")
     parser.add_argument(
-        "--stale-sec", type=int, default=DEFAULT_STALE_SEC,
+        "--stale-sec",
+        type=int,
+        default=DEFAULT_STALE_SEC,
         help=f"Staleness threshold in seconds (default {DEFAULT_STALE_SEC}).",
     )
     parser.add_argument(
-        "--snapshot", default=os.path.join(_REPO_ROOT, settings.DATA_DIR, "pnl_snapshot.json"),
+        "--snapshot",
+        default=os.path.join(_REPO_ROOT, settings.DATA_DIR, "pnl_snapshot.json"),
         help="Path to pnl_snapshot.json.",
     )
     args = parser.parse_args(argv)

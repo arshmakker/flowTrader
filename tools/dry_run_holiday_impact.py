@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import sys
 
 # Ensure repo root is importable when run as a script from tools/
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from strategy_runner import is_trading_day_ist, is_market_hours, is_market_closed_ist  # noqa: E402
-from trading_system.config import settings  # noqa: E402
+from strategy_runner import is_market_closed_ist, is_market_hours, is_trading_day_ist  # noqa: E402
 from tools.purge_non_trading_day_data import find_non_trading_day_dirs  # noqa: E402
+from trading_system.config import settings  # noqa: E402
 
 
 @dataclass(frozen=True)

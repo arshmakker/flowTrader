@@ -12,6 +12,7 @@ FixQ1: use the same-response bid-ask midpoint (bp1/sp1) as a secondary
 FixQ2: seed _last_valid_option_ltp at startup from each restored leg's
        avg_price, so cycle-one queries never return 0.
 """
+
 from __future__ import annotations
 
 import os
@@ -21,7 +22,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from trading_system.existing.market_data import MarketData
 
-
 # ── FixQ1 ────────────────────────────────────────────────────────────────────
 
 
@@ -29,6 +29,7 @@ def _mock_api_returning(quote):
     class MockAPI:
         def get_quotes(self, exchange=None, token=None):
             return quote
+
     return MockAPI()
 
 
@@ -38,6 +39,7 @@ def _mock_sm():
             # any non-None token so the NFO-unresolved guard in get_ltp
             # (token == tsym_or_name && exchange == "NFO" → return 0) doesn't fire
             return {"token": "99999"}
+
     return MockSM()
 
 

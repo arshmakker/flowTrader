@@ -1,19 +1,20 @@
 """Tests for strategy_runner public functions."""
-import sys
+
 import os
-from datetime import datetime, date, timedelta
+import sys
+from datetime import date, datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from strategy_runner import (
     get_weekly_expiry,
-    is_market_hours,
     is_market_closed_ist,
+    is_market_hours,
     save_daily_metrics,
 )
 
-
 # ── get_weekly_expiry ────────────────────────────────────────────────
+
 
 def test_weekly_expiry_monday_returns_thursday():
     monday = datetime(2026, 3, 9, 10, 0)  # Monday
@@ -56,6 +57,7 @@ def test_weekly_expiry_saturday():
 
 # ── is_market_hours / is_market_closed_ist ───────────────────────────
 
+
 def test_market_hours_returns_bool():
     result = is_market_hours()
     assert isinstance(result, bool)
@@ -89,6 +91,7 @@ def test_market_closed_true_after_close_on_weekday():
 
 
 # ── save_daily_metrics ───────────────────────────────────────────────
+
 
 def test_save_daily_metrics_creates_file():
     import json

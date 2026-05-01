@@ -1,9 +1,9 @@
-
 class MarketData:
     """
     Placeholder for MarketData class.
     This class is responsible for fetching and providing market data.
     """
+
     def __init__(self):
         print("MarketData initialized.")
         # In a real implementation, this would connect to a market data source.

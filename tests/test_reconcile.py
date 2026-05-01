@@ -3,11 +3,11 @@
 Fixtures seed known deltas so the assertions stay mechanical. Real
 Shoonya contract-note shape is mirrored by the broker CSV columns.
 """
+
 import csv
 import json
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -15,8 +15,19 @@ from trading_system.ops import reconcile as rec
 
 
 def _write_engine_csv(path, rows):
-    cols = ["timestamp", "order_id", "symbol", "side", "quantity",
-            "fill_price", "stt", "brokerage", "status", "reason", "paper"]
+    cols = [
+        "timestamp",
+        "order_id",
+        "symbol",
+        "side",
+        "quantity",
+        "fill_price",
+        "stt",
+        "brokerage",
+        "status",
+        "reason",
+        "paper",
+    ]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
@@ -25,8 +36,20 @@ def _write_engine_csv(path, rows):
 
 
 def _write_broker_csv(path, rows):
-    cols = ["timestamp", "order_id", "symbol", "side", "quantity",
-            "fill_price", "stt", "brokerage", "exch_txn", "sebi", "stamp", "gst"]
+    cols = [
+        "timestamp",
+        "order_id",
+        "symbol",
+        "side",
+        "quantity",
+        "fill_price",
+        "stt",
+        "brokerage",
+        "exch_txn",
+        "sebi",
+        "stamp",
+        "gst",
+    ]
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
@@ -36,17 +59,29 @@ def _write_broker_csv(path, rows):
 
 def _engine_row(ts, sym, side, qty, px, status="COMPLETE"):
     return {
-        "timestamp": ts, "order_id": "PAPER_1", "symbol": sym, "side": side,
-        "quantity": qty, "fill_price": px, "stt": 0.0, "brokerage": 5.0,
-        "status": status, "reason": "", "paper": "True",
+        "timestamp": ts,
+        "order_id": "PAPER_1",
+        "symbol": sym,
+        "side": side,
+        "quantity": qty,
+        "fill_price": px,
+        "stt": 0.0,
+        "brokerage": 5.0,
+        "status": status,
+        "reason": "",
+        "paper": "True",
     }
 
 
 def _broker_row(ts, sym, side, qty, px, costs=None):
     costs = costs or {}
     return {
-        "timestamp": ts, "order_id": "B1", "symbol": sym, "side": side,
-        "quantity": qty, "fill_price": px,
+        "timestamp": ts,
+        "order_id": "B1",
+        "symbol": sym,
+        "side": side,
+        "quantity": qty,
+        "fill_price": px,
         "stt": costs.get("stt", 0.0),
         "brokerage": costs.get("brokerage", 5.0),
         "exch_txn": costs.get("exch_txn", 1.5),
@@ -98,16 +133,22 @@ def test_unmatched_engine_and_broker(tmp_path):
     mid-entry crash between fill and persist). Both surface separately."""
     ep = str(tmp_path / "paper_orders.csv")
     bp = str(tmp_path / "broker.csv")
-    _write_engine_csv(ep, [
-        _engine_row("2026-04-22T10:00:00", "NFO|NIFTY24APR26C22150", "SELL", 650, 18.0),
-        _engine_row("2026-04-22T10:00:05", "NFO|NIFTY24APR26P21850", "SELL", 650, 18.0),
-    ])
-    _write_broker_csv(bp, [
-        # Only the first leg reported by broker. Second engine leg is phantom.
-        _broker_row("2026-04-22T10:00:02", "NFO|NIFTY24APR26C22150", "SELL", 650, 17.9),
-        # Mystery broker fill the engine never placed.
-        _broker_row("2026-04-22T10:00:07", "NFO|NIFTY24APR26P21800", "BUY", 650, 5.0),
-    ])
+    _write_engine_csv(
+        ep,
+        [
+            _engine_row("2026-04-22T10:00:00", "NFO|NIFTY24APR26C22150", "SELL", 650, 18.0),
+            _engine_row("2026-04-22T10:00:05", "NFO|NIFTY24APR26P21850", "SELL", 650, 18.0),
+        ],
+    )
+    _write_broker_csv(
+        bp,
+        [
+            # Only the first leg reported by broker. Second engine leg is phantom.
+            _broker_row("2026-04-22T10:00:02", "NFO|NIFTY24APR26C22150", "SELL", 650, 17.9),
+            # Mystery broker fill the engine never placed.
+            _broker_row("2026-04-22T10:00:07", "NFO|NIFTY24APR26P21800", "BUY", 650, 5.0),
+        ],
+    )
 
     report = rec.reconcile(
         rec.load_engine_orders(ep, "2026-04-22"),
@@ -158,10 +199,13 @@ def test_date_filter_excludes_wrong_day(tmp_path):
     """Prior-day rows in the CSV must be silently filtered out."""
     ep = str(tmp_path / "paper_orders.csv")
     bp = str(tmp_path / "broker.csv")
-    _write_engine_csv(ep, [
-        _engine_row("2026-04-21T10:00:00", "NFO|X", "SELL", 100, 10.0),
-        _engine_row("2026-04-22T10:00:00", "NFO|Y", "SELL", 100, 10.0),
-    ])
+    _write_engine_csv(
+        ep,
+        [
+            _engine_row("2026-04-21T10:00:00", "NFO|X", "SELL", 100, 10.0),
+            _engine_row("2026-04-22T10:00:00", "NFO|Y", "SELL", 100, 10.0),
+        ],
+    )
     _write_broker_csv(bp, [_broker_row("2026-04-22T10:00:02", "NFO|Y", "SELL", 100, 10.0)])
 
     report = rec.reconcile(
@@ -178,10 +222,13 @@ def test_rejected_engine_orders_are_ignored(tmp_path):
     unmatched_engine noise — they're filtered at load time."""
     ep = str(tmp_path / "paper_orders.csv")
     bp = str(tmp_path / "broker.csv")
-    _write_engine_csv(ep, [
-        _engine_row("2026-04-22T10:00:00", "NFO|X", "SELL", 100, 10.0, status="REJECTED"),
-        _engine_row("2026-04-22T10:00:01", "NFO|Y", "SELL", 100, 10.0, status="COMPLETE"),
-    ])
+    _write_engine_csv(
+        ep,
+        [
+            _engine_row("2026-04-22T10:00:00", "NFO|X", "SELL", 100, 10.0, status="REJECTED"),
+            _engine_row("2026-04-22T10:00:01", "NFO|Y", "SELL", 100, 10.0, status="COMPLETE"),
+        ],
+    )
     _write_broker_csv(bp, [_broker_row("2026-04-22T10:00:02", "NFO|Y", "SELL", 100, 10.0)])
 
     report = rec.reconcile(
@@ -201,10 +248,19 @@ def test_cost_delta_surfaces_missing_cost_stack(tmp_path):
     ep = str(tmp_path / "paper_orders.csv")
     bp = str(tmp_path / "broker.csv")
     _write_engine_csv(ep, [_engine_row("2026-04-22T10:00:00", "NFO|X", "SELL", 100, 10.0)])
-    _write_broker_csv(bp, [_broker_row(
-        "2026-04-22T10:00:02", "NFO|X", "SELL", 100, 10.0,
-        costs={"stt": 0.0, "brokerage": 5.0, "exch_txn": 1.5, "sebi": 0.1, "stamp": 0.3, "gst": 1.0},
-    )])
+    _write_broker_csv(
+        bp,
+        [
+            _broker_row(
+                "2026-04-22T10:00:02",
+                "NFO|X",
+                "SELL",
+                100,
+                10.0,
+                costs={"stt": 0.0, "brokerage": 5.0, "exch_txn": 1.5, "sebi": 0.1, "stamp": 0.3, "gst": 1.0},
+            )
+        ],
+    )
 
     report = rec.reconcile(
         rec.load_engine_orders(ep, "2026-04-22"),
@@ -237,10 +293,13 @@ def test_closest_broker_leg_wins_on_multiple_candidates(tmp_path):
     ep = str(tmp_path / "paper_orders.csv")
     bp = str(tmp_path / "broker.csv")
     _write_engine_csv(ep, [_engine_row("2026-04-22T10:00:00", "NFO|X", "SELL", 100, 10.0)])
-    _write_broker_csv(bp, [
-        _broker_row("2026-04-22T10:00:30", "NFO|X", "SELL", 100, 10.5),  # further
-        _broker_row("2026-04-22T10:00:02", "NFO|X", "SELL", 100, 10.1),  # closer
-    ])
+    _write_broker_csv(
+        bp,
+        [
+            _broker_row("2026-04-22T10:00:30", "NFO|X", "SELL", 100, 10.5),  # further
+            _broker_row("2026-04-22T10:00:02", "NFO|X", "SELL", 100, 10.1),  # closer
+        ],
+    )
 
     report = rec.reconcile(
         rec.load_engine_orders(ep, "2026-04-22"),
@@ -257,14 +316,11 @@ def test_closest_broker_leg_wins_on_multiple_candidates(tmp_path):
 
 # ── LIVE-21 loader helper — feeds the go-live evaluator ────────────────
 
+
 def test_load_reconciliation_reports_discovers_and_sorts_by_date(tmp_path):
     # Two valid reports and one sibling file that should be ignored.
-    (tmp_path / "reconciliation_20260422.json").write_text(
-        json.dumps({"date": "2026-04-22", "matched_count": 4})
-    )
-    (tmp_path / "reconciliation_20260421.json").write_text(
-        json.dumps({"date": "2026-04-21", "matched_count": 3})
-    )
+    (tmp_path / "reconciliation_20260422.json").write_text(json.dumps({"date": "2026-04-22", "matched_count": 4}))
+    (tmp_path / "reconciliation_20260421.json").write_text(json.dumps({"date": "2026-04-21", "matched_count": 3}))
     (tmp_path / "paper_trades.csv").write_text("not-a-report")
 
     reports = rec.load_reconciliation_reports(str(tmp_path))

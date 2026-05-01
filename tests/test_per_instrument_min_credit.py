@@ -30,9 +30,7 @@ def _force_sequential_entry(monkeypatch):
 @pytest.fixture
 def mock_om():
     om = MagicMock()
-    om.build_option_symbol.side_effect = (
-        lambda inst, exp, strike, type: f"NFO|{inst}{exp}{type[0]}{int(strike)}"
-    )
+    om.build_option_symbol.side_effect = lambda inst, exp, strike, type: f"NFO|{inst}{exp}{type[0]}{int(strike)}"
     om.place_order.return_value = {
         "status": "COMPLETE",
         "fill_price": 15.0,
@@ -58,12 +56,14 @@ def _ltp_close_to(spot: float, short_premium: float, wing_premium: float):
     discriminates between VIX-low shorts (~150 OTM) and wings (~200 OTM, since
     VIX_LOW_WIDTH=50).
     """
+
     def _side_effect(sym: str) -> float:
         m = re.search(r"(\d+)$", sym)
         if not m:
             return 0.0
         strike = int(m.group(1))
         return short_premium if abs(strike - spot) <= 175 else wing_premium
+
     return _side_effect
 
 
@@ -71,8 +71,7 @@ def test_constants_define_both_instruments_with_banknifty_higher():
     floors = settings.IC_MIN_CREDIT_BY_INSTRUMENT
     assert "NIFTY" in floors and "BANKNIFTY" in floors
     assert floors["BANKNIFTY"] > floors["NIFTY"], (
-        "BANKNIFTY break-even is structurally higher than NIFTY's "
-        "(see docs/calibration_2026_04_26.md)"
+        "BANKNIFTY break-even is structurally higher than NIFTY's (see docs/calibration_2026_04_26.md)"
     )
 
 

@@ -7,13 +7,13 @@ without any network calls. The LiveOrderManager's polling loop is tested
 separately via a fake API stub.
 """
 
-import json
-import os
-import pytest
 from itertools import cycle
 from unittest.mock import MagicMock, patch
-from trading_system.core.iron_condor import IronCondorStrategy
+
+import pytest
+
 from trading_system.config import settings
+from trading_system.core.iron_condor import IronCondorStrategy
 
 
 @pytest.fixture(autouse=True)
@@ -21,11 +21,12 @@ def _force_sequential_entry(monkeypatch):
     """LIVE-01 / LIVE-05 tests cover the legacy sequential path's state machine;
     pin IC_ENTRY_MODE='sequential' regardless of the branch-level default."""
     monkeypatch.setattr(settings, "IC_ENTRY_MODE", "sequential")
-from trading_system.live.live_order_manager import LiveOrderManager, OrderPollingAbandoned
-from trading_system.config import settings
 
+
+from trading_system.live.live_order_manager import LiveOrderManager, OrderPollingAbandoned
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _make_order(status, fill_qty, quantity=650, symbol="NFO|NIFTY21APR26C24200", side="SELL"):
     return {
@@ -62,6 +63,7 @@ def _canceled_partial(fill_qty=300, qty=650, symbol="NFO|NIFTY21APR26C24200", si
 
 # ── LiveOrderManager._await_terminal ─────────────────────────────────────────
 
+
 class TestAwaitTerminal:
     """Tests for the polling loop inside LiveOrderManager."""
 
@@ -72,7 +74,13 @@ class TestAwaitTerminal:
     def test_pending_then_complete_returns_complete(self):
         """PENDING x2 → COMPLETE: _await_terminal returns the COMPLETE record."""
         pending = {"status": "PENDING", "fillshares": "0", "avgprc": "0", "norenordno": "X1"}
-        complete = {"status": "COMPLETE", "fillshares": "650", "avgprc": "18.0", "norenordno": "X1", "exch_tm": "10:00:00"}
+        complete = {
+            "status": "COMPLETE",
+            "fillshares": "650",
+            "avgprc": "18.0",
+            "norenordno": "X1",
+            "exch_tm": "10:00:00",
+        }
         api = MagicMock()
         api.single_order_history.side_effect = [
             [pending],
@@ -87,7 +95,13 @@ class TestAwaitTerminal:
 
     def test_transient_error_retried_not_rejected(self):
         """A single network error is retried; second call returns COMPLETE."""
-        complete = {"status": "COMPLETE", "fillshares": "650", "avgprc": "18.0", "norenordno": "X2", "exch_tm": "10:00:00"}
+        complete = {
+            "status": "COMPLETE",
+            "fillshares": "650",
+            "avgprc": "18.0",
+            "norenordno": "X2",
+            "exch_tm": "10:00:00",
+        }
         api = MagicMock()
         api.single_order_history.side_effect = [
             Exception("network blip"),
@@ -111,6 +125,7 @@ class TestAwaitTerminal:
 
 # ── IronCondorStrategy entry state machine ────────────────────────────────────
 
+
 @pytest.fixture
 def sr_mgr():
     m = MagicMock()
@@ -133,7 +148,6 @@ def _make_ic(om, md):
 
 
 class TestEntryStateMachine:
-
     def _om_all_complete(self):
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
@@ -157,9 +171,9 @@ class TestEntryStateMachine:
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
         om.place_order.side_effect = [
-            _complete(side="SELL"),       # leg 1 (SC) — success
-            _rejected(side="BUY"),        # leg 2 (LC) — rejected
-            _complete(side="SELL"),       # rollback of leg 1
+            _complete(side="SELL"),  # leg 1 (SC) — success
+            _rejected(side="BUY"),  # leg 2 (LC) — rejected
+            _complete(side="SELL"),  # rollback of leg 1
         ]
         om.tracker = None
         om.get_available_margin.return_value = float("inf")
@@ -181,11 +195,11 @@ class TestEntryStateMachine:
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
         om.place_order.side_effect = [
-            _complete(side="SELL"),           # leg 1 SC
-            _complete(side="BUY"),            # leg 2 LC
-            _canceled_no_fill(side="SELL"),   # leg 3 SP — canceled, no fill
-            _complete(),                      # rollback leg 2
-            _complete(),                      # rollback leg 1
+            _complete(side="SELL"),  # leg 1 SC
+            _complete(side="BUY"),  # leg 2 LC
+            _canceled_no_fill(side="SELL"),  # leg 3 SP — canceled, no fill
+            _complete(),  # rollback leg 2
+            _complete(),  # rollback leg 1
         ]
         om.tracker = None
         om.get_available_margin.return_value = float("inf")
@@ -205,7 +219,7 @@ class TestEntryStateMachine:
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
         om.place_order.side_effect = [
-            _complete(qty=650, side="SELL"),           # leg 1 SC — full fill
+            _complete(qty=650, side="SELL"),  # leg 1 SC — full fill
             _canceled_partial(fill_qty=300, qty=650, side="BUY"),  # leg 2 LC — partial
             # partial-fill halt: reversal for leg 2 (300) then leg 1 (650)
             _make_order("COMPLETE", 300, 300, side="SELL"),
@@ -226,7 +240,6 @@ class TestEntryStateMachine:
 
 
 class TestExitStateMachine:
-
     def test_exit_leg_incomplete_records_stuck_and_stops(self, tmp_path):
         """Exit leg returning fill_qty=0 → stuck leg recorded, remaining legs not attempted."""
         md = MagicMock()
@@ -236,10 +249,10 @@ class TestExitStateMachine:
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
         om.place_order.side_effect = [
-            _complete(side="SELL"),   # leg 1 SC entry
-            _complete(side="BUY"),    # leg 2 LC entry
-            _complete(side="SELL"),   # leg 3 SP entry
-            _complete(side="BUY"),    # leg 4 LP entry
+            _complete(side="SELL"),  # leg 1 SC entry
+            _complete(side="BUY"),  # leg 2 LC entry
+            _complete(side="SELL"),  # leg 3 SP entry
+            _complete(side="BUY"),  # leg 4 LP entry
             # Exit: first close leg (SC BUY) fails with no fill
             _make_order("REJECTED", 0, 650, side="BUY"),
         ]

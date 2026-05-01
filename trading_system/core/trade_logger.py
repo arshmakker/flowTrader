@@ -16,12 +16,28 @@ from trading_system.config import settings
 logger = logging.getLogger(__name__)
 
 TRADE_COLUMNS = [
-    "trade_id", "date", "entry_date", "time_entry", "time_exit", "instrument",
-    "sc_strike", "sp_strike", "lc_strike", "lp_strike",
-    "entry_credit", "exit_price", "gross_pnl", "net_pnl",
-    "exit_reason", "lots", "peak_pnl",
-    "vix_entry", "day_type", "paper"
+    "trade_id",
+    "date",
+    "entry_date",
+    "time_entry",
+    "time_exit",
+    "instrument",
+    "sc_strike",
+    "sp_strike",
+    "lc_strike",
+    "lp_strike",
+    "entry_credit",
+    "exit_price",
+    "gross_pnl",
+    "net_pnl",
+    "exit_reason",
+    "lots",
+    "peak_pnl",
+    "vix_entry",
+    "day_type",
+    "paper",
 ]
+
 
 class TradeLogger:
     def __init__(self, data_dir: str = settings.DATA_DIR) -> None:
@@ -52,7 +68,9 @@ class TradeLogger:
             return
         logger.warning(
             "paper_trades.csv header mismatch (had %d cols, expected %d) — archived to %s",
-            len(existing_header), len(TRADE_COLUMNS), archived,
+            len(existing_header),
+            len(TRADE_COLUMNS),
+            archived,
         )
         with open(self._trades_path, "w", newline="") as f:
             csv.writer(f).writerow(TRADE_COLUMNS)

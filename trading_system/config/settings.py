@@ -18,30 +18,30 @@ BANKNIFTY_STRIKE_STEP = 100
 # ══ SHOONYA TOKENS & SYMBOLS ══════════════════════════════════════
 NIFTY_SPOT_TOKEN = "26000"
 INDIA_VIX_TOKEN = "26017"
-NIFTY_SPOT_KEY = "NSE|Nifty 50"        # LTP lookup key
+NIFTY_SPOT_KEY = "NSE|Nifty 50"  # LTP lookup key
 BANKNIFTY_SPOT_KEY = "NSE|Nifty Bank"  # BUG-08: per-instrument classification
 INDIA_VIX_KEY = "NSE|India VIX"
 NIFTY_SPOT_EXCHANGE = "NSE"
 
 # ══ SESSION ═════════════════════════════════════════════════════════
 CLASSIFY_TIME = "10:30"
-TRADE_END = "15:10"         # Hard close all non-expiring positions
+TRADE_END = "15:10"  # Hard close all non-expiring positions
 TRADE_END_EXPIRY = "15:00"  # Hard close positions expiring today (30 min before expiry-day settlement squeeze)
 SIGNAL_RECHECK_SEC = 30
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
 IC_LOT_SIZE = 10  # 10 lots per instrument for greater absolute profit
 IC_VIX_MAX = 30.0
-IC_VIX_STABLE_MINS = 8   # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
+IC_VIX_STABLE_MINS = 8  # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
-IC_SR_BUFFER = 50     # 50-point buffer from 20-day H/L
-IC_HARVEST_PCT = 0.01 # 1% of max profit for harvest and re-entry (NIFTY default)
+IC_SR_BUFFER = 50  # 50-point buffer from 20-day H/L
+IC_HARVEST_PCT = 0.01  # 1% of max profit for harvest and re-entry (NIFTY default)
 # Per-instrument harvest threshold, calibrated against the LIVE-12 cost stack.
 # BANKNIFTY 8-leg round-trip fees ≈ ₹760 on 10 lots; break-even ratio ≈ 11.8%.
 # A flat 1% threshold triggers harvests that are negative net of fees on BANKNIFTY.
 IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}
-IC_STOP_LOSS_MULT = 3.0 # 3x max profit stop-loss
+IC_STOP_LOSS_MULT = 3.0  # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 # Per-instrument minimum net credit per lot. Calibrated against the LIVE-12
 # cost stack (see docs/calibration_2026_04_26.md):
@@ -96,22 +96,22 @@ IC_PHASE3_FALLBACK = "refuse"
 # by data-quality guards to avoid treating holiday data as a trading day.
 # Weekends are handled separately; list only non-weekend holidays here.
 TRADING_HOLIDAYS_IST = {
-    '2026-01-15',  # Municipal Corporation Election - Maharashtra
-    '2026-01-26',  # Republic Day
-    '2026-03-03',  # Holi
-    '2026-03-26',  # Shri Ram Navami
-    '2026-03-31',  # Shri Mahavir Jayanti
-    '2026-04-03',  # Good Friday
-    '2026-04-14',  # Dr. Baba Saheb Ambedkar Jayanti
-    '2026-05-01',  # Maharashtra Day
-    '2026-05-28',  # Bakri Id
-    '2026-06-26',  # Muharram
-    '2026-09-14',  # Ganesh Chaturthi
-    '2026-10-02',  # Mahatma Gandhi Jayanti
-    '2026-10-20',  # Dussehra
-    '2026-11-10',  # Diwali-Balipratipada
-    '2026-11-24',  # Prakash Gurpurb Sri Guru Nanak Dev
-    '2026-12-25',  # Christmas
+    "2026-01-15",  # Municipal Corporation Election - Maharashtra
+    "2026-01-26",  # Republic Day
+    "2026-03-03",  # Holi
+    "2026-03-26",  # Shri Ram Navami
+    "2026-03-31",  # Shri Mahavir Jayanti
+    "2026-04-03",  # Good Friday
+    "2026-04-14",  # Dr. Baba Saheb Ambedkar Jayanti
+    "2026-05-01",  # Maharashtra Day
+    "2026-05-28",  # Bakri Id
+    "2026-06-26",  # Muharram
+    "2026-09-14",  # Ganesh Chaturthi
+    "2026-10-02",  # Mahatma Gandhi Jayanti
+    "2026-10-20",  # Dussehra
+    "2026-11-10",  # Diwali-Balipratipada
+    "2026-11-24",  # Prakash Gurpurb Sri Guru Nanak Dev
+    "2026-12-25",  # Christmas
 }
 
 # LIVE-18: NSE pre-open session. Quotes flow here but orders queue until
@@ -167,13 +167,13 @@ PAPER_OPTION_LTP_MAX = 5000.0
 # page (exch/sebi/stamp/gst base) + Budget 2026 circular (STT hike to 0.15%
 # effective 2026-04-01). See trading_system/core/fees.py for the calculation.
 FEES_NIFTY_OPT = {
-    "brokerage_per_order": 5.0,   # Shoonya flat ₹5 per executed order
-    "stt_sell_pct": 0.0015,       # 0.15% on SELL premium (Budget 2026)
-    "stt_exercise_pct": 0.0015,   # 0.15% on intrinsic × qty on ITM exercise
-    "exch_txn_pct": 0.0003553,    # NSE F&O options, both sides
-    "sebi_pct": 0.000001,         # ₹10/crore = 0.0001% of turnover, both sides
-    "stamp_buy_pct": 0.00003,     # 0.003% on BUY premium only
-    "gst_pct": 0.18,              # 18% of (brokerage + exch_txn + sebi)
+    "brokerage_per_order": 5.0,  # Shoonya flat ₹5 per executed order
+    "stt_sell_pct": 0.0015,  # 0.15% on SELL premium (Budget 2026)
+    "stt_exercise_pct": 0.0015,  # 0.15% on intrinsic × qty on ITM exercise
+    "exch_txn_pct": 0.0003553,  # NSE F&O options, both sides
+    "sebi_pct": 0.000001,  # ₹10/crore = 0.0001% of turnover, both sides
+    "stamp_buy_pct": 0.00003,  # 0.003% on BUY premium only
+    "gst_pct": 0.18,  # 18% of (brokerage + exch_txn + sebi)
 }
 
 # ══ LIVE ORDER POLLING ════════════════════════════════════════════════
