@@ -2,12 +2,12 @@
 
 ## Progress
 
-**20 of 21 fixed.** All P0 done. Only BUG-07 (mid-session OAuth recovery) remains — complex, needs auth-detection plumbing.
+**21 of 21 fixed.** All bugs closed.
 
 | Priority | Fixed | Open |
 |---|---|---|
 | P0 | BUG-01, 02, 03, 04, 05, 19 | — |
-| P1 | BUG-06, 08, 09, 10, 11, 18, 20 | BUG-07 |
+| P1 | BUG-06, 07, 08, 09, 10, 11, 18, 20 | — |
 | P2 | BUG-12, 13, 14, 15, 16, 17, 21 | — |
 
 Merged from `bugs_for_review1.md` (repo root) and `docs/bugs_for_review2.md`. Scope is intentionally tight:
@@ -109,7 +109,7 @@ Priority scale:
 - **Suggested fix:** In `get_open_price()`, only accept `q["o"]` as a real open; if missing, fall through to the LTP path (which already flags `_open_price_fallback`). If the substitution is ever kept intentionally, add the symbol to `_open_price_fallback` in that branch and log.
 
 ## BUG-07 · Mid-session OAuth recovery is not implemented
-- **Status:** 🟡 Deferred — needs auth-failure detection plumbing in the main loop before the helper can be extracted.
+- **Status:** ✅ Fixed — `_check_mid_session_auth` called every 15 min in main loop; one automated reauth via `_mid_session_reauth`; raises `_AuthSessionExpired` (bypasses halt, crashes loudly) if session is invalid and reauth fails or was already attempted. Four regression tests in `tests/test_main_helpers.py`.
 - **Severity:** Medium
 - **Severity reason:** It creates a real runtime fragility, but only when auth expires mid-session rather than on every normal run.
 - **Priority:** P1
@@ -118,7 +118,7 @@ Priority scale:
   - `api_helper.py:~270` — per-call OAuth-header → `jKey` fallback exists for individual quote requests.
   - `main.py:218-268` — the orchestrated re-auth loop (`oauth_reauth_attempts`) lives in startup logic only. Nothing equivalent runs inside the active trading loop.
 - **Impact:** A hard token expiry during market hours has no dedicated recovery path. If both OAuth and `jKey` fall through, quote requests degrade into ordinary failures. In practice that means quote-dependent paths may start skipping entries or exits, and the session can drift into partial or inconsistent behavior without any explicit auth-recovery event.
-- **Suggested fix:** Extract the re-auth loop into a callable helper and invoke it from within the main loop's exception handling when `_last_broker_error` indicates auth failure. Emit a structured alert on each re-auth attempt so silent token refreshes are observable.
+- **Fix:** `_check_mid_session_auth(api, log, alerts, reauth_state)` — periodic probe using `api.validate_oauth_session()`; on failure tries `_mid_session_reauth` once (no manual `input()` fallback); raises `_AuthSessionExpired` if recovery fails, which propagates past `except Exception` to crash the process cleanly. Broker policy: OAuth sessions do not expire mid-session; this is a safety net only.
 
 ## BUG-08 · Cross-instrument regime coupling: BANKNIFTY entries are gated by NIFTY classification
 - **Status:** ✅ Fixed — `DayClassifier` now accepts `symbol` + `spot_key`; `main.py` instantiates one per instrument; tests in `tests/test_day_classifier.py`.
