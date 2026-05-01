@@ -647,7 +647,6 @@ class ShoonyaApiPy(NorenApi):
         return False
 
     def place_basket(self, orders):
-
         resp_err = 0
         resp_ok = 0
         result = []

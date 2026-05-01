@@ -1,8 +1,8 @@
 # Iron Condor Trading System — Product Requirements Document
 
-**Version:** 1.0  
-**Date:** March 2026  
-**Instruments:** Nifty, BankNifty  
+**Version:** 1.0
+**Date:** March 2026
+**Instruments:** Nifty, BankNifty
 **Status:** Draft
 
 ---

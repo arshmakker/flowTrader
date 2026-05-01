@@ -6,7 +6,7 @@ skills:
     input: Current date, instrument (Nifty/BankNifty), weekly options calendar.
     output: Expiry date (Current Week if DTE ≥ 3, otherwise Next Week).
     error_handling: >
-      Defaults to Next Week if the current week's liquidity is below threshold 
+      Defaults to Next Week if the current week's liquidity is below threshold
       or if DTE calculation is ambiguous.
 
   - name: calculate_adaptive_strikes
@@ -14,8 +14,8 @@ skills:
     input: India VIX, 20-day High/Low, Spot Price, Instrument.
     output: Dict with 4 strikes (SC, LC, SP, LP) and spread width (50/100/150).
     error_handling: >
-      If VIX or S/R data is unavailable, defaults to the most conservative 
-      tier (>20 VIX) with widest OTM placement. Ensures a minimum 50-point 
+      If VIX or S/R data is unavailable, defaults to the most conservative
+      tier (>20 VIX) with widest OTM placement. Ensures a minimum 50-point
       clearance from 20-day High/Low.
 
   - name: evaluate_entry_gates
@@ -42,7 +42,7 @@ skills:
     input: Breach status (True/False), Total position P&L, Current strikes.
     output: Adjustment orders (Roll tested side OTM, Roll safe side closer).
     error_handling: >
-      Adjustment is DISABLED if the overall position is at a net loss. 
+      Adjustment is DISABLED if the overall position is at a net loss.
       Ensures the adjustment remains as cost-neutral as possible.
 
   - name: enforce_breach_protocol
@@ -50,5 +50,5 @@ skills:
     input: Combined P&L (Nifty + BankNifty), current_time, VIX trend.
     output: Action (HARD_CLOSE_ALL / RECOVERY_ENTRY / HOLD).
     error_handling: >
-      If 3x loss is hit, all positions are exited immediately. Recovery 
+      If 3x loss is hit, all positions are exited immediately. Recovery
       entry is ONLY permitted if time < 1:00 PM and VIX is stable/falling.

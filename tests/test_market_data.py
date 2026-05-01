@@ -61,9 +61,9 @@ def test_quote_with_lp_but_no_o_does_not_silently_use_lp():
     # that the symbol is now flagged as unreliable — which would NOT be true
     # with the old silent-substitution behavior.
     assert open_px == 24200.0
-    assert md.is_open_price_reliable(settings.NIFTY_SYMBOL) is False, (
-        "Symbol must be flagged unreliable when open was inferred from lp"
-    )
+    assert (
+        md.is_open_price_reliable(settings.NIFTY_SYMBOL) is False
+    ), "Symbol must be flagged unreliable when open was inferred from lp"
 
 
 def test_empty_o_string_does_not_silently_use_lp():

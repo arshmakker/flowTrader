@@ -548,9 +548,9 @@ def test_phase5a_unwind_passes_price_fallback_on_all_four_legs(mock_om, mock_md)
     # 4 entry orders + 4 unwind orders. The last 4 are the unwind.
     unwind_calls = mock_om.place_order.call_args_list[-4:]
     for c in unwind_calls:
-        assert c.kwargs.get("price", 0) > 0, (
-            f"Phase 5a unwind leg {c.args[0]} {c.args[1]} missing price= fallback; kwargs={c.kwargs}"
-        )
+        assert (
+            c.kwargs.get("price", 0) > 0
+        ), f"Phase 5a unwind leg {c.args[0]} {c.args[1]} missing price= fallback; kwargs={c.kwargs}"
 
 
 # ── Harvest re-entry partial-fill policy (incident 2026-04-27 12:00:32) ──────
@@ -613,9 +613,9 @@ def test_harvest_reentry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
     ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
-    assert s._last_rollback_stuck_legs == [], (
-        f"harvest re-entry partial-fill must NOT halt the session — got stuck_legs={s._last_rollback_stuck_legs}"
-    )
+    assert (
+        s._last_rollback_stuck_legs == []
+    ), f"harvest re-entry partial-fill must NOT halt the session — got stuck_legs={s._last_rollback_stuck_legs}"
     assert s._consecutive_partial_fails == 1
 
 
@@ -768,9 +768,9 @@ def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
     tick = settings.PRICE_TICK
     tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
     assert ok is True
-    assert placed["sc"] == round((17.50 - tol) / tick) * tick, (
-        f"SC limit must use re-fetched bid 17.50 minus drift_tol {tol}, got {placed['sc']}"
-    )
+    assert (
+        placed["sc"] == round((17.50 - tol) / tick) * tick
+    ), f"SC limit must use re-fetched bid 17.50 minus drift_tol {tol}, got {placed['sc']}"
     assert placed["sp"] == round((17.80 - tol) / tick) * tick
     # Each short symbol queried twice: top-of-function + Phase 3 re-fetch.
     assert sc_calls["n"] == 2 and sp_calls["n"] == 2
@@ -816,9 +816,9 @@ def test_phase3_refetch_above_initial_proceeds_with_higher_credit(mock_om, mock_
     tick = settings.PRICE_TICK
     tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
     assert ok is True
-    assert placed_sc["v"] == round((18.50 - tol) / tick) * tick, (
-        f"SC limit should be re-fetched bid 18.50 minus drift_tol {tol}, got {placed_sc['v']}"
-    )
+    assert (
+        placed_sc["v"] == round((18.50 - tol) / tick) * tick
+    ), f"SC limit should be re-fetched bid 18.50 minus drift_tol {tol}, got {placed_sc['v']}"
 
 
 def test_phase3_refetch_untradable_aborts_and_unwinds_wings(mock_om, mock_md):
@@ -970,9 +970,9 @@ def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
         "entry must fill despite 0.30-pt bid drift — "
         "IC_SHORT_LIMIT_DRIFT_TOL must absorb normal Phase-3→4 latency drift"
     )
-    assert submitted.get("sc") == expected_limit, (
-        f"SC limit {submitted.get('sc')} must equal bid-drift_tol = {expected_limit}"
-    )
-    assert submitted.get("sp") == expected_limit, (
-        f"SP limit {submitted.get('sp')} must equal bid-drift_tol = {expected_limit}"
-    )
+    assert (
+        submitted.get("sc") == expected_limit
+    ), f"SC limit {submitted.get('sc')} must equal bid-drift_tol = {expected_limit}"
+    assert (
+        submitted.get("sp") == expected_limit
+    ), f"SP limit {submitted.get('sp')} must equal bid-drift_tol = {expected_limit}"
