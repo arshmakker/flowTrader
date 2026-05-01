@@ -248,6 +248,74 @@ def _halt_on_exception(exc, risk, log, alerts=None):
         ))
 
 
+class _AuthSessionExpired(Exception):
+    """Raised when OAuth session is invalid and the one mid-session reauth attempt failed."""
+
+
+_SESSION_CHECK_INTERVAL = 900  # seconds between OAuth health probes
+
+
+def _check_mid_session_auth(api, log, alerts, reauth_state) -> None:
+    """BUG-07: OAuth health gate called every _SESSION_CHECK_INTERVAL seconds.
+    `reauth_state` is a mutable dict with key 'attempted' (False on loop entry).
+    Raises _AuthSessionExpired if session is invalid and recovery fails or was
+    already attempted — caller must let it propagate to crash the process."""
+    if api.validate_oauth_session():
+        return
+    if reauth_state["attempted"]:
+        raise _AuthSessionExpired(
+            "OAuth session invalid; reauth already attempted this session — giving up"
+        )
+    reauth_state["attempted"] = True
+    log.warning("OAuth session invalid mid-session; attempting one reauth")
+    if not _mid_session_reauth(api, log, alerts=alerts):
+        raise _AuthSessionExpired("OAuth mid-session reauth failed — giving up")
+    log.info("Mid-session reauth succeeded; continuing")
+
+
+def _mid_session_reauth(api, log, alerts=None) -> bool:
+    """One OAuth refresh attempt mid-session. Never blocks for manual input.
+    Returns True on success, False if any step fails."""
+    creds = _load_creds()
+    uid = str(creds.get("UID", "")).strip()
+    client_id = str(creds.get("client_id", "")).strip()
+    secret_code = str(creds.get("Secret_Code", "")).strip()
+    token_url = (
+        os.environ.get("SHOONYA_TOKEN_URL", "").strip()
+        or str(creds.get("token_url", "")).strip()
+    )
+
+    auth_code = os.environ.get("SHOONYA_AUTH_CODE", "").strip()
+    if not auth_code and shoonya_selenium_auth.is_configured(creds):
+        log.info("Mid-session reauth: capturing auth code via in-process Selenium.")
+        auth_code = shoonya_selenium_auth.fetch_auth_code(creds)
+    if not auth_code:
+        auth_code = _fetch_auth_code_from_command(creds, log)
+    if not auth_code:
+        log.warning("Mid-session reauth: no auth code available from any automated path.")
+        return False
+
+    token_data = api.exchange_auth_code(auth_code, secret_code, client_id, uid, token_url=token_url)
+    if not token_data:
+        detail = api.get_last_broker_error() or "unknown token exchange failure"
+        log.warning("Mid-session reauth: token exchange failed: %s", detail)
+        return False
+
+    new_token, user_id, _refresh, new_account_id = token_data
+    api.inject_oauth_header(new_token, user_id, new_account_id)
+    if not api.validate_oauth_session():
+        detail = api.get_last_broker_error() or "unknown validation failure"
+        log.warning("Mid-session reauth: session validation failed after exchange: %s", detail)
+        return False
+
+    creds["Access_token"] = new_token
+    creds["Account_ID"] = new_account_id
+    creds["UID"] = user_id
+    _save_creds(creds)
+    log.info("Mid-session reauth succeeded; access token updated.")
+    return True
+
+
 def _build_alert_channel(log) -> AlertChannel:
     """LIVE-23: build the operator alert channel at startup, honoring the
     settings master switch and pulling the ntfy topic URL from cred.yml."""
@@ -896,6 +964,8 @@ def run():
 
     day_classes = {'NIFTY': None, 'BANKNIFTY': None}
     collection_started = False
+    _auth_state = {"attempted": False}
+    _last_session_check = 0.0
 
     log.info("Entering main loop...")
     
@@ -910,6 +980,13 @@ def run():
                     shutdown_reason="kill-switch",
                 )
                 sys.exit(0)
+
+            # BUG-07: periodic OAuth health check. Broker guarantees no mid-session
+            # expiry, but if it does happen: one automated reauth, then crash loudly.
+            _now_wall = _time.time()
+            if _now_wall - _last_session_check >= _SESSION_CHECK_INTERVAL:
+                _last_session_check = _now_wall
+                _check_mid_session_auth(api, log, alerts, _auth_state)
 
             now = datetime.now()
             now_t = now.time()
@@ -1052,6 +1129,8 @@ def run():
             )
 
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
+          except _AuthSessionExpired:
+            raise  # bypass halt — crash loudly so the operator knows auth is broken
           except Exception as exc:
             # BUG-19 / Axiom 3: convert unhandled cycle exceptions into a halt.
             _halt_on_exception(exc, risk, log, alerts=alerts)
@@ -1065,6 +1144,8 @@ def run():
                 log.exception("Failed to persist state after halt")
             _time.sleep(settings.SIGNAL_RECHECK_SEC)
 
+    except _AuthSessionExpired as exc:
+        log.critical("OAuth session expired mid-session and reauth failed: %s — exiting", exc)
     except KeyboardInterrupt:
         log.info("Interrupted by user. Exiting...")
     finally:

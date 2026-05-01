@@ -327,6 +327,77 @@ def test_build_order_stack_paper_mode_uses_paper_order_manager(tmp_path):
     api.assert_not_called()
 
 
+# ── BUG-07: mid-session OAuth recovery ──────────────────────────────────────
+
+def test_check_mid_session_auth_noop_when_session_valid():
+    """No reauth attempt when validate_oauth_session returns True."""
+    from unittest.mock import MagicMock, patch
+    import logging
+
+    api = MagicMock()
+    api.validate_oauth_session.return_value = True
+    reauth_state = {"attempted": False}
+    log = logging.getLogger("test_bug07_noop")
+
+    with patch("main._mid_session_reauth") as mock_reauth:
+        main._check_mid_session_auth(api, log, None, reauth_state)
+
+    mock_reauth.assert_not_called()
+    assert reauth_state["attempted"] is False
+
+
+def test_check_mid_session_auth_reauth_succeeds_marks_attempted():
+    """Session invalid → reauth succeeds → no exception, attempted flag set."""
+    from unittest.mock import MagicMock, patch
+    import logging
+
+    api = MagicMock()
+    api.validate_oauth_session.return_value = False
+    reauth_state = {"attempted": False}
+    log = logging.getLogger("test_bug07_ok")
+
+    with patch("main._mid_session_reauth", return_value=True):
+        main._check_mid_session_auth(api, log, None, reauth_state)
+
+    assert reauth_state["attempted"] is True
+
+
+def test_check_mid_session_auth_raises_when_reauth_fails():
+    """BUG-07 regression: session invalid + reauth fails must raise _AuthSessionExpired,
+    not call _halt_on_exception and silently continue with a broken API session."""
+    import pytest
+    from unittest.mock import MagicMock, patch
+    import logging
+
+    api = MagicMock()
+    api.validate_oauth_session.return_value = False
+    reauth_state = {"attempted": False}
+    log = logging.getLogger("test_bug07_fail")
+
+    with patch("main._mid_session_reauth", return_value=False), \
+         pytest.raises(main._AuthSessionExpired):
+        main._check_mid_session_auth(api, log, None, reauth_state)
+
+
+def test_check_mid_session_auth_raises_immediately_when_already_attempted():
+    """Second invalid-session probe (reauth already tried this session) must
+    raise at once without calling _mid_session_reauth again."""
+    import pytest
+    from unittest.mock import MagicMock, patch
+    import logging
+
+    api = MagicMock()
+    api.validate_oauth_session.return_value = False
+    reauth_state = {"attempted": True}
+    log = logging.getLogger("test_bug07_second")
+
+    with patch("main._mid_session_reauth") as mock_reauth, \
+         pytest.raises(main._AuthSessionExpired):
+        main._check_mid_session_auth(api, log, None, reauth_state)
+
+    mock_reauth.assert_not_called()
+
+
 def test_build_order_stack_live_mode_uses_live_order_manager(tmp_path):
     from unittest.mock import MagicMock, patch
     from trading_system.config import settings
