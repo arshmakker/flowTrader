@@ -15,11 +15,15 @@ This document defines the complete rule set for an automated iron condor trading
 
 ## 2. Objectives
 
-- Maintain at least one open iron condor position every trading day (Mon–Thu)
-- Continuously harvest theta decay through systematic profit-taking and re-entry
-- Adapt spread width and strike placement dynamically to prevailing volatility and market structure
+**Primary goal: trade every eligible session to maximise net P&L after all taxes and brokerage costs.**
+
+All parameters — credit floors, harvest thresholds, VIX stability window, OTM distances — are calibrated so a winning cycle clears the full F&O cost stack (STT, exchange, SEBI, stamp, GST, brokerage). A cycle that wins gross but loses net is not a win.
+
+- Trade every eligible session — non-participation must be justified by a regime gate, not by parameter miscalibration
+- Harvest theta decay through systematic profit-taking and immediate re-entry
+- Adapt spread width and strike placement dynamically to prevailing VIX and S/R levels
 - Cap maximum drawdown per trade at 3× the max profit of the spread
-- Be fully flat by Thursday 3:15 PM every week — no weekend exposure
+- Be flat before any weekend or holiday gap; operator targets Thursday 3:15 PM as personal weekly cut-off
 
 ---
 
@@ -28,10 +32,10 @@ This document defines the complete rule set for an automated iron condor trading
 | Parameter | Rule |
 |---|---|
 | Instruments | Nifty + BankNifty (both traded simultaneously) |
-| Trading days | Monday through Thursday only |
-| EOW exit | All positions closed by Thursday 3:15 PM |
+| Trading days | Normal weekday sessions (Mon–Fri, non-holiday) |
+| Pre-weekend exit | All positions closed by 15:10 on the last trading day before any weekend or holiday |
 | Weekend | Flat — no exceptions |
-| Lot size | 2–3 lots per instrument per trade |
+| Lot size | 10 lots per instrument |
 
 ---
 
@@ -54,19 +58,19 @@ At market open, the system reads India VIX and identifies key support/resistance
 
 ### 5.1 VIX-Based Spread Rules
 
-| India VIX | Spread Width | Strike Distance OTM | S/R Buffer |
-|---|---|---|---|
-| Below 14 | 50 points | 150–200 points | 50 points minimum |
-| 14–20 | 100 points | 200–250 points | 50 points minimum |
-| Above 20 | 150 points | 300+ points | 50 points minimum |
+| India VIX | Spread Width | Strike Distance OTM | S/R Buffer | Notes |
+|---|---|---|---|---|
+| Below 14 | 50 points | 150 points | 50 points minimum | NIFTY skips entirely — credit below ₹18 fee floor |
+| 14–20 | 100 points | 200 points | 50 points minimum | — |
+| Above 20 | 150 points | 300 points | 50 points minimum | — |
 
 ### 5.2 S/R Constraint
 
 Neither the short call strike nor the short put strike may be placed within 50 points of the 20-day high or 20-day low. If the VIX-derived strike falls within this buffer, the strike is moved further OTM until the buffer is respected, even if this means slightly reduced premium.
 
-### 5.3 No-Skip Rule
+### 5.3 Skip Rule (NIFTY)
 
-The system trades every day regardless of VIX level. On high-VIX days (above 20), the risk is managed through wider spreads and further OTM placement — not by skipping the day. Lot sizing (2–3 lots) remains unchanged across all VIX regimes.
+NIFTY entries are skipped entirely when VIX < 14. On quiet-market days, NIFTY IC credit is structurally ₹3–9 per lot — below the ₹18 fee break-even regardless of strike selection. Skipping saves hundreds of wasted quote-API calls. BANKNIFTY is unaffected and continues to trade. On high-VIX days (above 20), risk is managed through wider spreads and further OTM placement for both instruments.
 
 ---
 
@@ -74,9 +78,14 @@ The system trades every day regardless of VIX level. On high-VIX days (above 20)
 
 ### 6.1 Trigger
 
-The system monitors the combined position P&L in real time. When the unrealised profit reaches **1% of the maximum possible profit of the spread**, the entire condor is closed immediately.
+The system monitors each position's P&L in real time. When unrealised profit reaches the instrument's harvest threshold, the entire condor is closed immediately.
 
-> **Example:** If the iron condor on Nifty has a max profit of ₹5,000, the profit harvest trigger fires at ₹50 unrealised profit.
+| Instrument | Harvest threshold |
+|---|---|
+| NIFTY | 2% of max profit |
+| BANKNIFTY | 13% of max profit |
+
+> **Example:** NIFTY IC with max profit ₹5,000 → harvest fires at ₹100. BANKNIFTY IC with max profit ₹3,000 → harvest fires at ₹390.
 
 ### 6.2 Re-Entry
 
@@ -189,10 +198,10 @@ When multiple rules could apply simultaneously, the following priority order gov
 | # | Question | Status |
 |---|---|---|
 | 1 | Backtesting across 2020–2024 data to validate stop-loss multiple | Pending |
-| 2 | Optimal lot sizing relative to capital (e.g., per ₹1L deployed) | Pending |
+| 2 | Optimal lot sizing relative to capital (e.g., per ₹1L deployed) | Pending — current: 10 lots, ₹10L capital |
 | 3 | Whether to trade both instruments when they diverge significantly in VIX behaviour | Pending |
-| 4 | Automation / broker API integration (Zerodha Kite, Fyers) | Pending |
-| 5 | Trade log template and daily P&L tracking format | Pending |
+| 4 | Broker API integration | Done — Shoonya/Noren via `NorenRestApiPy`; live order manager implemented |
+| 5 | Trade log and daily P&L tracking | Done — `paper_trades.csv`, `pnl_snapshot.json`, nightly reconciliation |
 
 ---
 

@@ -6,12 +6,13 @@ Context: single operator, running on one MacBook, Shoonya broker, paper mode cur
 
 ## Progress
 
-**18 of 21 in-scope items addressed.** Fully: LIVE-01, LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-01 live-side implementation in `trading_system/live/live_order_manager.py` is now wired into `main.py`; flipping `PAPER_TRADE_MODE=False` selects it at construction time. LIVE-05 has paper-side stubs; live-side pending. Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07` (was formerly duplicated here as LIVE-16). LIVE-09 and LIVE-17 deferred 2026-04-26 — see "Explicitly deferred" below.
+**23 of 26 in-scope items addressed.** Fully: LIVE-01, LIVE-07, LIVE-08, LIVE-12, LIVE-13, LIVE-18, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-23, LIVE-24, LIVE-26, LIVE-27, LIVE-28, LIVE-29, LIVE-30. Via-LIVE-25 (active under `IC_ENTRY_MODE="hedge_first"`): LIVE-02, LIVE-03 (narrowed), LIVE-06 (wired as LIVE-25 consumer), LIVE-25. LIVE-05 addressed (skip-cycle-with-cap policy). Paper-side auth recovery is tracked as `bugs_for_review.md::BUG-07`. LIVE-09 and LIVE-17 deferred 2026-04-26 — see "Explicitly deferred" below.
 
 | Priority | Open | Addressed | Deferred |
 |---|---|---|---|
 | P0 | — | LIVE-01, LIVE-02, LIVE-03, LIVE-06, LIVE-07, LIVE-10, LIVE-13, LIVE-19, LIVE-20, LIVE-21, LIVE-22, LIVE-25 | — |
 | P1 | LIVE-04, 14 | LIVE-05, LIVE-08, LIVE-11, LIVE-12, LIVE-18, LIVE-23, LIVE-24 | — |
+| P1 (operational tuning) | — | LIVE-26, LIVE-27, LIVE-28, LIVE-29, LIVE-30 | — |
 | P2 | — | — | LIVE-09, LIVE-17 |
 
 Severity scale:
@@ -334,6 +335,23 @@ Consequence: we cannot do a "1-lot proving period." The proving period must run 
 - **Evidence:** No launchd/cron job or external monitor configured in the repo.
 - **Impact:** A dead process between 09:15 and 15:10 with open ICs is the same as LIVE-23 silent halt but with no halt action taken.
 - **Suggested approach:** `launchd` job on the same Mac that checks `mtime` of `data/pnl_snapshot.json` every 5 min during market hours (09:15–15:30 IST). If stale > 3 min, ping the LIVE-23 alert channel. Regression test: freeze `mtime` on the snapshot and invoke the check script; assert alert fires.
+
+## Category 6.4 — Operational fine-tuning (paper-observed)
+
+### LIVE-26 · Per-instrument harvest thresholds
+- **Status:** Addressed 2026-04-30 — `IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}` replaces the single `IC_HARVEST_PCT = 0.01`. BANKNIFTY requires 13% due to its wider absolute credit range and higher lot-size costs. Flat-session PnL restore fixed alongside. Regression tests in `test_ic_strategy.py`.
+
+### LIVE-27 · BANKNIFTY credit floor ₹30 → ₹25
+- **Status:** Addressed 2026-04-30 — `IC_MIN_CREDIT_BY_INSTRUMENT["BANKNIFTY"]` lowered from ₹30 to ₹25. The ₹30 floor was blocking all afternoon re-entry cycles on wide-spread BANKNIFTY days where credit legitimately settles in the ₹25–₹30 range.
+
+### LIVE-28 · VIX stability window 15 → 8 minutes
+- **Status:** Addressed 2026-04-30 — `IC_VIX_STABLE_MINS = 8` (was 15, was 45 before LIVE-22). Opening-hour VIX swings resolve within 8 min; the 15-min window was blocking entries until ~10:45 on most days.
+
+### LIVE-29 · S/R OTM cap to prevent illiquid strike selection
+- **Status:** Addressed 2026-04-30 — `IC_SR_CAP_OTM_FROM_SPOT = {"NIFTY": 400, "BANKNIFTY": 1000}`. When a 20-day range forces short strikes more than 400/1000 pts from spot, strikes are clamped back and a WARNING is logged. Prevents credit collapse on wide-ranging days.
+
+### LIVE-30 · NIFTY min-VIX gate at regime layer
+- **Status:** Addressed 2026-04-30 — `IC_NIFTY_MIN_VIX = 14.0` check moved to `get_regime_gate(instrument=)` in `regime_filter.py`. On VIX < 14, NIFTY credit is structurally below the ₹18 fee break-even; refusing at the regime gate saves 500+ wasted quote-API calls per quiet day. BANKNIFTY is unaffected.
 
 ## Category 6.5 — Shakedown mode (proving-period controls)
 

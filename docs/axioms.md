@@ -6,7 +6,7 @@ Non-negotiable invariants.
 The system trades no structure other than a four-leg iron condor.
 
 ## 2. Maintain valid exposure
-During trading hours, the system holds a valid iron condor in each enabled instrument. Each IC exits when unrealised P&L reaches 1% of its calculated max profit, after which re-entry is attempted on the next cycle. Positions may carry across weekday trading-day boundaries but must be flat before any weekend or holiday gap and by the IC's expiry-day close. Non-participation is acceptable only when Axiom 3 is active or required quotes are invalid.
+During trading hours, the system holds a valid iron condor in each enabled instrument. Each IC exits when unrealised P&L reaches the instrument's harvest threshold (NIFTY: 2% of max profit; BANKNIFTY: 13% of max profit), after which re-entry is attempted on the next cycle. Positions may carry across weekday trading-day boundaries but must be flat before any weekend or holiday gap and by the IC's expiry-day close. Non-participation is acceptable only when Axiom 3 is active or required quotes are invalid.
 
 ## 3. Safety overrides continuity
 Uncertain exposure, order outcome, risk state, or market data halts new entries until state is trustworthy again.
