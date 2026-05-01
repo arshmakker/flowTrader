@@ -6,7 +6,7 @@ Risk Manager — implements the 3x combined stop-loss and recovery protocol (age
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any, Dict, List, Optional
 
 from trading_system.config import settings
@@ -16,11 +16,38 @@ logger = logging.getLogger(__name__)
 
 
 class RiskManager:
+    def is_recovery_allowed(self, regime: Any = None) -> bool:
+        """AGENTS.md: Recovery exception — single-sided re-entry after stop-loss.
+        Allowed only if:
+        1. Stop was hit (self.halted is True)
+        2. It is before 1:00 PM IST
+        3. VIX is stable (optional check via regime parameter)
+        4. Recovery not already used this session (self._recovery_used)
+        """
+        if not self.halted or self._recovery_used:
+            return False
+        now = datetime.now().time()
+        if now >= time(13, 0):
+            return False
+        if regime is not None and hasattr(regime, "is_vix_stable"):
+            if not regime.is_vix_stable():
+                return False
+        return True
+
+    def use_recovery(self) -> None:
+        """Mark recovery as used for this session."""
+        self._recovery_used = True
+        self.halted = False
+        self.stop_hit_at = None
+        self._stop_breach_streak = 0
+        logger.info("Recovery exception activated — single-sided re-entry permitted.")
+
     def __init__(self, alerts: Optional[AlertChannel] = None):
         self.halted = False
         self.stop_hit_at = None
         self._stop_breach_streak = 0
         self._rollback_failures: List[Dict] = []
+        self._recovery_used = False  # AGENTS.md: recovery allowed only once per stop
         # LIVE-23: alerts channel. Default to NullAlertChannel so existing
         # RiskManager() call sites keep working unchanged.
         self._alerts: AlertChannel = alerts if alerts is not None else NullAlertChannel()

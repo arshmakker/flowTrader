@@ -170,7 +170,7 @@ FEES_NIFTY_OPT = {
     "brokerage_per_order": 5.0,  # Shoonya flat ₹5 per executed order
     "stt_sell_pct": 0.0015,  # 0.15% on SELL premium (Budget 2026)
     "stt_exercise_pct": 0.0015,  # 0.15% on intrinsic × qty on ITM exercise
-    "exch_txn_pct": 0.0003553,  # NSE F&O options, both sides
+    "exch_txn_pct": 0.0000255,  # NSE F&O options = ₹25.5/crore (corrected from 0.03553% typo)
     "sebi_pct": 0.000001,  # ₹10/crore = 0.0001% of turnover, both sides
     "stamp_buy_pct": 0.00003,  # 0.003% on BUY premium only
     "gst_pct": 0.18,  # 18% of (brokerage + exch_txn + sebi)

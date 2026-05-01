@@ -10,7 +10,7 @@ charges page + Budget 2026 STT circular):
 
   - brokerage:  ₹5 flat per executed order (Shoonya-specific)
   - STT:        0.15% on SELL premium, options (post-Budget 2026, eff. 2026-04-01)
-  - exch_txn:   0.03553% of premium turnover, both sides (NSE F&O options)
+  - exch_txn:   0.00255% of premium turnover, both sides (NSE F&O options = ₹25.5/crore)
   - sebi:       ₹10 / crore = 0.0001% of turnover, both sides
   - stamp:      0.003% on BUY premium turnover only (₹300 / crore)
   - gst:        18% of (brokerage + exch_txn + sebi)   ── NOT of STT or stamp

@@ -361,9 +361,9 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
 
     mock_md.get_ltp.side_effect = ltp_side_effect
     result = s.monitor()
-    assert (
-        result is None or result.get("exit_reason") != "PROFIT_HARVEST"
-    ), "BANKNIFTY should not harvest at 8.7% of max_profit (below 13% threshold)"
+    assert result is None or result.get("exit_reason") != "PROFIT_HARVEST", (
+        "BANKNIFTY should not harvest at 8.7% of max_profit (below 13% threshold)"
+    )
 
 
 def test_banknifty_harvest_above_threshold_triggers(mock_om, mock_md):
@@ -398,9 +398,9 @@ def test_banknifty_harvest_above_threshold_triggers(mock_om, mock_md):
 
     mock_md.get_ltp.side_effect = ltp_side_effect
     result = s.monitor()
-    assert (
-        result is not None and result.get("exit_reason") == "PROFIT_HARVEST"
-    ), "BANKNIFTY should harvest at 15% of max_profit (above 13% threshold)"
+    assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST", (
+        "BANKNIFTY should harvest at 15% of max_profit (above 13% threshold)"
+    )
 
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):

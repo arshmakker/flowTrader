@@ -197,18 +197,34 @@ def _force_exit_all(strats, pnl_engine, risk):
                 pnl_engine.record_trade(s.instrument, result["pnl"], result)
 
 
-def _evaluate_stop_checks(strats, pnl_engine, risk, log):
+def _evaluate_stop_checks(strats, pnl_engine, risk, log, regime=None, alerts=None):
     """5/5b. Combined hard stop + LIVE-22 daily rupee cap. Both check_*
     methods short-circuit ``if self.halted: return True`` to signal "session
     is dead" — that's correct as a predicate. The CRITICAL log + flatten
     attempt below is a state-transition action; it must not re-fire every
-    cycle once the halt is already set, so we gate on risk.halted.
+    cycle once the halt is already set.
 
     Incident 2026-04-28: a Phase-5b halt at 10:49 produced 20 redundant
     CRITICAL lines (10× combined-stop, 10× daily-cap) in the next 11 minutes,
     polluting the log and making grep on real triggers useless.
+
+    Recovery Exception (AGENTS.md): After a stop-loss, allow single-sided
+    re-entry if before 1:00 PM and VIX is stable/falling.
     """
     if risk.halted:
+        # Check if recovery is allowed
+        if risk.is_recovery_allowed(regime):
+            log.info("Recovery exception triggered - attempting single-sided re-entry")
+            risk.use_recovery()
+            if alerts is not None:
+                alerts.send(
+                    Alert(
+                        event="recovery_activated",
+                        severity="info",
+                        title="RegimeTrader: recovery exception activated",
+                        body="Stop-loss recovery permitted - single-sided re-entry before 1:00 PM",
+                    )
+                )
         return
     if risk.check_combined_stop_loss(strats):
         _force_exit_all(strats, pnl_engine, risk)
@@ -1121,17 +1137,17 @@ def run():
                     )
                     break
 
-                # 3. Day Classification (10:30 AM) — per instrument (BUG-08).
-                if now_t >= datetime.strptime(settings.CLASSIFY_TIME, "%H:%M").time():
-                    for inst, clf in classifiers.items():
-                        if day_classes[inst] is None:
-                            day_classes[inst] = clf.classify()
-                            log.info(
-                                "Day Classified %s: %s (%s)",
-                                inst,
-                                day_classes[inst].day_type,
-                                day_classes[inst].confidence,
-                            )
+                # 3. Day Classification — per instrument (BUG-08).
+                # Allow classification any time after market open, not just 10:30 AM.
+                for inst, clf in classifiers.items():
+                    if day_classes[inst] is None:
+                        day_classes[inst] = clf.classify()
+                        log.info(
+                            "Day Classified %s: %s (%s)",
+                            inst,
+                            day_classes[inst].day_type,
+                            day_classes[inst].confidence,
+                        )
 
                 # 4. Monitoring & Harvest Cycle (runs pre-classification so carried positions are watched).
                 for s in strats:
@@ -1141,7 +1157,7 @@ def run():
                             pnl_engine.record_trade(s.instrument, result["pnl"], result)
 
                 # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
-                _evaluate_stop_checks(strats, pnl_engine, risk, log)
+                _evaluate_stop_checks(strats, pnl_engine, risk, log, regime, alerts)
 
                 # 6. Entry Logic (requires per-instrument classification).
                 if not risk.halted:

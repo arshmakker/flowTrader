@@ -236,9 +236,9 @@ def test_hedgefirst_phase5b_partial_short_skips_cycle(tmp_path, monkeypatch):
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
         ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
 
-    assert (
-        ic._last_rollback_stuck_legs == []
-    ), f"single partial-fill must NOT halt — got stuck_legs={ic._last_rollback_stuck_legs}"
+    assert ic._last_rollback_stuck_legs == [], (
+        f"single partial-fill must NOT halt — got stuck_legs={ic._last_rollback_stuck_legs}"
+    )
     assert ic._consecutive_partial_fails == 1
 
 
@@ -272,9 +272,9 @@ def test_hedgefirst_phase5b_partial_fill_cap_reached_suspends_not_halts(tmp_path
         ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
 
     assert ic._phase5b_suspended is True, "cap reached → adjustments suspended"
-    assert (
-        ic._last_rollback_stuck_legs == []
-    ), "cap reached must NOT populate stuck_legs — that triggers a session halt reserved for 3× stop / daily-loss only"
+    assert ic._last_rollback_stuck_legs == [], (
+        "cap reached must NOT populate stuck_legs — that triggers a session halt reserved for 3× stop / daily-loss only"
+    )
 
 
 def test_hedgefirst_phase5b_no_partial_does_not_escalate_halt(tmp_path, monkeypatch):

@@ -25,6 +25,9 @@ context: >
   moment of entry or re-entry.
 
 enforcement:
+  - "System Time Check: Before providing any output with a date/timestamp,
+    verify and display the current system time (IST) using `date +"%Y-%m-%d %H:%M IST"`
+    to ensure accurate time reporting to the operator."
   - "Overnight Carry Rule: Positions may carry overnight between normal trading weekdays. Carry across a weekend (Sat/Sun), market holiday, or operator vacation is strictly forbidden — positions must be flat before any such gap."
   - "Pre-Weekend/Holiday Close (Code-Enforced): When the next calendar day is not a trading day, all active positions are force-closed at 15:10. This is unconditional and not operator-overridable."
   - "Operator Schedule: The operator targets Thursday 3:15 PM as the personal cut-off for the week, consistent with the no-weekend-carry rule. Friday exposure is avoided by convention, not hard-coded."

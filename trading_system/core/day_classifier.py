@@ -1,9 +1,9 @@
 """
 Day classifier (agent.md §6).
 
-Runs once at CLASSIFY_TIME (10:30 AM). Classifies the day as RANGING,
+Can run at any time during market hours. Classifies the day as RANGING,
 TRENDING_UP, or TRENDING_DOWN based on price move from open and distance
-from VWAP. Classification is locked for the day — cannot be overridden.
+from VWAP. Classification is locked after first call; use reset() for new day.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ class DayClassification:
 
 class DayClassifier:
     """
-    Classify the trading day once at 10:30 AM; result is locked until reset().
+    Classify the trading day. Result is locked after first classify() call.
     BUG-08: one classifier per instrument. Pass symbol + spot_key to decouple
     from NIFTY-only hardcoding.
 
@@ -56,9 +56,10 @@ class DayClassifier:
         self.spot_key = spot_key if spot_key is not None else settings.NIFTY_SPOT_KEY
         self._result: Optional[DayClassification] = None
 
-    def classify(self) -> DayClassification:
-        if self._result is not None:
-            return self._result  # locked once set
+    def classify(self, force: bool = False) -> DayClassification:
+        """Classify day type. Result is cached after first successful call unless force=True."""
+        if self._result is not None and not force:
+            return self._result
 
         open_px = self.md.get_open_price(self.symbol)
         current = self.md.get_ltp(self.spot_key)

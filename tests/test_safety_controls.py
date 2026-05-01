@@ -719,9 +719,9 @@ class TestShakedownCounterPersistence:
         if payload:
             strat_b = self._make_strategy()
             strat_b.restore_state(payload)
-            assert (
-                strat_b._last_exit_reason == ""
-            ), f"yesterday's sentinel must not survive — got {strat_b._last_exit_reason}"
+            assert strat_b._last_exit_reason == "", (
+                f"yesterday's sentinel must not survive — got {strat_b._last_exit_reason}"
+            )
             assert strat_b._is_re_entry() is False
 
     def test_position_only_no_counter_keys_in_payload_when_shakedown_off(self):

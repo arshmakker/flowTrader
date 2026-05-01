@@ -3,7 +3,7 @@ Iron Condor Strategist — implements the core Nifty/BankNifty strategist logic 
 
 - VIX-adaptive strikes
 - 20-day S/R buffers
-- 1% Profit Harvest + Re-entry cycle
+- Per-instrument Profit Harvest (2% NIFTY, 13% BANKNIFTY) + Re-entry cycle
 - Breach adjustment logic
 """
 
@@ -136,7 +136,7 @@ class IronCondorStrategy:
     def _harvest_pct(self) -> float:
         """Per-instrument harvest threshold as a fraction of max_profit.
         BANKNIFTY needs a higher floor because its 8-leg fee stack (≈₹760/10-lot
-        round-trip) breaks even at ~11.8% of max_profit; 1% harvests are fee-negative."""
+        round-trip) breaks even at ~11.8% of max_profit; 13% harvests are fee-positive."""
         return settings.IC_HARVEST_PCT_BY_INSTRUMENT[self.instrument]
 
     def is_active(self) -> bool:
@@ -1115,8 +1115,8 @@ class IronCondorStrategy:
         if total_pnl > pos.peak_pnl:
             pos.peak_pnl = total_pnl
 
-        # 2. Check 1% Profit Harvest Cycle
-        # agents.md: "Close immediately when unrealized profit reaches 1% of the maximum possible profit"
+        # 2. Check Profit Harvest Cycle (2% NIFTY, 13% BANKNIFTY)
+        # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
         harvest_trigger = pos.max_profit * self._harvest_pct()
         if total_pnl >= harvest_trigger:
             logger.info(f"IC {self.instrument} HARVEST: PnL {total_pnl:.2f} >= Trigger {harvest_trigger:.2f}")
