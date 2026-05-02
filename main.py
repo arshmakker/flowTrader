@@ -845,6 +845,15 @@ def run():
     log.info("=== IRON CONDOR SYSTEM STARTING ===")
     _log_holiday_calendar(log)
 
+    # Non-trading-day short-circuit. Without this, a Saturday/Sunday/holiday
+    # startup runs through OAuth (against a broker that's typically in weekend
+    # maintenance and returns 502 on validation), which the system interprets
+    # as "cached token expired" and burns an unattended re-auth — guaranteed
+    # to fail because the auth-code subprocess can't operate without a TTY.
+    if not is_trading_day_ist(datetime.now()):
+        log.info("Today is not a trading day (weekend or IST holiday). Exiting.")
+        return
+
     # LIVE-23: build alert channel before API init so OAuth failures surface.
     alerts = _build_alert_channel(log)
 
