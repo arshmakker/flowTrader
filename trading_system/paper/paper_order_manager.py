@@ -29,6 +29,8 @@ _ORDERS_CSV_COLUMNS = [
     "side",
     "quantity",
     "fill_price",
+    "ltp_at_submit",
+    "expected_price",
     "stt",
     "brokerage",
     "exch_txn",
@@ -162,13 +164,14 @@ class PaperOrderManager:
             "quantity": qty,
             "fill_qty": 0,
             "fill_price": 0.0,
+            "ltp_at_submit": ltp,
+            "expected_price": limit_price,
             **_ZERO_FEES,
             "status": "CANCELED",
             "timestamp": datetime.now().isoformat(),
             "paper": True,
             "reason": "limit_not_reached",
             "limit_price": limit_price,
-            "ltp_at_submit": ltp,
             "bid_at_cancel": bid_at_cancel,
         }
         self._append_order_csv(canceled)
@@ -208,6 +211,8 @@ class PaperOrderManager:
                     "quantity": quantity,
                     "fill_qty": 0,
                     "fill_price": 0.0,
+                    "ltp_at_submit": ltp,
+                    "expected_price": price if price_type == "LMT" else ltp,
                     **_ZERO_FEES,
                     "status": "REJECTED",
                     "timestamp": datetime.now().isoformat(),
@@ -232,6 +237,8 @@ class PaperOrderManager:
                 "quantity": quantity,
                 "fill_qty": 0,
                 "fill_price": 0.0,
+                "ltp_at_submit": ltp,
+                "expected_price": price if price_type == "LMT" else ltp,
                 **_ZERO_FEES,
                 "status": "REJECTED",
                 "timestamp": datetime.now().isoformat(),
@@ -266,6 +273,8 @@ class PaperOrderManager:
                     "quantity": quantity,
                     "fill_qty": 0,
                     "fill_price": 0.0,
+                    "ltp_at_submit": ltp,
+                    "expected_price": price if price_type == "LMT" else ltp,
                     **_ZERO_FEES,
                     "status": "REJECTED",
                     "timestamp": datetime.now().isoformat(),
@@ -293,6 +302,10 @@ class PaperOrderManager:
 
         fill = round(round(fill / settings.PRICE_TICK) * settings.PRICE_TICK, 2)
 
+        # Compute expected_price before slippage is applied
+        # LMT: limit price; MKT: LTP (no limit)
+        expected_price = price if price_type == "LMT" else ltp
+
         fees = compute_taxes_and_fees(tradingsymbol, buy_or_sell, fill, quantity)
 
         order = {
@@ -302,6 +315,8 @@ class PaperOrderManager:
             "quantity": quantity,
             "fill_qty": quantity,
             "fill_price": fill,
+            "ltp_at_submit": ltp,
+            "expected_price": expected_price,
             "stt": fees["stt"],
             "brokerage": fees["brokerage"],
             "exch_txn": fees["exch_txn"],
