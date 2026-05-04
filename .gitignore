@@ -49,13 +49,15 @@ ledger_summary.csv
 .vscode/
 .idea/
 .cursor/
+.claude/
 *.swp
 *.swo
 *~
 .DS_Store
 
-# pytest
+# pytest / linters
 .pytest_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 
@@ -63,6 +65,10 @@ htmlcov/
 symbols/
 *_symbols.txt
 *_symbols.txt.zip
+
+# MCX collector output (launchd)
+logs/mcx_collector.out
+logs/mcx_collector.err
 
 # Local runtime metadata
 telemetry-id

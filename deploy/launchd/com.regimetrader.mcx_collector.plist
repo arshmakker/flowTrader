@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+MCX liquid-5 tick collector launchd agent.
+
+Starts every Mon–Fri at 08:55 (system local time — assumes Mac is set to IST).
+The script itself enforces the 09:00–23:30 IST session window and exits at
+end-of-session, so launchd just needs to fire-and-forget once per weekday.
+
+Install:
+    mkdir -p logs/
+    cp deploy/launchd/com.regimetrader.mcx_collector.plist ~/Library/LaunchAgents/
+    # edit the file and replace REPLACE_WITH_HOME with the actual $HOME path
+    launchctl load ~/Library/LaunchAgents/com.regimetrader.mcx_collector.plist
+
+Verify:
+    launchctl list | grep regimetrader.mcx
+
+Uninstall:
+    launchctl unload ~/Library/LaunchAgents/com.regimetrader.mcx_collector.plist
+    rm ~/Library/LaunchAgents/com.regimetrader.mcx_collector.plist
+
+Prerequisites:
+- cred.yml has a valid cached Access_token. Run main.py once to refresh if
+  the collector logs "cached token invalid" on startup.
+- venv/bin/python exists at the path below (or edit ProgramArguments).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.regimetrader.mcx_collector</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_WITH_HOME/git/regimetrader/venv/bin/python</string>
+        <string>REPLACE_WITH_HOME/git/regimetrader/tools/mcx_collector.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader</string>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict>
+            <key>Weekday</key>
+            <integer>1</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>55</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>2</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>55</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>3</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>55</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>4</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>55</integer>
+        </dict>
+        <dict>
+            <key>Weekday</key>
+            <integer>5</integer>
+            <key>Hour</key>
+            <integer>8</integer>
+            <key>Minute</key>
+            <integer>55</integer>
+        </dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader/logs/mcx_collector.out</string>
+
+    <key>StandardErrorPath</key>
+    <string>REPLACE_WITH_HOME/git/regimetrader/logs/mcx_collector.err</string>
+</dict>
+</plist>

@@ -24,6 +24,17 @@ context: >
   Spreads) are derived from the live India VIX and S/R context at the
   moment of entry or re-entry.
 
+data_collection: >
+  Trading scope is NIFTY + BANKNIFTY only. Tick data is collected for a
+  broader observation universe to support future strategy expansion: NIFTY,
+  BANKNIFTY, FINNIFTY (NSE/NFO via `data_collector.py`), and the MCX liquid-5
+  commodity futures — GOLD, SILVER, CRUDEOIL, COPPER, NATURALGAS, front-2
+  expiries each — via the standalone `tools/mcx_collector.py` (09:00–23:30
+  IST, Mon–Fri, 15s cadence on the low-priority quote lane). Collection is
+  observational only; no commodity or FINNIFTY trading rule applies until
+  scope is explicitly extended. Pending Monday smoke test as of 2026-05-02 —
+  see CLAUDE.md "Pending operator action" block.
+
 enforcement:
   - "System Time Check: Before providing any output with a date/timestamp,
     verify and display the current system time (IST) using `date +"%Y-%m-%d %H:%M IST"`
@@ -41,7 +52,7 @@ enforcement:
   - "VIX-Based Selection: Set OTM distances and spread widths based on VIX tiers: <14 (150 OTM, 50 width — BANKNIFTY only; NIFTY skips), 14–20 (200 OTM, 100 width), >20 (300 OTM, 150 width)."
   - "S/R Constraint: Short strikes must maintain a ≥ 50-point buffer from the 20-day high and 20-day low. Move strikes further OTM if buffer is violated."
   - "S/R OTM Cap: If S/R buffering pushes a short strike more than 400 pts (NIFTY) or 1000 pts (BANKNIFTY) away from spot, clamp it back to the cap. Strikes beyond the cap are illiquid and cannot be filled at viable credit."
-  - "Minimum Credit Floor: Refuse entry if net credit is below ₹18/lot (NIFTY) or ₹25/lot (BANKNIFTY). These floors account for the full F&O cost stack (STT, stamp, exchange, SEBI fees)."
+  - "Minimum Credit Floor: Refuse entry if net credit is below ₹35/lot (NIFTY) or ₹35/lot (BANKNIFTY). These floors clear the full F&O cost stack (₹5 brokerage × 4 legs = ~₹29/lot) with buffer for slippage."
   - "Entry Sequencing: Use hedge-first order sequencing — wings (long legs) placed as market orders first, short legs placed as limit orders second. Atomic: all 4 legs fill or the entry is rolled back."
   - "Profit Harvest: Close the entire condor when unrealized profit reaches 2% of max profit (NIFTY) or 13% of max profit (BANKNIFTY). Re-enter immediately using latest VIX and S/R levels. No limit on daily cycles."
   - "Adjustment Gate: If a short strike is breached, roll the tested side OTM and the safe side closer ONLY if the overall position is in net profit."
