@@ -194,7 +194,7 @@ def _force_exit_all(strats, pnl_engine, risk):
         if s.is_active():
             result = s.force_exit()
             if result:
-                pnl_engine.record_trade(s.instrument, result["pnl"], result)
+                pnl_engine.record_trade(s.instrument, result["gross_pnl"], result)
 
 
 def _evaluate_stop_checks(strats, pnl_engine, risk, log, regime=None, alerts=None):
@@ -1163,7 +1163,7 @@ def run():
                     if s.is_active():
                         result = s.monitor()
                         if result:
-                            pnl_engine.record_trade(s.instrument, result["pnl"], result)
+                            pnl_engine.record_trade(s.instrument, result["gross_pnl"], result)
 
                 # 5 / 5b. Combined hard stop + LIVE-22 daily rupee cap.
                 _evaluate_stop_checks(strats, pnl_engine, risk, log, regime, alerts)
@@ -1186,7 +1186,16 @@ def run():
                         expiry = expiry_mgr.get_expiry(s.instrument)
 
                         if spot > 0 and expiry:
-                            s.enter(spot, vix, sr_high, sr_low, sr_mgr, expiry, settings.IC_LOT_SIZE)
+                            s.enter(
+                                spot,
+                                vix,
+                                sr_high,
+                                sr_low,
+                                sr_mgr,
+                                expiry,
+                                settings.IC_LOT_SIZE,
+                                dc.day_type if dc else "",
+                            )
 
                 # BUG-05: escalate any stuck-rollback events from this cycle's entries.
                 _drain_rollback_failures(strats, risk)

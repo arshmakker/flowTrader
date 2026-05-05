@@ -147,8 +147,8 @@ def test_exit_uses_realised_pnl_from_tracker():
     unrealised_estimate = 500.0
     result = strat.exit("PROFIT_HARVEST", unrealised_estimate)
 
-    assert result["pnl"] == 200.0, f"expected 200 (sum of [100,150,-20,-30]), got {result['pnl']}"
-    assert result["pnl"] != unrealised_estimate, "must not use the unrealised estimate"
+    assert result["gross_pnl"] == 200.0, f"expected 200 (sum of [100,150,-20,-30]), got {result['gross_pnl']}"
+    assert result["gross_pnl"] != unrealised_estimate, "must not use the unrealised estimate"
 
 
 def test_rollback_failure_records_stuck_legs():

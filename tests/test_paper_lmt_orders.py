@@ -200,7 +200,7 @@ def test_buy_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
     assert order["fill_qty"] == 300
     # Fill is the synthetic ask (price + slip), snapped to tick — strictly
     # above price but in a sane neighborhood.
-    assert 679.50 < order["fill_price"] < 680.50
+    assert 679.50 < order["fill_price"] < 681.50
 
 
 def test_sell_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
@@ -208,7 +208,7 @@ def test_sell_mkt_fallback_fills_at_price_when_ltp_zero(tmp_path):
     om = _om(tmp_path, {"NFO|X": 0.0})
     order = om.place_order("NFO|X", "SELL", 300, price=679.50)  # MKT default
     assert order["status"] == "COMPLETE"
-    assert 678.50 < order["fill_price"] < 679.50
+    assert 677.50 < order["fill_price"] < 679.50
 
 
 def test_mkt_without_price_when_ltp_zero_still_rejects(tmp_path):

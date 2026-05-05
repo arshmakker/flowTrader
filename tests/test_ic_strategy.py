@@ -131,7 +131,7 @@ def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
     result = s.force_exit()
     assert result is not None
     assert result["exit_reason"] == "FORCE_EXIT"
-    assert result["pnl"] == -650.0
+    assert result["gross_pnl"] == -650.0
     assert result["net_pnl"] == -650.0
     assert s.is_active() is False
 
@@ -476,3 +476,52 @@ def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
     success = s.enter(50000, 12.0, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is True
     assert mock_om.place_order.call_count == 4
+
+
+def test_exit_result_uses_gross_pnl_not_pnl(mock_om, mock_md, tmp_path):
+    """Regression: exit result dict must use 'gross_pnl' key so TradeLogger
+    writes it to paper_trades.csv.  The bug had 'pnl' which is silently
+    ignored by log_trade() because TRADE_COLUMNS expects 'gross_pnl'."""
+    import csv
+
+    from trading_system.core.trade_logger import TRADE_COLUMNS, TradeLogger
+
+    assert "gross_pnl" in TRADE_COLUMNS
+    assert "pnl" not in TRADE_COLUMNS
+
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s._position = IC_Position(
+        instrument="NIFTY",
+        sc_sym="SC",
+        sp_sym="SP",
+        lc_sym="LC",
+        lp_sym="LP",
+        sc_strike=22150,
+        sp_strike=21850,
+        lc_strike=22200,
+        lp_strike=21800,
+        max_profit=1000,
+        entry_credit=20.0,
+        lots=2,
+        entry_time="10:00:00",
+    )
+
+    mock_md.get_ltp.side_effect = lambda sym: 10.0 if sym in ("SC", "SP") else 2.5 if sym in ("LC", "LP") else 0.0
+
+    result = s.force_exit()
+    assert result is not None
+    assert "gross_pnl" in result, "exit result must contain 'gross_pnl' for TradeLogger"
+    assert "pnl" not in result, "exit result must NOT contain 'pnl' — that key is never written to CSV"
+    assert result["gross_pnl"] == 650.0
+    assert result["net_pnl"] == 650.0
+
+    logger = TradeLogger(data_dir=str(tmp_path))
+    trade_id = logger.log_trade(result)
+    assert trade_id != ""
+
+    with open(tmp_path / "paper_trades.csv", newline="") as f:
+        reader = csv.DictReader(f)
+        row = next(reader)
+
+    assert row["gross_pnl"] == "650.0", f"gross_pnl not written to CSV, got: {row.get('gross_pnl')!r}"
+    assert "pnl" not in row, "CSV row must not contain a 'pnl' column"

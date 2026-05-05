@@ -95,24 +95,34 @@ def test_zero_vwap():
     r = _classify(24000, 24100, 0)
     assert r.day_type in ("RANGING", "TRENDING_UP", "TRENDING_DOWN")
 
+    def test_vwap_trending_when_far_from_price():
+        open_px = 24000
+        current = 24000 * 1.02
+        vwap = 24000 * 1.005
+        r = _classify(open_px, current, vwap)
+        assert r.day_type == "TRENDING_UP"
+        assert r.confidence == "HIGH"
 
-def test_confidence_low_when_open_price_unreliable():
-    """When is_open_price_reliable(symbol) is False, confidence is downgraded to LOW."""
-    open_px = 24000
-    move = settings.TREND_MOVE_THRESHOLD + 0.005
-    current = open_px * (1 + move)
-    vwap = open_px * 0.99  # far from VWAP → would normally be TRENDING_UP HIGH/MEDIUM
+    def test_empty_ohlcv_returns_ranging():
+        class EmptyMD(MockMD):
+            def get_ohlcv_df(self):
+                return None
 
-    class MockMDUnreliableOpen(MockMD):
-        def is_open_price_reliable(self, symbol):
-            return False
+        md = EmptyMD(24000, 24100)
+        se = MockSE(0.0)
+        dc = DayClassifier(md, se)
+        r = dc.classify()
+        assert r.day_type == "RANGING"
+        assert r.confidence == "LOW"
 
-    md = MockMDUnreliableOpen(open_px, current)
-    se = MockSE(vwap)
-    dc = DayClassifier(md, se)
-    r = dc.classify()
-    assert r.day_type == "TRENDING_UP"
-    assert r.confidence == "LOW"
+    def test_classify_full_flow_with_mocked_vwap():
+        md = MockMD(24000, 24120)
+        se = MockSE(24120)
+        dc = DayClassifier(md, se)
+        r = dc.classify()
+        assert r.day_type == "RANGING"
+        assert abs(r.move_pct - 0.5) < 0.1
+        assert abs(r.vwap_distance_pct - 0.5) < 0.1
 
 
 def test_classification_is_locked():

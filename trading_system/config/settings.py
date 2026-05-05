@@ -150,8 +150,9 @@ TREND_HIGH_CONFIDENCE = 0.02  # >2% move => HIGH confidence trending
 # ══ PAPER TRADING SIMULATION ═════════════════════════════════════════
 PRICE_TICK = 0.05
 SLIPPAGE_PCT = 0.0005
-SLIPPAGE_MIN_ABS = 0.25
+SLIPPAGE_MIN_ABS = 1.50
 SLIPPAGE_OTM_THRESHOLD = 50.0
+SLIPPAGE_OTM_MIN_ABS = 3.00
 # Quote sanity guard to avoid corrupt option fills from bad ticks/token mixups.
 PAPER_OPTION_LTP_MIN = 0.05
 PAPER_OPTION_LTP_MAX = 5000.0
@@ -268,6 +269,7 @@ GL_RECONCILED_PRICE_DRIFT_PCT = 0.02
 
 # ══ DATA PATHS ═══════════════════════════════════════════════════════
 DATA_DIR = "data"
+RECONCILIATION_DIR = "data/reconciliation"
 
 # ══ LOGGING ══════════════════════════════════════════════════════════
 LOG_DIR = "logs"

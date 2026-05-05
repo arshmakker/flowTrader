@@ -30,7 +30,7 @@ class FakeStrategy:
         if not self._active:
             return None
         self._active = False
-        return {"instrument": self.instrument, "pnl": self._pnl, "exit_reason": "FORCE_EXIT"}
+        return {"instrument": self.instrument, "gross_pnl": self._pnl, "exit_reason": "FORCE_EXIT"}
 
 
 def _build_pnl(tmpdir):

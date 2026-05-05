@@ -250,7 +250,7 @@ class PaperOrderManager:
             return rejected
 
         if is_option and ltp < settings.SLIPPAGE_OTM_THRESHOLD:
-            slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_MIN_ABS)
+            slip = max(ltp * settings.SLIPPAGE_PCT * 3, settings.SLIPPAGE_OTM_MIN_ABS)
         else:
             slip = max(ltp * settings.SLIPPAGE_PCT, settings.SLIPPAGE_MIN_ABS)
 

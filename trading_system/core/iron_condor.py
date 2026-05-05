@@ -66,6 +66,8 @@ class IC_Position:
     # ISO date "YYYY-MM-DD" of when the IC was entered (may differ from exit date
     # for positions carried overnight).
     entry_date: str = ""
+    entry_vix: float = 0.0
+    day_type: str = ""
 
     def to_dict(self) -> Dict:
         return {k: getattr(self, k) for k in self.__dataclass_fields__}
@@ -485,7 +487,15 @@ class IronCondorStrategy:
     # ── Entry ───────────────────────────────────────────────────────────
 
     def enter(
-        self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any, expiry: str, lots: int
+        self,
+        spot: float,
+        vix: float,
+        sr_high: float,
+        sr_low: float,
+        sr_manager: Any,
+        expiry: str,
+        lots: int,
+        day_type: str = "",
     ) -> bool:
         # LIVE-25 dispatch: operator flips settings.IC_ENTRY_MODE to 'hedge_first'
         # to route through enter_hedge_first (wings-as-MKT then shorts-as-LMT).
@@ -637,6 +647,8 @@ class IronCondorStrategy:
             entry_time=now.strftime("%H:%M:%S"),
             expiry_date=expiry_iso,
             entry_date=now.strftime("%Y-%m-%d"),
+            entry_vix=vix,
+            day_type=day_type,
         )
         logger.info(
             f"IC {self.instrument} ENTERED: SC={sc} SP={sp} LC={lc} LP={lp} | Credit={net_credit_unit:.2f} | Lots={lots} (LotSize={lot_size})"
@@ -655,6 +667,7 @@ class IronCondorStrategy:
         sr_manager: Any,
         expiry: str,
         lots: int,
+        day_type: str = "",
     ) -> bool:
         """
         LIVE-25: hedge-first IC entry. Wings (LC+LP) go as MKT first; shorts
@@ -1085,6 +1098,8 @@ class IronCondorStrategy:
             entry_time=now.strftime("%H:%M:%S"),
             expiry_date=expiry_iso,
             entry_date=now.strftime("%Y-%m-%d"),
+            entry_vix=vix,
+            day_type=day_type,
         )
         logger.info(
             "IC %s ENTERED (hedge-first): SC=%s SP=%s LC=%s LP=%s | Credit=%.2f | Lots=%d (LotSize=%d)",
@@ -1250,11 +1265,13 @@ class IronCondorStrategy:
             "lc_strike": pos.lc_strike,
             "lp_strike": pos.lp_strike,
             "entry_credit": round(pos.entry_credit, 2),
-            "pnl": realised_pnl,
+            "gross_pnl": realised_pnl,
             "net_pnl": realised_pnl,
             "exit_reason": reason,
             "lots": pos.lots,
             "peak_pnl": round(pos.peak_pnl, 2),
+            "vix_entry": pos.entry_vix,
+            "day_type": pos.day_type,
         }
         self._position = None
         # SHAKEDOWN-03b: stamp the exit reason + IST date so the next enter()
