@@ -291,8 +291,7 @@ def test_exit_result_contains_entry_date(mock_om, mock_md):
 
 
 def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
-    """LIVE-27: BANKNIFTY at ₹26 credit must enter at the ₹25 floor.
-    The prior ₹30 floor rejected this — the post-harvest credit range is ₹22–29.
+    """LIVE-27: BANKNIFTY at ₹32 credit must enter above the ₹30 floor.
     Strikes: spot=50000, VIX=12 (low tier OTM=150, step=100) →
     SC=50200, SP=49800, LC=50300, LP=49700."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
@@ -300,8 +299,9 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
 
+    # (17+17) - (1+1) = 32 > 30 floor → must enter
     mock_md.get_ltp.side_effect = lambda sym: (
-        14.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        17.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
     )
     success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is True
@@ -309,15 +309,15 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
 
 
 def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
-    """LIVE-27: BANKNIFTY at ₹24 credit must be refused at the ₹25 floor."""
+    """LIVE-27: BANKNIFTY at ₹28 credit must be refused below the ₹30 floor."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
 
-    # (13+13) - (1+1) = 24 < 25 floor → must refuse
+    # (15+15) - (1+1) = 28 < 30 floor → must refuse
     mock_md.get_ltp.side_effect = lambda sym: (
-        13.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        15.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
     )
     success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is False

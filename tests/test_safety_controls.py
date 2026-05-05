@@ -179,7 +179,8 @@ class TestDailyLossCap:
         risk = RiskManager()
         pnl = self._make_pnl(daily_realised=-30_000, unrealised=-19_999)
         # total = -49_999, cap = -50_000 → not breached
-        assert risk.check_daily_loss_cap(pnl) is False
+        with patch.object(settings, "SHAKEDOWN_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is False
         assert risk.halted is False
 
     def test_at_cap_boundary_does_not_halt(self):
@@ -187,7 +188,8 @@ class TestDailyLossCap:
         risk = RiskManager()
         pnl = self._make_pnl(daily_realised=-40_000, unrealised=-10_000)
         # total = -50_000, cap = -50_000 → NOT breached (strict <)
-        assert risk.check_daily_loss_cap(pnl) is False
+        with patch.object(settings, "SHAKEDOWN_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is False
         assert risk.halted is False
 
     def test_one_rupee_over_cap_halts(self):

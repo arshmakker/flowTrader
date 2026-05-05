@@ -5,7 +5,7 @@ Do not hardcode values outside this file.
 """
 
 # ══ MODE ══════════════════════════════════════════════════════════
-PAPER_TRADE_MODE = True  # Flip to False to go live
+PAPER_TRADE_MODE = False  # Flip to False to go live
 
 # ══ INSTRUMENTS ════════════════════════════════════════════════════
 NIFTY_SYMBOL = "NIFTY"
@@ -47,7 +47,7 @@ IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before ha
 # cost stack (see docs/calibration_2026_04_26.md):
 #   NIFTY     wide-IC break-even ≈ ₹17.38 → 18 leaves ₹0.62 margin
 #   BANKNIFTY wide-IC break-even ≈ ₹23.92 → 25 leaves ₹1.08 margin
-IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 25.0}
+IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 30.0}
 # LIVE-29: cap how far the S/R buffer can push a short strike from current spot.
 # A wide 20-day range (e.g. BANKNIFTY 51100–57477 = 6377 pts) forces strikes into
 # illiquid far-OTM territory where credit collapses and re-entry is impossible.
@@ -197,7 +197,7 @@ PID_FRESHNESS_TIMEOUT_SEC = 600
 # while LIVE-21 reconciliation builds a verifiable track record. Operator
 # flips SHAKEDOWN_MODE to True before the first live session and to False
 # after the reconciliation gate clears. No effect in paper mode.
-SHAKEDOWN_MODE = False
+SHAKEDOWN_MODE = True
 # Daily loss ceiling used in place of DAILY_MAX_LOSS while SHAKEDOWN_MODE=True.
 # Sized for the proving-period blast radius (1 IC × 10 lots, 50pt wing
 # ≈ ₹32k max loss on NIFTY). ₹10k absorbs the harvest-cycle slippage budget
