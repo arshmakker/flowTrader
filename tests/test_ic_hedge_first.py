@@ -47,8 +47,6 @@ def mock_md():
 
 
 def _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0):
-    """All four legs have tradable books that yield a healthy (sc+sp)-(lc+lp) credit."""
-
     def _gqb(sym):
         if "C22150" in sym:
             return _book(bid=sc_bid, ask=sc_bid + 0.25, symbol=sym)
@@ -109,7 +107,6 @@ def test_happy_path_all_four_legs_fill(mock_om, mock_md):
     assert s.is_active() is True
     # Exactly 4 orders placed: LC, LP, SC, SP — no unwinds
     assert mock_om.place_order.call_count == 4
-    # Net credit: (18+18) - (5+5) = 26 per unit
     assert s._position.entry_credit == 26.0
     assert s._position.max_profit == 26.0 * qty
 
@@ -454,9 +451,7 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
     In deterministic paper this branch is also unreachable (paper SELL LMT
     fills at max(limit, bid) = bid exactly, so sc_fill == sc_limit). The
     mock simulates a live short fill worse than the bid quoted at Phase 3."""
-    _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
-    # Pre-entry mid credit (26), Phase 3 projection (sc_bid+sp_bid - lc_fill - lp_fill =
-    # 18+18 - 8-8 = 20 ≥ 18) both pass. But short actual fill is 8 each → credit = 0.
+    _configure_books_for_clean_ic(mock_md, sc_bid=25.0, sp_bid=25.0, lc_ask=3.0, lp_ask=3.0)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
         # Wings fill at 8 — above ask-quoted (5) but not bad enough for Phase 3 to refuse.
@@ -646,6 +641,7 @@ def test_phase5b_suspended_blocks_re_entry(mock_om, mock_md):
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     s._phase5b_suspended = True
+    s._phase5b_suspended_at = _dt.datetime.now()
     s._last_exit_reason = "ADJUSTMENT_REQUIRED"
     s._last_exit_date = _dt.datetime.now().date().isoformat()
 

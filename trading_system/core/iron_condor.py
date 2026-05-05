@@ -120,6 +120,7 @@ class IronCondorStrategy:
         # re-entries without halting the full session (only 3× stop/daily-loss
         # halts the session per the no-halt-below-top-stop rule).
         self._phase5b_suspended = False
+        self._phase5b_suspended_at: Optional[datetime] = None
         if settings.SHAKEDOWN_MODE:
             logger.info(
                 "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
@@ -669,11 +670,22 @@ class IronCondorStrategy:
             return False
 
         if self._phase5b_suspended and self._is_re_entry():
-            logger.warning(
-                "IC %s Phase-5b adjustments suspended after cap; skipping re-entry.",
+            elapsed = (datetime.now() - self._phase5b_suspended_at).total_seconds() / 60
+            if elapsed < settings.IC_PHASE5B_COOLOFF_MINS:
+                logger.warning(
+                    "IC %s Phase-5b suspended; %.0f min remaining in cool-off.",
+                    self.instrument,
+                    settings.IC_PHASE5B_COOLOFF_MINS - elapsed,
+                )
+                return False
+            logger.info(
+                "IC %s Phase-5b cool-off expired (%.0f min elapsed); resetting and probing re-entry.",
                 self.instrument,
+                elapsed,
             )
-            return False
+            self._phase5b_suspended = False
+            self._phase5b_suspended_at = None
+            self._consecutive_partial_fails = 0
 
         sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
@@ -1014,6 +1026,7 @@ class IronCondorStrategy:
                         cap,
                     )
                     self._phase5b_suspended = True
+                    self._phase5b_suspended_at = datetime.now()
                 else:
                     logger.warning(
                         "IC %s Phase-5b partial-fill (%d/%d) — skipping this cycle, will retry on next signal.",
@@ -1174,6 +1187,7 @@ class IronCondorStrategy:
         ]
         tracker = getattr(self.om, "tracker", None)
         exit_stuck: List[Dict] = []
+        realised_pnl: float = 0.0
         for sym, side in closing_legs:
             order = self.om.place_order(sym, side, qty, track_position=False)
             fq = order.get("fill_qty", 0)
@@ -1201,15 +1215,26 @@ class IronCondorStrategy:
                 break
             if tracker is not None:
                 try:
-                    tracker.close_position(sym, order.get("fill_price", 0.0))
+                    leg_pnl = tracker.close_position(sym, order.get("fill_price", 0.0))
+                    realised_pnl += leg_pnl
                 except Exception:
                     logger.exception("IC %s tracker unwind failed for exit of %s", self.instrument, sym)
 
         if exit_stuck:
             self._last_rollback_stuck_legs = exit_stuck
             persist_stuck_legs(exit_stuck)
+            if tracker is None or realised_pnl == 0.0:
+                realised_pnl = pnl
+            else:
+                logger.warning(
+                    "IC %s partial exit: using partial realised_pnl=%.2f (partial fills before break)",
+                    self.instrument,
+                    realised_pnl,
+                )
+        elif tracker is None:
+            realised_pnl = pnl
 
-        logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={pnl:.2f}")
+        logger.info(f"IC {self.instrument} EXIT [{reason}]: PnL={realised_pnl:.2f}")
 
         # Align with TradeLogger.TRADE_COLUMNS
         # Columns: trade_id, date, time_entry, time_exit, instrument,
@@ -1225,8 +1250,8 @@ class IronCondorStrategy:
             "lc_strike": pos.lc_strike,
             "lp_strike": pos.lp_strike,
             "entry_credit": round(pos.entry_credit, 2),
-            "pnl": pnl,  # Used by PnLEngine
-            "net_pnl": pnl,  # Used by TradeLogger
+            "pnl": realised_pnl,
+            "net_pnl": realised_pnl,
             "exit_reason": reason,
             "lots": pos.lots,
             "peak_pnl": round(pos.peak_pnl, 2),

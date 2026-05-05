@@ -120,6 +120,37 @@ def test_entry_sets_expiry_date_iso():
     assert strat._position.expiry_date == "2026-03-19"
 
 
+def test_exit_uses_realised_pnl_from_tracker():
+    """Regression: exit() must use realised PnL from tracker.close_position(),
+    not the pre-calculated unrealized pnl passed in. This ensures transaction
+    costs are deducted from the recorded PnL."""
+    md = FakeMD(_prices_for_22000())
+    tracker = PaperPositionTracker()
+    om = PaperOrderManager(md, tracker)
+    strat = IronCondorStrategy(om, md, instrument="NIFTY")
+
+    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    assert ok is True
+
+    mock_close_returns = [100.0, 150.0, -20.0, -30.0]
+    close_call_idx = {"n": 0}
+
+    # _original_close = tracker.close_position  # noqa: F841
+
+    def mock_close(symbol, price):
+        idx = close_call_idx["n"]
+        close_call_idx["n"] += 1
+        return mock_close_returns[idx]
+
+    tracker.close_position = mock_close
+
+    unrealised_estimate = 500.0
+    result = strat.exit("PROFIT_HARVEST", unrealised_estimate)
+
+    assert result["pnl"] == 200.0, f"expected 200 (sum of [100,150,-20,-30]), got {result['pnl']}"
+    assert result["pnl"] != unrealised_estimate, "must not use the unrealised estimate"
+
+
 def test_rollback_failure_records_stuck_legs():
     """BUG-05: when a rollback reverse order itself fails, stuck legs must be
     recorded on the strategy so main.py can escalate the halt."""

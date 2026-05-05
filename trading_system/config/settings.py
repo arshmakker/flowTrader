@@ -47,9 +47,6 @@ IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before ha
 # cost stack (see docs/calibration_2026_04_26.md):
 #   NIFTY     wide-IC break-even ≈ ₹17.38 → 18 leaves ₹0.62 margin
 #   BANKNIFTY wide-IC break-even ≈ ₹23.92 → 25 leaves ₹1.08 margin
-# LIVE-27: Prior BANKNIFTY floor of ₹30 blocked all afternoon re-entry cycles —
-# market delivered ₹22–29 after harvest, never clearing ₹30. ₹25 is fee-positive
-# and matches the observed post-harvest credit range.
 IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 25.0}
 # LIVE-29: cap how far the S/R buffer can push a short strike from current spot.
 # A wide 20-day range (e.g. BANKNIFTY 51100–57477 = 6377 pts) forces strikes into
@@ -217,6 +214,11 @@ IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN = 1
 # bounding the unwind-slippage tail (~₹1,200/cycle observed 2026-04-27 and
 # 2026-04-28). Counter resets on a successful entry.
 IC_PARTIAL_FAIL_CAP = 3
+# Minutes before a Phase-5b-suspended instrument is allowed one probe re-entry.
+# Bounds worst-case slippage: each failed probe costs ~₹1,200; the cool-off
+# limits probe frequency. Counter resets to 0 before each probe, so 3 new
+# consecutive partials are needed to re-suspend.
+IC_PHASE5B_COOLOFF_MINS = 30
 # LIVE handshake: live mode refuses to start unless this file exists. Paper
 # mode ignores the gate. Operator creates with `touch data/LIVE_ACK` after
 # blessing the run; contents are not parsed, presence is the signal. Blocks

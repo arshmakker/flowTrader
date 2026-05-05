@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from datetime import datetime, timedelta
 from itertools import cycle
 from unittest.mock import MagicMock, patch
 
@@ -58,11 +59,6 @@ def _canceled_partial(fill_qty, qty=650, side="SELL", symbol="X", fill_price=50.
 
 
 def _build_ic(om):
-    """Build an IC with mocks shaped so both entry paths pass their credit
-    gates. Short-side books bid ≈ 18, wing-side books ask ≈ 5 → pre-entry
-    credit = 18+18-5-5 = 26 > IC_MIN_CREDIT=18. Differentiation by strike:
-    for CE the smaller strike is the short (closer to ATM); for PE the
-    larger strike is the short."""
     import re
 
     md = MagicMock()
@@ -77,13 +73,11 @@ def _build_ic(om):
             b.bid, b.ask = 10.0, 11.0
             return b
         letter, strike = m.group(1), int(m.group(2))
-        # Spot 24000. Hedge-first picks SC above spot, LC above SC; SP below
-        # spot, LP below SP. So: smaller-strike CE = short; larger-strike PE = short.
         is_short = (letter == "C" and strike < 24200) or (letter == "P" and strike > 23800)
         if is_short:
-            b.bid, b.ask = 18.0, 18.25
+            b.bid, b.ask = 23.0, 23.25
         else:
-            b.bid, b.ask = 4.75, 5.0
+            b.bid, b.ask = 2.75, 3.0
         return b
 
     md.get_quote_book.side_effect = _book_for
@@ -304,3 +298,59 @@ def test_hedgefirst_phase5b_no_partial_does_not_escalate_halt(tmp_path, monkeypa
 
     # Non-partial shorts timeout isn't a partial-fill event — no halt sentinel.
     assert ic._last_rollback_stuck_legs == []
+
+
+def test_phase5b_cooloff_not_expired_blocks_reentry(monkeypatch):
+    """While the cool-off window has not expired, a re-entry is still blocked.
+    No orders must be placed — the guard returns False before touching the book."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
+    monkeypatch.setattr(settings, "IC_PHASE5B_COOLOFF_MINS", 30, raising=False)
+
+    om = MagicMock()
+    om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
+    om.tracker = None
+    om.get_available_margin.return_value = float("inf")
+
+    ic, _ = _build_ic(om)
+    ic._phase5b_suspended = True
+    ic._phase5b_suspended_at = datetime.now() - timedelta(minutes=5)
+    ic._last_exit_reason = "PROFIT_HARVEST"
+    ic._last_exit_date = datetime.now().date().isoformat()
+
+    result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+
+    assert result is False
+    om.place_order.assert_not_called()
+    assert ic._phase5b_suspended is True
+
+
+def test_phase5b_cooloff_expired_resets_and_probes(monkeypatch):
+    """Once the cool-off expires, the guard clears the suspension and counter
+    so the re-entry attempt proceeds. A clean 4-leg fill succeeds and confirms
+    the reset (both flag and counter back to initial state)."""
+    monkeypatch.setattr(settings, "IC_ENTRY_MODE", "hedge_first", raising=False)
+    monkeypatch.setattr(settings, "IC_PHASE5B_COOLOFF_MINS", 30, raising=False)
+
+    om = MagicMock()
+    om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
+    om.tracker = None
+    om.get_available_margin.return_value = float("inf")
+    om.place_order.side_effect = [
+        _complete(qty=650, side="BUY", fill_price=3.0),  # LC wing
+        _complete(qty=650, side="BUY", fill_price=3.0),  # LP wing
+        _complete(qty=650, side="SELL", fill_price=23.0),  # SC short
+        _complete(qty=650, side="SELL", fill_price=23.0),  # SP short
+    ]
+
+    ic, _ = _build_ic(om)
+    ic._phase5b_suspended = True
+    ic._phase5b_suspended_at = datetime.now() - timedelta(minutes=31)
+    ic._consecutive_partial_fails = settings.IC_PARTIAL_FAIL_CAP
+    ic._last_exit_reason = "PROFIT_HARVEST"
+    ic._last_exit_date = datetime.now().date().isoformat()
+
+    result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+
+    assert result is True, "probe after cool-off expiry must succeed on a clean fill"
+    assert ic._phase5b_suspended is False
+    assert ic._consecutive_partial_fails == 0

@@ -49,7 +49,6 @@ def test_ic_strategy_entry_success(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
 
-    # SC=SP=15, LC=LP=5 → credit=(15+15)-(5+5)=20 ≥ 18 floor
     def ltp_side_effect(sym):
         if "C22200" in sym or "P21800" in sym:
             return 15.0
@@ -122,10 +121,10 @@ def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
     # Current premium: 25.0. PnL = (20.0 - 25.0) * 2 * 65 = -5.0 * 130 = -650.0
     def ltp_side_effect(sym):
         if sym in ("SC", "SP"):
-            return 15.0  # 30
+            return 15.0
         if sym in ("LC", "LP"):
-            return 2.5  # 5
-        return 0.0  # Net = 25
+            return 2.5
+        return 0.0
 
     mock_md.get_ltp.side_effect = ltp_side_effect
 
@@ -301,7 +300,6 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
 
-    # (14+14) - (1+1) = 26 > 25 floor → must enter
     mock_md.get_ltp.side_effect = lambda sym: (
         14.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
     )
@@ -427,10 +425,8 @@ def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = real_sr_buffer
 
-    # Capped strikes: C55000/P53000 (short), C55100/P52900 (wings) → credit=26 > 25 floor.
-    # Far-OTM S/R-forced strikes (C57600/P51000) return ~0 → would fail without cap.
     mock_md.get_ltp.side_effect = lambda sym: (
-        14.0 if sym.endswith(("C55000", "P53000")) else 1.0 if sym.endswith(("C55100", "P52900")) else 0.1
+        23.0 if sym.endswith(("C55000", "P53000")) else 5.0 if sym.endswith(("C55100", "P52900")) else 0.1
     )
     success = s.enter(54000, 18.0, 57477, 51100, sr_mgr, "19-MAR-2026", 10)
     assert success is True, "S/R cap must clamp illiquid far-OTM strikes to viable range"
@@ -475,7 +471,7 @@ def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
 
     # BANKNIFTY VIX=12 LOW tier: SC=50200, SP=49800, LC=50300, LP=49700
     mock_md.get_ltp.side_effect = lambda sym: (
-        14.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        23.0 if sym.endswith(("C50200", "P49800")) else 5.0 if sym.endswith(("C50300", "P49700")) else 10.0
     )
     success = s.enter(50000, 12.0, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is True

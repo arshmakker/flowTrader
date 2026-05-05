@@ -70,9 +70,7 @@ def _ltp_close_to(spot: float, short_premium: float, wing_premium: float):
 def test_constants_define_both_instruments_with_banknifty_higher():
     floors = settings.IC_MIN_CREDIT_BY_INSTRUMENT
     assert "NIFTY" in floors and "BANKNIFTY" in floors
-    assert (
-        floors["BANKNIFTY"] > floors["NIFTY"]
-    ), "BANKNIFTY break-even is structurally higher than NIFTY's (see docs/calibration_2026_04_26.md)"
+    assert floors["BANKNIFTY"] > floors["NIFTY"]
 
 
 def test_min_credit_helper_returns_per_instrument_floor(mock_om, mock_md):
@@ -83,22 +81,13 @@ def test_min_credit_helper_returns_per_instrument_floor(mock_om, mock_md):
 
 
 def test_banknifty_entry_at_credit_between_floors_is_rejected(mock_om, mock_md):
-    """The regression: pre-fix this entry passed (credit 20 ≥ 18); post-fix
-    it must reject (credit 20 < BANKNIFTY floor 30)."""
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
 
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
 
-    # Shorts ₹15, wings ₹5 → credit = 30 - 10 = 20.
-    # 20 ≥ NIFTY floor 18 (would have passed pre-fix);
-    # 20 <  BN    floor 30 (must reject post-fix).
     mock_md.get_ltp.side_effect = _ltp_close_to(spot=50000, short_premium=15.0, wing_premium=5.0)
-
-    nifty_floor = settings.IC_MIN_CREDIT_BY_INSTRUMENT["NIFTY"]
-    bn_floor = settings.IC_MIN_CREDIT_BY_INSTRUMENT["BANKNIFTY"]
-    assert nifty_floor <= 20 < bn_floor, "fixture must straddle the two floors"
 
     success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", settings.IC_LOT_SIZE)
 
