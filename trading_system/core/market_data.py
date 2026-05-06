@@ -10,15 +10,10 @@ class MarketData:
         pass
 
     def get_ltp(self, symbol: str) -> float:
-        """
-        Returns the Last Traded Price (LTP) for a given symbol.
-        Placeholder implementation.
-        """
-        print(f"Fetching LTP for {symbol} (placeholder)...")
-        # Example placeholder logic: return a dummy price based on symbol
-        if "NIFTY" in symbol:
-            return 20000.0
-        elif "BANKNIFTY" in symbol:
+        s = symbol.upper()
+        if "BANKNIFTY" in s:
             return 45000.0
+        elif "NIFTY" in s and "BANKNIFTY" not in s and "FINNIFTY" not in s:
+            return 20000.0
         else:
             return 100.0

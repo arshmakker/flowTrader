@@ -883,8 +883,10 @@ def run():
     # Strategies
     nifty_ic = IronCondorStrategy(order_mgr, md, "NIFTY")
     banknifty_ic = IronCondorStrategy(order_mgr, md, "BANKNIFTY")
-    strats = [nifty_ic, banknifty_ic]
-    strats_map = {"NIFTY": nifty_ic, "BANKNIFTY": banknifty_ic}
+    _all_strats = {"NIFTY": nifty_ic, "BANKNIFTY": banknifty_ic}
+    _active = settings.ACTIVE_INSTRUMENTS or list(_all_strats)
+    strats_map = {k: v for k, v in _all_strats.items() if k in _active}
+    strats = list(strats_map.values())
 
     # Restore any carried-overnight positions + P&L state.
     meta = position_persistence.load(strats_map, pos_mgr, pnl_engine, risk, regime_filter=regime)

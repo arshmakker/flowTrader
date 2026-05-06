@@ -8,6 +8,8 @@ Do not hardcode values outside this file.
 PAPER_TRADE_MODE = False  # Flip to False to go live
 
 # ══ INSTRUMENTS ════════════════════════════════════════════════════
+# Restrict which instruments may enter trades. Empty list = all instruments active.
+ACTIVE_INSTRUMENTS: list = ["BANKNIFTY"]
 NIFTY_SYMBOL = "NIFTY"
 BANKNIFTY_SYMBOL = "BANKNIFTY"
 NIFTY_LOT_SIZE = 65  # updated for 2026
