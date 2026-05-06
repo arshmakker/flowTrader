@@ -76,12 +76,17 @@ class LiveOrderManager:
         actual filled quantity (may be less than quantity on CANCELED).
         """
         buy_or_sell = buy_or_sell.upper()
+        # Shoonya blocks MKT orders via API (ALGO_CHK). Promote to LMT when
+        # a non-zero price is provided — iron_condor always passes ask/bid.
+        if price_type == "MKT" and price and price > 0:
+            price_type = "LMT"
         logger.info(
-            "LIVE ORDER SUBMIT %s %s qty=%d price_type=%s",
+            "LIVE ORDER SUBMIT %s %s qty=%d price_type=%s price=%.2f",
             buy_or_sell,
             tradingsymbol,
             quantity,
             price_type,
+            price,
         )
 
         try:
