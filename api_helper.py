@@ -727,8 +727,12 @@ class ShoonyaApiPy(NorenApi):
             uid = getattr(self, "_NorenApi__username", None)
             actid = getattr(self, "_NorenApi__accountid", None)
             token = getattr(self, "_NorenApi__susertoken", None)
-            if not all([uid, actid, token]):
-                logger.error("Place order: not logged in (missing uid/actid/token)")
+            oauth_headers = getattr(self, "_NorenApi__OAuthHeaders", None)
+            if not all([uid, actid]):
+                logger.error("Place order: not logged in (missing uid/actid)")
+                return None
+            if not token and not oauth_headers:
+                logger.error("Place order: not logged in (no susertoken or OAuth headers)")
                 return None
             trgprc = trigger_price if trigger_price is not None else 0
             values = {
@@ -747,8 +751,13 @@ class ShoonyaApiPy(NorenApi):
                 "ret": retention or "DAY",
                 "remarks": remarks or "convex",
             }
-            payload = "jData=" + json.dumps(values) + "&jKey=" + str(token)
-            res = requests.post(url, data=payload, timeout=30)
+            if token:
+                payload = "jData=" + json.dumps(values) + "&jKey=" + str(token)
+                res = requests.post(url, data=payload, timeout=30)
+            else:
+                # OAuth-only session (no jKey): use Bearer headers, no jKey in body.
+                payload = "jData=" + json.dumps(values)
+                res = requests.post(url, data=payload, headers=oauth_headers, timeout=30)
             if not res.ok:
                 try:
                     body = json.loads(res.text)
