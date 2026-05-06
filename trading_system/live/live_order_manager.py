@@ -144,7 +144,7 @@ class LiveOrderManager:
         return order
 
     def get_margin_shortfall(self) -> float:
-        """LIVE-11: rupees of intra-day margin shortfall (marginused > cash).
+        """LIVE-11: rupees of intra-day margin shortfall (blk_amt > cash + cash_coll).
         Returns 0 when solvent. Fails open on query error — the LIVE-24
         heartbeat catches a dead process; we don't want a transient API
         blip to spuriously halt trading.
@@ -158,16 +158,19 @@ class LiveOrderManager:
             return 0.0
         try:
             cash = float(limits.get("cash", 0) or 0)
-            used = float(limits.get("marginused", 0) or 0)
+            cash_coll = float(limits.get("cash_coll", 0) or 0)
+            blk_amt = float(limits.get("blk_amt", 0) or 0)
         except (TypeError, ValueError):
             return 0.0
-        return max(0.0, used - cash)
+        net = cash + cash_coll - blk_amt
+        return max(0.0, -net)
 
     def get_available_margin(self) -> float:
-        """LIVE-10: query Shoonya ``get_limits()`` and return available margin
-        as ``cash - marginused``. Fails closed — any error or malformed
-        response returns 0.0, which guarantees the pre-entry margin check
-        refuses entry. Safety over continuity (Axiom 3).
+        """LIVE-10: query Shoonya ``get_limits()`` and return available margin.
+        Available = cash + cash_coll (haircut-adjusted collateral) - blk_amt
+        (already blocked for open positions). Shoonya accounts funded via
+        pledged securities carry cash=0 but cash_coll > 0. Fails closed —
+        any error returns 0.0 so the pre-entry check refuses entry (Axiom 3).
         """
         try:
             limits = self.api.get_limits()
@@ -179,11 +182,16 @@ class LiveOrderManager:
             return 0.0
         try:
             cash = float(limits.get("cash", 0) or 0)
-            used = float(limits.get("marginused", 0) or 0)
+            cash_coll = float(limits.get("cash_coll", 0) or 0)
+            blk_amt = float(limits.get("blk_amt", 0) or 0)
         except (TypeError, ValueError):
             logger.error("LIVE margin response malformed: %r", limits)
             return 0.0
-        return max(cash - used, 0.0)
+        available = max(cash + cash_coll - blk_amt, 0.0)
+        logger.info(
+            "LIVE margin: cash=%.2f cash_coll=%.2f blk_amt=%.2f available=%.2f", cash, cash_coll, blk_amt, available
+        )
+        return available
 
     @staticmethod
     def build_option_symbol(symbol: str, expiry: str, strike: float, opt_type: str) -> str:

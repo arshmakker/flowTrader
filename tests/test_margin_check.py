@@ -86,14 +86,24 @@ def test_paper_order_manager_reports_infinite_margin():
 # ── LiveOrderManager.get_available_margin ──────────────────────────────
 
 
-def test_live_order_manager_parses_shoonya_limits():
-    """Standard Shoonya response: cash 500k, marginused 100k → 400k available."""
+def test_live_order_manager_parses_shoonya_limits_cash_only():
+    """Cash account: cash 500k, blk_amt 100k → 400k available."""
     from trading_system.live.live_order_manager import LiveOrderManager
 
     api = MagicMock()
-    api.get_limits.return_value = {"cash": "500000.00", "marginused": "100000.00"}
+    api.get_limits.return_value = {"cash": "500000.00", "cash_coll": "0", "blk_amt": "100000.00"}
     om = LiveOrderManager(api=api, market_data=MagicMock())
     assert om.get_available_margin() == pytest.approx(400_000.0, abs=0.01)
+
+
+def test_live_order_manager_parses_shoonya_limits_collateral_funded():
+    """Collateral-funded account: cash=0, cash_coll=600k, blk_amt=100k → 500k available."""
+    from trading_system.live.live_order_manager import LiveOrderManager
+
+    api = MagicMock()
+    api.get_limits.return_value = {"cash": "0", "cash_coll": "600000.00", "blk_amt": "100000.00"}
+    om = LiveOrderManager(api=api, market_data=MagicMock())
+    assert om.get_available_margin() == pytest.approx(500_000.0, abs=0.01)
 
 
 def test_live_order_manager_raising_api_reports_zero():
@@ -118,8 +128,7 @@ def test_live_order_manager_malformed_response_reports_zero():
 
 
 def test_live_order_manager_missing_fields_defaults_to_zero():
-    """If marginused is missing from the response, default 0 → cash reported
-    as available. If cash is also missing → 0."""
+    """All fields missing → 0 available (fails closed)."""
     from trading_system.live.live_order_manager import LiveOrderManager
 
     api = MagicMock()
@@ -129,12 +138,11 @@ def test_live_order_manager_missing_fields_defaults_to_zero():
 
 
 def test_live_order_manager_non_numeric_fields_report_zero():
-    """Operator-facing error case: Shoonya returns 'N/A' or similar. Must
-    not crash; must refuse by returning 0."""
+    """Shoonya returns 'N/A' for cash — must not crash; refuse by returning 0."""
     from trading_system.live.live_order_manager import LiveOrderManager
 
     api = MagicMock()
-    api.get_limits.return_value = {"cash": "N/A", "marginused": "0"}
+    api.get_limits.return_value = {"cash": "N/A", "cash_coll": "300000", "blk_amt": "0"}
     om = LiveOrderManager(api=api, market_data=MagicMock())
     assert om.get_available_margin() == 0.0
 
