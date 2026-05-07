@@ -18,6 +18,10 @@ from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Suspicious-LTP fallback: if last_valid is older than this, return 0 so callers
+# fall back to quote-book mid rather than marking against a stale price.
+_LAST_VALID_LTP_TTL = 60.0  # seconds
+
 
 @dataclass(frozen=True)
 class QuoteBook:
@@ -72,7 +76,7 @@ class MarketData:
         self.api = api
         self.sm = symbol_manager
         self._ltp_cache: Dict[str, tuple[float, float]] = {}  # symbol → (ltp, mono_ts)
-        self._last_valid_option_ltp: Dict[str, float] = {}
+        self._last_valid_option_ltp: Dict[str, tuple[float, float]] = {}  # symbol → (price, mono_ts)
         self._open_prices: Dict[str, float] = {}
         self._open_price_fallback: set[str] = set()
         self._ohlcv_bars: list[Dict] = []
@@ -105,7 +109,7 @@ class MarketData:
             return
         if not self._is_valid_option_ltp(price):
             return
-        self._last_valid_option_ltp[symbol_key] = float(price)
+        self._last_valid_option_ltp[symbol_key] = (float(price), time.monotonic())
 
     def get_ltp(self, symbol_key: str) -> float:
         """
@@ -156,25 +160,39 @@ class MarketData:
                                 bid,
                                 ask,
                             )
-                            self._last_valid_option_ltp[symbol_key] = mid
+                            self._last_valid_option_ltp[symbol_key] = (mid, now)
                             self._ltp_cache[symbol_key] = (mid, now)
                             return mid
 
-                        fallback = self._last_valid_option_ltp.get(symbol_key, 0.0)
-                        if fallback > 0:
+                        entry = self._last_valid_option_ltp.get(symbol_key)
+                        if entry:
+                            fallback, fallback_ts = entry
+                            age = now - fallback_ts
+                            if age <= _LAST_VALID_LTP_TTL:
+                                logger.warning(
+                                    "get_ltp: suspicious option LTP %.2f for %s; using last valid %.2f (age=%.0fs)",
+                                    ltp,
+                                    symbol_key,
+                                    fallback,
+                                    age,
+                                )
+                                self._ltp_cache[symbol_key] = (fallback, now)
+                                return fallback
                             logger.warning(
-                                "get_ltp: suspicious option LTP %.2f for %s; using last valid %.2f",
+                                "get_ltp: suspicious option LTP %.2f for %s; last valid %.2f is stale "
+                                "(%.0fs > %.0fs TTL) — returning 0 for fresh mark",
                                 ltp,
                                 symbol_key,
                                 fallback,
+                                age,
+                                _LAST_VALID_LTP_TTL,
                             )
-                            self._ltp_cache[symbol_key] = (fallback, now)
-                            return fallback
+                            return 0.0
                         logger.error(
                             "get_ltp: suspicious option LTP %.2f for %s; no valid fallback available", ltp, symbol_key
                         )
                         return 0.0
-                    self._last_valid_option_ltp[symbol_key] = ltp
+                    self._last_valid_option_ltp[symbol_key] = (ltp, now)
                 self._ltp_cache[symbol_key] = (ltp, now)
                 return ltp
             else:

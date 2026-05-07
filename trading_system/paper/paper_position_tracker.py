@@ -97,9 +97,20 @@ class PaperPositionTracker:
         for sym, pos in self._positions.items():
             ltp = market_data.get_ltp(sym)
             if ltp <= 0:
+                # LTP stale or unavailable — try quote-book mid so risk checks see
+                # both real losses and real profits, not just zero.
+                qb = market_data.get_quote_book(sym) if hasattr(market_data, "get_quote_book") else None
+                if qb is not None and qb.is_tradable:
+                    ltp = (qb.bid + qb.ask) / 2.0
+                    logger.info(
+                        "Unrealised P&L: LTP stale for %s — using quote-book mid %.2f",
+                        sym,
+                        ltp,
+                    )
+            if ltp <= 0:
                 self._unmarked.append(sym)
                 logger.warning(
-                    "Unrealised P&L: LTP=0 for %s (qty=%d, avg=%.2f) — excluded from mark",
+                    "Unrealised P&L: no price for %s (qty=%d, avg=%.2f) — excluded from mark",
                     sym,
                     pos["qty"],
                     pos["avg_price"],
