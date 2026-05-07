@@ -32,6 +32,9 @@ class FakeMD:
     def get_lot_size(self, sym):
         return 65
 
+    def get_quote_book(self, sym):
+        return None
+
 
 class FakeSR:
     """No-op SR manager — returns strikes unchanged."""

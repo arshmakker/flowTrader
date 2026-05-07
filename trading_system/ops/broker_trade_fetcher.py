@@ -19,8 +19,6 @@ note (LIVE-12). This shim emits ``costs=0.0``; the reconciliation report's
 separate cost fetch. Price drift (LIVE-04) is unaffected.
 """
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime
 from typing import Any, Iterable, List, Optional

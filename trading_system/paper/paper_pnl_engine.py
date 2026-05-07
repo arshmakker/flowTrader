@@ -5,8 +5,6 @@ Tracks realised P&L, win/loss counts per strategy — both daily and cumulative.
 Writes data/paper_summary.json every time a trade closes.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

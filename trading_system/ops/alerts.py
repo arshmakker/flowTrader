@@ -5,17 +5,7 @@ Pluggable alert dispatching with a background sender thread, per-event
 dedup, and a factory driven by settings + cred.yml. Callers (risk
 manager, main loop) never block on network I/O — the hot-path cost of
 ``send`` is a queue ``put_nowait`` guarded by a dedup check.
-
-Channels:
-- ``NtfyAlertChannel`` — posts to an ntfy.sh topic URL via a daemon worker thread.
-- ``LogAlertChannel`` — writes to the Python logger (default fallback).
-- ``NullAlertChannel`` — no-op; records sends for test inspection.
-
-Future channels (Telegram, webhook, email) implement the same ``AlertChannel``
-protocol and slot in via ``build_channel``.
 """
-
-from __future__ import annotations
 
 import logging
 import queue

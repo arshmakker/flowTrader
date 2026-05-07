@@ -1,7 +1,5 @@
 """Regression tests for LIVE-23 (operator alert channel)."""
 
-from __future__ import annotations
-
 import logging
 
 import pytest

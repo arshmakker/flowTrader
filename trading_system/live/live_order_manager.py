@@ -9,8 +9,6 @@ backoff; MAX_POLL_ERRORS consecutive failures raise OrderPollingAbandoned,
 which the caller must handle by halting and alerting the operator.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os
@@ -22,7 +20,10 @@ from trading_system.config import settings
 
 logger = logging.getLogger(__name__)
 
-_TERMINAL_STATUSES = {"COMPLETE", "REJECTED", "CANCELED"}
+# Shoonya uses full strings for normal flow but abbreviated codes for
+# risk-rule rejections (RED:RULE type). Both sets must be recognised.
+_TERMINAL_STATUSES = {"COMPLETE", "REJECTED", "CANCELED", "RJT", "REJT", "CANCEL"}
+_OPEN_STATUSES = {"OPEN", "PENDING", "TRIGGER_PENDING", "OPN", ""}
 
 _STUCK_LEGS_PATH = os.path.join(settings.DATA_DIR, "stuck_legs.json")
 
@@ -138,13 +139,15 @@ class LiveOrderManager:
         if track_position and self.tracker is not None and order.get("fill_qty", 0) > 0:
             self.tracker.add_position(order)
 
-        logger.info(
-            "LIVE ORDER %s %s status=%s fill_qty=%d fill_price=%.2f",
+        log = logger.warning if order["status"] != "COMPLETE" else logger.info
+        log(
+            "LIVE ORDER %s %s status=%s fill_qty=%d fill_price=%.2f reason=%s",
             buy_or_sell,
             tradingsymbol,
             order["status"],
             order["fill_qty"],
             order["fill_price"],
+            order.get("reason", ""),
         )
         return order
 
@@ -221,8 +224,13 @@ class LiveOrderManager:
         Poll single_order_history until status is terminal.
         Transient errors are retried with exponential backoff.
         Raises OrderPollingAbandoned after MAX_POLL_ERRORS consecutive errors.
+        Times out after MAX_POLL_WAIT_SEC and attempts cancel — Shoonya can
+        return OPEN indefinitely for broker-rejected orders (RED:RULE shortfall)
+        even though the app shows REJECTED immediately.
         """
         consecutive_errors = 0
+        deadline = time.monotonic() + settings.MAX_POLL_WAIT_SEC
+        last_status = ""
 
         while True:
             try:
@@ -246,7 +254,38 @@ class LiveOrderManager:
             record = history[-1] if isinstance(history, list) and history else (history or {})
             status = record.get("status", "").upper()
 
+            if status != last_status:
+                logger.info("LIVE POLL order=%s status=%s", order_id, status)
+                last_status = status
+
             if status in _TERMINAL_STATUSES:
+                return record
+
+            # Any unrecognised non-open status is coerced to REJECTED to halt polling.
+            if status and status not in _OPEN_STATUSES:
+                logger.warning(
+                    "LIVE POLL order=%s unrecognised status=%r rejreason=%s — treating as REJECTED",
+                    order_id,
+                    status,
+                    record.get("rejreason", ""),
+                )
+                record["status"] = "REJECTED"
+                return record
+
+            # Timeout: Shoonya lags showing OPEN for broker-rejected orders.
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "LIVE POLL order=%s timed out after %ds (last status=%r) — cancelling and treating as REJECTED",
+                    order_id,
+                    settings.MAX_POLL_WAIT_SEC,
+                    status,
+                )
+                try:
+                    self.api.cancel_order(orderno=order_id)
+                except Exception as exc:
+                    logger.warning("LIVE POLL cancel attempt for %s failed: %s", order_id, exc)
+                record["status"] = "REJECTED"
+                record.setdefault("rejreason", "poll_timeout")
                 return record
 
             time.sleep(settings.POLL_INTERVAL_SEC)

@@ -6,8 +6,6 @@ after that, nothing re-evaluated. This fix re-checks at every TRADE_END and
 force-flattens if next-session DTE < IC_DTE_THRESHOLD.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 from datetime import date

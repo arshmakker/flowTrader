@@ -182,11 +182,12 @@ def test_buy_lmt_fallback_fills_at_price_when_ltp_zero(tmp_path):
 
 
 # ── MKT fallback (incident 2026-04-27 11:20:19) ─────────────────────────────
-# The IC wing BUYs and unwind orders are MKT (no price_type), and a fresh
-# strike's broker quote can be junk → market_data fallback chain exhausted →
-# get_ltp returns 0. Without a `price=` fallback to the place_order call, MKT
-# rejects with `missing_ltp` → wings not both filled → halt. Fix at the IC
-# caller side: pass `price=books[*].ask` for wing BUYs and `price=books[*].bid`
+# The IC wing BUYs and unwind orders use MKT with price=ask/bid — auto-promoted
+# to LMT by LiveOrderManager when price > 0. A fresh strike's broker
+# quote can be junk → market_data fallback chain exhausted → get_ltp returns 0.
+# Without a `price=` fallback to the place_order call, MKT rejects with
+# `missing_ltp` → wings not both filled → halt. Fix at the IC caller
+# side: pass `price=books[*].ask` for wing BUYs and `price=books[*].bid`
 # for wing unwinds. Tests below confirm the order manager honors the fallback
 # in MKT path the same way it does in LMT path.
 

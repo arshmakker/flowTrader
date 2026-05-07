@@ -6,8 +6,6 @@ file after every monitoring cycle.  On startup the orchestrator calls
 ``load()`` to restore any open positions that were interrupted by a restart.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

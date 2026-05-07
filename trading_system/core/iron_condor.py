@@ -226,7 +226,13 @@ class IronCondorStrategy:
             if not symbol or side not in ("BUY", "SELL"):
                 continue
             rollback_side = self._opposite_side(side)
-            rollback = self.om.place_order(symbol, rollback_side, fq, track_position=False)
+            rollback = self.om.place_order(
+                symbol,
+                rollback_side,
+                fq,
+                price=float(order.get("fill_price", 0.0)),
+                track_position=False,
+            )
             if rollback.get("fill_qty", 0) < fq:
                 logger.error(
                     "IC %s rollback failed for %s %s qty=%d (status=%s, reason=%s)",
@@ -293,7 +299,13 @@ class IronCondorStrategy:
             if not symbol or side not in ("BUY", "SELL"):
                 continue
             reverse_side = self._opposite_side(side)
-            reverse = self.om.place_order(symbol, reverse_side, fq, track_position=False)
+            reverse = self.om.place_order(
+                symbol,
+                reverse_side,
+                fq,
+                price=float(order.get("fill_price", 0.0)),
+                track_position=False,
+            )
             reversed_qty = reverse.get("fill_qty", 0)
             if reversed_qty < fq:
                 logger.error(
@@ -1204,7 +1216,12 @@ class IronCondorStrategy:
         exit_stuck: List[Dict] = []
         realised_pnl: float = 0.0
         for sym, side in closing_legs:
-            order = self.om.place_order(sym, side, qty, track_position=False)
+            book = self.md.get_quote_book(sym)
+            if book is not None and book.is_tradable:
+                close_price = book.ask if side == "BUY" else book.bid
+            else:
+                close_price = self.md.get_ltp(sym)
+            order = self.om.place_order(sym, side, qty, price=close_price, track_position=False)
             fq = order.get("fill_qty", 0)
             if fq < qty:
                 logger.error(

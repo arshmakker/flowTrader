@@ -5,8 +5,6 @@ TRADE_END_EXPIRY = 15:00 — early close for positions expiring today (avoids th
 final-30-min settlement squeeze on expiry day).
 """
 
-from __future__ import annotations
-
 from datetime import datetime
 
 from trading_system.config import settings

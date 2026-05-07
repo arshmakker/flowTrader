@@ -15,8 +15,6 @@ Paper mode has no broker counterpart — main.py gates invocation on
 ``not settings.PAPER_TRADE_MODE``, so this module never runs in paper.
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
 

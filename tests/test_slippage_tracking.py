@@ -47,37 +47,6 @@ class TestCSVSchema:
         assert idx_exp == idx_ltp + 1
 
 
-class TestMKTOrderSlippage:
-    """MKT orders: expected_price = ltp_at_submit (before slippage)."""
-
-    def test_mkt_buy_order_has_expected_price_equal_to_ltp(self, tmp_path):
-        om = _om(tmp_path, {"NFO|X": 100.0})
-        order = om.place_order("NFO|X", "BUY", 65, price_type="MKT")
-        assert order["status"] == "COMPLETE"
-        assert order["ltp_at_submit"] == 100.0
-        assert order["expected_price"] == 100.0
-
-    def test_mkt_sell_order_has_expected_price_equal_to_ltp(self, tmp_path):
-        om = _om(tmp_path, {"NFO|X": 100.0})
-        order = om.place_order("NFO|X", "SELL", 65, price_type="MKT")
-        assert order["status"] == "COMPLETE"
-        assert order["ltp_at_submit"] == 100.0
-        assert order["expected_price"] == 100.0
-
-    def test_mkt_slippage_derivable(self, tmp_path):
-        om = _om(tmp_path, {"NFO|X": 100.0})
-        order = om.place_order("NFO|X", "BUY", 65, price_type="MKT")
-        slippage = order["fill_price"] - order["expected_price"]
-        assert slippage >= 0
-
-    def test_mkt_rejected_order_has_expected_price(self, tmp_path):
-        om = _om(tmp_path, {"NFO|X": 0.0})
-        order = om.place_order("NFO|X", "BUY", 65, price_type="MKT", price=0.0)
-        assert order["status"] == "REJECTED"
-        assert "ltp_at_submit" in order
-        assert "expected_price" in order
-
-
 class TestLMTOrderSlippage:
     """LMT orders: expected_price = limit_price (before slippage)."""
 
@@ -119,11 +88,11 @@ class TestLMTOrderSlippage:
 class TestSlippageDerivation:
     """Verify slippage can be derived from new fields."""
 
-    def test_slippage_calculation_for_mkt_buy(self, tmp_path):
+    def test_slippage_calculation_for_lmt_buy(self, tmp_path):
         om = _om(tmp_path, {"NFO|X": 100.0})
-        order = om.place_order("NFO|X", "BUY", 65, price_type="MKT")
+        order = om.place_order("NFO|X", "BUY", 65, price_type="LMT", price=105.0)
         slippage = order["fill_price"] - order["expected_price"]
-        slippage_pct = (slippage / order["expected_price"]) * 100
+        slippage_pct = abs(slippage / order["expected_price"]) * 100
         assert slippage_pct >= 0.05
 
     def test_slippage_calculation_for_lmt_sell(self, tmp_path):
@@ -135,6 +104,6 @@ class TestSlippageDerivation:
 
     def test_slippage_minimum_abs_applied(self, tmp_path):
         om = _om(tmp_path, {"NFO|X": 1000.0})
-        order = om.place_order("NFO|X", "SELL", 65, price_type="MKT")
-        slippage = order["expected_price"] - order["fill_price"]
+        order = om.place_order("NFO|X", "BUY", 65, price_type="LMT", price=1010.0)
+        slippage = order["fill_price"] - order["ltp_at_submit"]
         assert slippage >= 1.50

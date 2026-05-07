@@ -6,8 +6,6 @@ where a DNS-triggered Ctrl-C bypassed the in-loop weekend-flatten gate and
 left a NIFTY 21APR26 IC stranded into max loss).
 """
 
-from __future__ import annotations
-
 import os
 import sys
 from datetime import datetime

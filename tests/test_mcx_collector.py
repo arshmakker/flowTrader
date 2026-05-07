@@ -5,8 +5,6 @@ predicate, and one full polling iteration with a stubbed broker. No network,
 no real Shoonya client, no sleeps.
 """
 
-from __future__ import annotations
-
 import csv
 import sys
 from datetime import date, datetime

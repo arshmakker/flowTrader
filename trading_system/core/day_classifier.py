@@ -6,8 +6,6 @@ TRENDING_UP, or TRENDING_DOWN based on price move from open and distance
 from VWAP. Classification is locked after first call; use reset() for new day.
 """
 
-from __future__ import annotations
-
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime

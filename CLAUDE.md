@@ -225,6 +225,7 @@ The OAuth flow was end-to-end-verified on 2026-04-22 against this user's Shoonya
 - **Option LTP validation** — Quotes outside [0.05, 5000] are rejected
 - **Hard stop confirmation** — Requires 2 consecutive tick breaches before halt
 - **No weekend exposure** — Flat by Thursday 3:15 PM
+- **Broker MKT order ban** — Shoonya blocks MKT via API. Every `place_order` call must carry a non-zero `price=` argument. `LiveOrderManager` auto-promotes `MKT + price > 0 → LMT` (line 84–85). If `price=0` (e.g. illiquid book with `bid=0`), the order goes as MKT and will be rejected. Paper mode uses `price` as LTP fallback when LTP=0.
 - **Credential safety** — Never commit `cred.yml` or token artifacts
 
 ## Dependencies

@@ -1,16 +1,12 @@
 """LIVE-25: hedge-first IC entry sequencing — state machine tests.
 
 Each test drives a specific branch of the 5-phase state machine:
-    Phase 1: wings submitted as MKT
+    Phase 1: wings submitted as LMT at best-ask
     Phase 2: both wings must fill; if one fails, close the other, halt
     Phase 3: compute short limits from wing fills; if credit infeasible, refuse
     Phase 4: shorts as LMT
     Phase 5a: both shorts fill → post-fill credit re-check
     Phase 5b: any short doesn't fill → unwind all
-
-Mock conventions:
-    - place_order returns whatever the test sets via side_effect
-    - get_quote_book returns a QuoteBook fixture so Phase 3's math is deterministic
 """
 
 import os
@@ -83,15 +79,15 @@ def _sr_mgr():
 
 
 def test_happy_path_all_four_legs_fill(mock_om, mock_md):
-    """Clean books, wings fill at MKT, shorts fill at LMT → entry complete."""
+    """Clean books, wings fill at LMT (ask), shorts fill at LMT (bid) → entry complete."""
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
     qty = settings.IC_LOT_SIZE * settings.NIFTY_LOT_SIZE  # 650
 
-    def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):
-        if "C22200" in symbol:
-            return _fill(5.0, q)  # LC MKT fill at ask
+    def place_side_effect(symbol, side, q, price_type="LMT", price=0.0):
+        if "C22200" in symbol or "P21800" in symbol:
+            return _fill(5.0, q)  # LC/LP LMT fill at ask
         if "P21800" in symbol:
-            return _fill(5.0, q)  # LP MKT fill at ask
+            return _fill(5.0, q)  # LP LMT fill at ask
         if "C22150" in symbol:
             return _fill(18.0, q)  # SC LMT fill at bid
         if "P21850" in symbol:
@@ -185,11 +181,11 @@ def test_phase2_both_wings_fail_nothing_to_unwind(mock_om, mock_md):
 def test_phase3_credit_infeasible_refuses_and_unwinds_wings(mock_om, mock_md):
     """Pre-entry credit check passes (quote book healthy) but wings fill at a
     price materially worse than quoted ask — simulates price drift between
-    quote fetch and MKT fill in live. Phase 3 recomputes projected credit from
+    quote fetch and LMT fill in live. Phase 3 recomputes projected credit from
     actual wing fills + current bid; projection < IC_MIN_CREDIT → refuse and
     unwind wings. Shorts never submitted.
 
-    In deterministic paper this branch is unreachable (paper MKT fills exactly
+    In deterministic paper this branch is unreachable (paper LMT fills exactly
     at ask+slip, so Phase 3's math matches pre-entry's). The test deliberately
     simulates live divergence by having the mock om.place_order return a
     fill_price worse than the quote book implies."""
@@ -321,7 +317,7 @@ def test_phase5b_one_short_fills_one_cancels_unwinds_everything(mock_om, mock_md
     assert ok is False
     # LC+LP entry + SC+SP (one fills, one cancels) + SC buyback + LC+LP unwind = 7
     assert mock_om.place_order.call_count == 7
-    # SC got 2 calls total (LMT fill, then MKT buyback); SP got 1 (LMT cancel only).
+    # SC got 2 calls total (LMT fill, then LMT buyback); SP got 1 (LMT cancel only).
     assert short_calls["C22150"] == 2
     assert short_calls["P21850"] == 1
 
@@ -464,7 +460,7 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
             return _fill(8.0, q)
         if "P21850" in symbol and side == "SELL" and price_type == "LMT":
             return _fill(8.0, q)
-        # Unwind: shorts bought back at MKT, wings sold at MKT.
+        # Unwind: shorts bought back at LMT (ask), wings sold at LMT (bid).
         if side == "BUY" and price_type == "MKT":
             return _fill(8.0, q)
         if side == "SELL" and price_type == "MKT":
@@ -494,7 +490,7 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
 
 def test_wing_buys_pass_book_ask_as_price_fallback(mock_om, mock_md):
     """Phase 1: LC and LP wing BUYs must pass `price=books[*].ask` so that
-    a transient bad quote on a fresh strike doesn't reject the MKT order."""
+    a transient bad quote on a fresh strike doesn't reject the LMT order."""
     _configure_books_for_clean_ic(mock_md, sc_bid=18.0, sp_bid=18.0, lc_ask=5.0, lp_ask=5.0)
 
     def place_side_effect(symbol, side, q, price_type="MKT", price=0.0):

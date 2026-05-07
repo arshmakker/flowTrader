@@ -15,8 +15,6 @@ adapter that actually queries Shoonya's ``get_limits`` lives on
 ``LiveOrderManager.get_available_margin``.
 """
 
-from __future__ import annotations
-
 
 def estimate_ic_required_margin(
     wing_width: float,

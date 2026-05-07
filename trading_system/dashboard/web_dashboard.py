@@ -6,8 +6,6 @@ Reads paper_trades.csv and paper_summary.json.
 Auto-updates via JS fetch polling.
 """
 
-from __future__ import annotations
-
 import csv
 import json
 import logging

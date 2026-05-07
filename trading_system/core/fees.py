@@ -19,8 +19,6 @@ Side-asymmetry is load-bearing: STT fires only on SELLs, stamp only on BUYs.
 The GST base deliberately excludes STT and stamp — a common implementation bug.
 """
 
-from __future__ import annotations
-
 from typing import Dict
 
 from trading_system.config import settings

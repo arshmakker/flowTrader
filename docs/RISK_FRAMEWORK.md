@@ -48,7 +48,7 @@ Grounded in `docs/axioms.md`. Catalogs the hard-coded safety nets, position-sizi
 
 ### 4. Atomic entry + rollback (Axiom 4)
 
-- Default: hedge-first (`IC_ENTRY_MODE = "hedge_first"`) — wings placed as MKT first, shorts as LMT second; worst-case failure is a bounded long-strangle position, not a naked short.
+- Default: hedge-first (`IC_ENTRY_MODE = "hedge_first"`) — wings placed as LMT at best-ask first, shorts as LMT second; worst-case failure is a bounded long-strangle position, not a naked short.
 - If any leg returns non-`COMPLETE`, entry aborts and `_rollback_partial_entry` sends reverse orders for already-filled legs.
 - `IC_Position` is created **only** after all 4 legs confirm.
 - Rollback failure: stuck legs are recorded; `_drain_rollback_failures` → `RiskManager.escalate_rollback_failure` halts entries and fires a LIVE-23 alert.

@@ -5,7 +5,7 @@ Do not hardcode values outside this file.
 """
 
 # ══ MODE ══════════════════════════════════════════════════════════
-PAPER_TRADE_MODE = False  # Flip to False to go live
+PAPER_TRADE_MODE = True  # Flip to False to go live
 
 # ══ INSTRUMENTS ════════════════════════════════════════════════════
 # Restrict which instruments may enter trades. Empty list = all instruments active.
@@ -181,6 +181,10 @@ FEES_NIFTY_OPT = {
 POLL_INTERVAL_SEC = 1
 # Consecutive API errors before raising OrderPollingAbandoned and halting.
 MAX_POLL_ERRORS = 10
+# Shoonya returns OPEN indefinitely for broker-rejected orders (RED:RULE
+# collateral shortfall) even though the app shows REJECTED immediately.
+# After this many seconds, attempt cancel and treat as REJECTED.
+MAX_POLL_WAIT_SEC = 45
 
 # ══ SAFETY CONTROLS ═══════════════════════════════════════════════════
 # LIVE-22: Absolute daily loss ceiling in rupees.

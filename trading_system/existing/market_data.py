@@ -5,8 +5,6 @@ Provides get_ltp(), get_open_price(), get_nearest_expiry() and an
 OHLCV bar accumulator for VWAP / RSI computations.
 """
 
-from __future__ import annotations
-
 import logging
 import re
 import time

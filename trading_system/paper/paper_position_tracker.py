@@ -4,8 +4,6 @@ Paper position tracker (agent.md §16.2).
 Tracks open positions in memory. Computes unrealised P&L from live LTP.
 """
 
-from __future__ import annotations
-
 import logging
 from typing import Any, Dict, List
 

@@ -16,7 +16,7 @@ Enter an Iron Condor when the day is RANGING and VIX is below 30 and stable; har
 |---|---|
 | Instruments | NIFTY + BANKNIFTY (simultaneously) |
 | Lot size | 10 lots per instrument |
-| Entry mode | Hedge-first (wings as MKT, shorts as LMT) |
+| Entry mode | Hedge-first (wings as LMT at best-ask, shorts as LMT) |
 | Harvest | NIFTY 2% of max profit · BANKNIFTY 13% |
 | Stop-loss | 3× combined max profit |
 | VIX ceiling | < 30 |

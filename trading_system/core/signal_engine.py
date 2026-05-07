@@ -7,8 +7,6 @@ decision-making and has been removed. Only the session-VWAP computation
 consumed by DayClassifier remains.
 """
 
-from __future__ import annotations
-
 from typing import Optional
 
 import pandas as pd

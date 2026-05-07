@@ -122,6 +122,60 @@ class TestAwaitTerminal:
                 mgr._await_terminal("X3")
         assert api.single_order_history.call_count == settings.MAX_POLL_ERRORS
 
+    def test_rjt_abbreviation_is_terminal(self):
+        """Shoonya uses 'RJT' for risk-rule rejections (e.g. RED:RULE collateral
+        shortfall). Must not poll indefinitely — regression for shakedown day-1
+        where the system polled for 4 min on a rejected wing order."""
+        rjt_record = {
+            "status": "RJT",
+            "rejreason": "RED:RULE:{Allow CAC credit but disallow collateral}Shortfall:INR 188775",
+            "fillshares": "0",
+            "avgprc": "0",
+            "norenordno": "X4",
+        }
+        api = MagicMock()
+        api.single_order_history.return_value = [rjt_record]
+        mgr = self._make_manager(api)
+        with patch("time.sleep"):
+            result = mgr._await_terminal("X4")
+        assert result["status"] in {"RJT", "REJECTED"}
+        assert api.single_order_history.call_count == 1  # resolves on first poll
+
+    def test_unknown_non_open_status_treated_as_rejected(self):
+        """Any unrecognised status that isn't OPEN/PENDING must not loop forever —
+        it is coerced to REJECTED so the caller can handle it."""
+        mystery_record = {
+            "status": "SOME_NEW_STATUS",
+            "rejreason": "unknown",
+            "fillshares": "0",
+            "avgprc": "0",
+            "norenordno": "X5",
+        }
+        api = MagicMock()
+        api.single_order_history.return_value = [mystery_record]
+        mgr = self._make_manager(api)
+        with patch("time.sleep"):
+            result = mgr._await_terminal("X5")
+        assert result["status"] == "REJECTED"
+        assert api.single_order_history.call_count == 1
+
+    def test_poll_timeout_cancels_and_returns_rejected(self):
+        """Shoonya returns OPEN indefinitely for broker-rejected (RED:RULE)
+        orders. After MAX_POLL_WAIT_SEC the poller must cancel the order and
+        return REJECTED — regression for 5-min stuck poll on shakedown day-1."""
+        open_record = {"status": "OPEN", "fillshares": "0", "avgprc": "0", "norenordno": "X6"}
+        api = MagicMock()
+        api.single_order_history.return_value = [open_record]
+
+        mgr = self._make_manager(api)
+        # Drive monotonic past the deadline immediately on first check
+        with patch("time.sleep"), patch("time.monotonic", side_effect=[0.0, 0.0, 999.0]):
+            result = mgr._await_terminal("X6")
+
+        assert result["status"] == "REJECTED"
+        assert result.get("rejreason") == "poll_timeout"
+        api.cancel_order.assert_called_once_with(orderno="X6")
+
 
 # ── IronCondorStrategy entry state machine ────────────────────────────────────
 

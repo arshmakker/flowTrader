@@ -55,7 +55,7 @@ All of the following must be true for a new IC to be placed:
 
 Default: **hedge-first** (`IC_ENTRY_MODE = "hedge_first"`):
 
-1. Buy long call (`lc`) + Buy long put (`lp`) — market orders, submitted first
+1. Buy long call (`lc`) + Buy long put (`lp`) — limit orders at best-ask, submitted first
 2. Await both fills; abort with wing unwind if either fails
 3. Compute short-leg limit prices from actual wing fills + `IC_MIN_CREDIT` floor
 4. Sell short call (`sc`) + Sell short put (`sp`) — limit orders at computed prices

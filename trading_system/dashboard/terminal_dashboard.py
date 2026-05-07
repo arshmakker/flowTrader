@@ -5,8 +5,6 @@ Rich-based 4-panel terminal UI. Runs in a daemon thread.
 Reads paper_summary.json every 5 seconds — never computes P&L itself.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

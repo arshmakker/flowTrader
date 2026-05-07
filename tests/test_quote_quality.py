@@ -13,8 +13,6 @@ FixQ2: seed _last_valid_option_ltp at startup from each restored leg's
        avg_price, so cycle-one queries never return 0.
 """
 
-from __future__ import annotations
-
 import os
 import sys
 

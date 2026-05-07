@@ -53,7 +53,7 @@ enforcement:
   - "S/R Constraint: Short strikes must maintain a ≥ 50-point buffer from the 20-day high and 20-day low. Move strikes further OTM if buffer is violated."
   - "S/R OTM Cap: If S/R buffering pushes a short strike more than 400 pts (NIFTY) or 1000 pts (BANKNIFTY) away from spot, clamp it back to the cap. Strikes beyond the cap are illiquid and cannot be filled at viable credit."
   - "Minimum Credit Floor: Refuse entry if net credit is below ₹35/lot (NIFTY) or ₹35/lot (BANKNIFTY). These floors clear the full F&O cost stack (₹5 brokerage × 4 legs = ~₹29/lot) with buffer for slippage."
-  - "Entry Sequencing: Use hedge-first order sequencing — wings (long legs) placed as market orders first, short legs placed as limit orders second. Atomic: all 4 legs fill or the entry is rolled back."
+  - "Entry Sequencing: Use hedge-first order sequencing — wings (long legs) placed as limit orders at best-ask first, short legs placed as limit orders second. Atomic: all 4 legs fill or the entry is rolled back."
   - "Profit Harvest: Close the entire condor when unrealized profit reaches 2% of max profit (NIFTY) or 13% of max profit (BANKNIFTY). Re-enter immediately using latest VIX and S/R levels. No limit on daily cycles."
   - "Adjustment Gate: If a short strike is breached, roll the tested side OTM and the safe side closer ONLY if the overall position is in net profit."
   - "Hard Stop-Loss: Exit all positions (Nifty + BankNifty combined) if loss reaches 3x the max profit of the spread. Stay flat for the rest of the day."

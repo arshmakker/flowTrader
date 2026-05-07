@@ -5,8 +5,6 @@ Identical interface to a real order manager.
 Fills at live LTP with realistic slippage and cost simulation.
 """
 
-from __future__ import annotations
-
 import csv
 import itertools
 import logging

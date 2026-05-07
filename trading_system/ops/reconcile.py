@@ -15,8 +15,6 @@ Pre-LIVE-08 drift is invisible. After LIVE-08, nightly divergence > 2% on any
 single leg is a hard signal to pause the proving period and debug.
 """
 
-from __future__ import annotations
-
 import csv
 import json
 import logging
