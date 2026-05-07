@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from trading_system.config import settings
+from trading_system.core.fees import compute_taxes_and_fees
 from trading_system.core.margin import estimate_ic_required_margin
 from trading_system.live.live_order_manager import OrderPollingAbandoned, persist_stuck_legs
 
@@ -1129,6 +1130,60 @@ class IronCondorStrategy:
 
     # ── Monitor ─────────────────────────────────────────────────────────
 
+    def _harvest_fill_viable(self, pos) -> bool:
+        """Guard against harvesting when stale LTP shows profit but fresh bid/ask would yield
+        a fee-negative exit. Fetches live quote books (same source exit() uses) and computes
+        the gross PnL at fill prices. Returns False to defer the harvest cycle if gross <= exit
+        fees; returns True (fail open) when any quote is unavailable so transient API gaps
+        don't permanently block harvests.
+
+        Root cause this prevents: monitor() reads a 2-second cached LTP that crosses the
+        harvest threshold, then exit() fetches fresh quote_book prices that are materially
+        worse on a sharp BANKNIFTY move — turning a paper-profitable trigger into a net loss
+        by the time fills land. The pre-check reads the same fresh data exit() will use.
+        """
+        lot_size = self.md.get_lot_size(pos.sc_sym)
+        qty = pos.lots * lot_size
+        legs = {
+            "sc": (pos.sc_sym, "BUY"),
+            "sp": (pos.sp_sym, "BUY"),
+            "lc": (pos.lc_sym, "SELL"),
+            "lp": (pos.lp_sym, "SELL"),
+        }
+        books = {}
+        for key, (sym, _) in legs.items():
+            b = self.md.get_quote_book(sym)
+            if b is None or not b.is_tradable:
+                logger.debug(
+                    "IC %s harvest fill-check: quote unavailable for %s — proceeding (fail open)",
+                    self.instrument,
+                    sym,
+                )
+                return True
+            books[key] = b
+
+        # Shorts are bought back (pay ask); longs are sold (receive bid)
+        exit_premium = (books["sc"].ask + books["sp"].ask) - (books["lc"].bid + books["lp"].bid)
+        fill_gross = (pos.entry_credit - exit_premium) * qty
+
+        exit_fees = sum(
+            compute_taxes_and_fees(sym, side, books[key].ask if side == "BUY" else books[key].bid, qty)["total"]
+            for key, (sym, side) in legs.items()
+        )
+
+        if fill_gross <= exit_fees:
+            logger.info(
+                "IC %s HARVEST DEFERRED: bid/ask fill gross ₹%.2f <= exit fees ₹%.2f "
+                "(exit_prem=%.2f vs entry=%.2f); re-checking next cycle",
+                self.instrument,
+                fill_gross,
+                exit_fees,
+                exit_premium,
+                pos.entry_credit,
+            )
+            return False
+        return True
+
     def monitor(self) -> Optional[Dict]:
         if not self.is_active():
             return None
@@ -1159,8 +1214,10 @@ class IronCondorStrategy:
         # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
         harvest_trigger = pos.max_profit * self._harvest_pct()
         if total_pnl >= harvest_trigger:
-            logger.info(f"IC {self.instrument} HARVEST: PnL {total_pnl:.2f} >= Trigger {harvest_trigger:.2f}")
-            return self.exit("PROFIT_HARVEST", total_pnl)
+            if self._harvest_fill_viable(pos):
+                logger.info(f"IC {self.instrument} HARVEST: PnL {total_pnl:.2f} >= Trigger {harvest_trigger:.2f}")
+                return self.exit("PROFIT_HARVEST", total_pnl)
+            # bid/ask shows exit would be fee-negative — skip this cycle, re-check next tick
 
         # 3. Adjustment Logic (Breach + Profit)
         # Roll tested side OTM and safe side closer if overall position in profit

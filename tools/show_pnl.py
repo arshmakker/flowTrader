@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Display current PnL from snapshot."""
 
+import csv
 import json
 from datetime import datetime
 from pathlib import Path
 
 SNAPSHOT_PATH = Path(__file__).parent.parent / "data" / "pnl_snapshot.json"
+TRADES_CSV_PATH = Path(__file__).parent.parent / "data" / "paper_trades.csv"
+OPEN_POS_PATH = Path(__file__).parent.parent / "data" / "open_positions.json"
 
 
 def fmt_inr(val) -> str:
@@ -99,6 +102,149 @@ def print_summary(data: dict) -> None:
     dd = data.get("max_drawdown", 0)
     dd_pct = data.get("max_drawdown_pct", 0)
     print(f"\n  Max drawdown all-time: ₹{dd:,.2f} ({dd_pct:.2f}%)\n")
+
+    print_daily_trades()
+    print_open_positions(load_open_positions())
+
+
+def load_todays_trades() -> list[dict]:
+    """Return today's trades from paper_trades.csv."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    trades = []
+    if not TRADES_CSV_PATH.exists():
+        return trades
+    with open(TRADES_CSV_PATH) as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if row.get("date") == today:
+                trades.append(row)
+    return trades
+
+
+def load_open_positions() -> dict:
+    """Return open positions from open_positions.json."""
+    if not OPEN_POS_PATH.exists():
+        return {}
+    with open(OPEN_POS_PATH) as f:
+        data = json.load(f)
+    return data.get("strategies", {})
+
+
+def print_open_positions(open_pos: dict) -> None:
+    """Print a table of currently open positions."""
+    if not open_pos:
+        print("  No open positions.\n")
+        return
+
+    active_positions = []
+    for instr, strat in open_pos.items():
+        pos = strat.get("position")
+        if pos:
+            active_positions.append(
+                {
+                    "instrument": instr,
+                    "entry_time": pos.get("entry_time", ""),
+                    "entry_credit": pos.get("entry_credit", 0),
+                    "peak_pnl": pos.get("peak_pnl", 0),
+                    "max_profit": pos.get("max_profit", 0),
+                    "lots": pos.get("lots", 0),
+                    "expiry": pos.get("expiry_date", ""),
+                }
+            )
+
+    if not active_positions:
+        print("  No open positions.\n")
+        return
+
+    rows = []
+    for p in active_positions:
+        entry_time = p["entry_time"][:5] if p["entry_time"] else ""
+        credit = p["entry_credit"]
+        peak = p["peak_pnl"]
+        max_profit = p["max_profit"]
+        lots = p["lots"]
+        expiry = p["expiry"]
+        rows.append(
+            (p["instrument"], entry_time, f"₹{credit:,.2f}", f"₹{peak:,.2f}", f"₹{max_profit:,.2f}", f"{lots}", expiry)
+        )
+
+    if not rows:
+        print("  No open positions.\n")
+        return
+
+    w1 = max(len(r[0]) for r in rows)
+    w2 = max(len(r[1]) for r in rows)
+    w3 = max(len(r[2]) for r in rows)
+    w4 = max(len(r[3]) for r in rows)
+    w5 = max(len(r[4]) for r in rows)
+    w6 = max(len(r[5]) for r in rows)
+    w7 = max(len(r[6]) for r in rows)
+
+    def _sep(l="├", m="┼", r="┤"):
+        return f"  {l}{'─' * (w1+2)}{m}{'─' * (w2+2)}{m}{'─' * (w3+2)}{m}{'─' * (w4+2)}{m}{'─' * (w5+2)}{m}{'─' * (w6+2)}{m}{'─' * (w7+2)}{r}"
+
+    def _row(c1, c2, c3, c4, c5, c6, c7):
+        return f"  │ {c1:<{w1}} │ {c2:<{w2}} │ {c3:<{w3}} │ {c4:<{w4}} │ {c5:<{w5}} │ {c6:<{w6}} │ {c7:<{w7}} │"
+
+    print("\n  Open positions:\n")
+    print(
+        f"  ┌{'─' * (w1+2)}┬{'─' * (w2+2)}┬{'─' * (w3+2)}┬{'─' * (w4+2)}┬{'─' * (w5+2)}┬{'─' * (w6+2)}┬{'─' * (w7+2)}┐"
+    )
+    print(_row("Instrument", "Entry", "Credit", "Peak P&L", "Max Profit", "Lots", "Expiry"))
+    for row in rows:
+        print(_sep())
+        print(_row(*row))
+    print(
+        f"  └{'─' * (w1+2)}┴{'─' * (w2+2)}┴{'─' * (w3+2)}┴{'─' * (w4+2)}┴{'─' * (w5+2)}┴{'─' * (w6+2)}┴{'─' * (w7+2)}┘\n"
+    )
+
+
+def print_daily_trades(trades: list[dict] | None = None) -> None:
+    """Print a table of today's individual trades."""
+    if trades is None:
+        trades = load_todays_trades()
+
+    if not trades:
+        print("  No trades today.\n")
+        return
+
+    # Build rows: Trade ID | Entry | Exit | Net P&L | Exit Reason
+    rows = []
+    for t in trades:
+        tid = t.get("trade_id", "")
+        entry = t.get("time_entry", "")[:5]  # HH:MM
+        exit_ = t.get("time_exit", "")[:5]
+        try:
+            pnl = float(t.get("net_pnl", 0))
+        except (ValueError, TypeError):
+            pnl = 0.0
+        reason = t.get("exit_reason", "")
+        if pnl >= 0:
+            pnl_str = f"₹{pnl:,.2f}"
+        else:
+            pnl_str = f"-₹{abs(pnl):,.2f}"
+        rows.append((tid, entry, exit_, pnl_str, reason))
+
+    # Column widths
+    w1 = max(len(r[0]) for r in rows + [("Trade ID", "", "", "", "")])
+    w2 = max(len(r[1]) for r in rows + [("", "Entry", "", "", "")])
+    w3 = max(len(r[2]) for r in rows + [("", "", "Exit", "", "")])
+    w4 = max(len(r[3]) for r in rows + [("", "", "", "Net P&L", "")])
+    w5 = max(len(r[4]) for r in rows + [("", "", "", "", "Exit Reason")])
+
+    def _sep(l="├", m="┼", r="┤"):
+        return f"  {l}{'─' * (w1+2)}{m}{'─' * (w2+2)}{m}{'─' * (w3+2)}{m}{'─' * (w4+2)}{m}{'─' * (w5+2)}{r}"
+
+    def _row(c1, c2, c3, c4, c5):
+        return f"  │ {c1:<{w1}} │ {c2:<{w2}} │ {c3:<{w3}} │ {c4:<{w4}} │ {c5:<{w5}} │"
+
+    print("\n  Today's trades:\n")
+    print(f"  ┌{'─' * (w1+2)}┬{'─' * (w2+2)}┬{'─' * (w3+2)}┬{'─' * (w4+2)}┬{'─' * (w5+2)}┐")
+    print(_row("Trade ID", "Entry", "Exit", "Net P&L", "Exit Reason"))
+    for row in rows:
+        print(_sep())
+        print(_row(*row))
+    print(f"  └{'─' * (w1+2)}┴{'─' * (w2+2)}┴{'─' * (w3+2)}┴{'─' * (w4+2)}┴{'─' * (w5+2)}┘\n")
 
 
 def main():

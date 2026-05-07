@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time as _time
 import urllib.parse
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from typing import Optional
 
 import yaml
@@ -197,6 +197,11 @@ def _force_exit_all(strats, pnl_engine, risk):
                 pnl_engine.record_trade(s.instrument, result["gross_pnl"], result)
 
 
+def _is_flat(strats) -> bool:
+    """Check if all strategies are flat (no active positions)."""
+    return not any(s.is_active() for s in strats)
+
+
 def _evaluate_stop_checks(strats, pnl_engine, risk, log, regime=None, alerts=None):
     """5/5b. Combined hard stop + LIVE-22 daily rupee cap. Both check_*
     methods short-circuit ``if self.halted: return True`` to signal "session
@@ -210,10 +215,19 @@ def _evaluate_stop_checks(strats, pnl_engine, risk, log, regime=None, alerts=Non
 
     Recovery Exception (AGENTS.md): After a stop-loss, allow single-sided
     re-entry if before 1:00 PM and VIX is stable/falling.
+
+    FIX: Recovery is only allowed when ALL positions are flat. This prevents
+    the restart-loop bug where halted state gets reset while a losing
+    position still exists.
     """
+    # If already halted, verify positions are flat before checking recovery
     if risk.halted:
-        # Check if recovery is allowed
-        if risk.is_recovery_allowed(regime):
+        # If we have active positions, force close them (belt-and-suspenders)
+        if not _is_flat(strats):
+            log.warning("Halted but positions not flat - forcing exit")
+            _force_exit_all(strats, pnl_engine, risk)
+        # Now check if flat and recovery allowed
+        if _is_flat(strats) and risk.is_recovery_allowed(regime):
             log.info("Recovery exception triggered - attempting single-sided re-entry")
             risk.use_recovery()
             if alerts is not None:
@@ -1256,14 +1270,31 @@ def run():
         # cached/stale LTPs the market_data layer has. In paper mode this books
         # an imperfect-but-bounded PnL. In live mode, the broker may reject or
         # fill off-market — but still preferable to silent weekend carry.
+        #
+        # EXTENDED FIX: Also flatten on ANY non-EOD shutdown after market hours
+        # (15:30). This prevents the restart-loop bug where a killed process
+        # leaves positions open and they get restored with stale P&L.
         try:
+            is_abnormal_shutdown = meta.get("last_shutdown_reason") and meta.get("last_shutdown_reason") != "eod"
             tomorrow = datetime.now() + timedelta(days=1)
-            if not is_trading_day_ist(tomorrow) and not position_persistence.is_flat(strats_map, pos_mgr):
-                log.warning(
-                    "Abnormal shutdown before TRADE_END with open positions and "
-                    "next day is non-trading — force-flattening (no-weekend-carry rule)."
-                )
-                _force_exit_all(strats, pnl_engine, risk)
+            now_t = datetime.now().time()
+            past_market_hours = now_t >= time(15, 30)
+            if not position_persistence.is_flat(strats_map, pos_mgr):
+                # Case 1: Next day is not a trading day (weekend/holiday)
+                if not is_trading_day_ist(tomorrow):
+                    log.warning(
+                        "Abnormal shutdown before TRADE_END with open positions and "
+                        "next day is non-trading — force-flattening (no-weekend-carry rule)."
+                    )
+                    _force_exit_all(strats, pnl_engine, risk)
+                # Case 2: Non-EOD shutdown after market hours (crash/kill during/after trading)
+                elif is_abnormal_shutdown and past_market_hours:
+                    log.warning(
+                        "Abnormal shutdown (reason=%s) after market hours with open positions — "
+                        "force-flattening to prevent stale P&L carryover.",
+                        meta.get("last_shutdown_reason"),
+                    )
+                    _force_exit_all(strats, pnl_engine, risk)
         except Exception:
             log.exception("Shutdown-time force-flatten raised")
         try:
