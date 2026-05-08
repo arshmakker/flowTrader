@@ -1185,7 +1185,8 @@ def run():
                 _evaluate_stop_checks(strats, pnl_engine, risk, log, regime, alerts)
 
                 # 6. Entry Logic (requires per-instrument classification).
-                if not risk.halted:
+                _entry_cutoff_t = datetime.strptime(settings.ENTRY_CUTOFF, "%H:%M").time()
+                if not risk.halted and now_t < _entry_cutoff_t:
                     for s in strats:
                         dc = day_classes.get(s.instrument)
                         if dc is None:

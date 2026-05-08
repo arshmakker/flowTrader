@@ -29,6 +29,10 @@ NIFTY_SPOT_EXCHANGE = "NSE"
 CLASSIFY_TIME = "10:30"
 TRADE_END = "15:10"  # Hard close all non-expiring positions
 TRADE_END_EXPIRY = "15:00"  # Hard close positions expiring today (30 min before expiry-day settlement squeeze)
+# Entries after this time are blocked. Any position entered near TRADE_END that does
+# not get force-exited (next day is a trading day) will carry overnight — guaranteed
+# gap risk. 14:30 leaves 40 min for monitoring/harvest without opening new overnight risk.
+ENTRY_CUTOFF = "14:30"
 SIGNAL_RECHECK_SEC = 30
 
 # ══ IRON CONDOR PARAMETERS ══════════════════════════════════════════
