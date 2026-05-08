@@ -356,17 +356,15 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
         entry_time="10:30:00",
     )
 
-    # current_premium = (SC+SP)-(LC+LP) = (17+17)-(1.95+1.95) = 30.1
+    # current_premium mid = (SC+SP)-(LC+LP) = (17+17)-(1.95+1.95) = 30.1
     # pnl_unit = entry_credit - current_premium = 33.0 - 30.1 = 2.9
     # total_pnl = 2.9 * 10 * 30 = 870 = 8.7% of max_profit=10000 → below 13% gate
-    def ltp_side_effect(sym):
+    def qb_side_effect(sym):
         if sym in ("SC", "SP"):
-            return 17.0
-        if sym in ("LC", "LP"):
-            return 1.95
-        return 0.0
+            return QuoteBook(symbol=sym, bid=16.5, ask=17.5, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=1.45, ask=2.45, bid_qty=100, ask_qty=100)
 
-    mock_md.get_ltp.side_effect = ltp_side_effect
+    mock_md.get_quote_book.side_effect = qb_side_effect
     result = s.monitor()
     assert (
         result is None or result.get("exit_reason") != "PROFIT_HARVEST"
@@ -438,35 +436,30 @@ def _make_bnf_position():
 
 
 def test_harvest_deferred_when_bidasked_exit_would_be_fee_negative(mock_om, mock_md):
-    """Regression for 2026-05-07 0101/0102/0104: monitor() reads 2-second cached LTP
-    that shows >13% profit, but fresh bid/ask from exit() shows premiums have risen above
-    entry_credit during a BANKNIFTY rally — making the exit fee-negative.
-    _harvest_fill_viable must detect this and return None rather than calling exit()."""
+    """When mid-based premium shows profit above trigger but the fill-side (pay ask on
+    shorts, receive bid on longs) would be fee-negative due to a wide spread, _harvest_fill_viable
+    must detect this and defer rather than calling exit().
+
+    Wide spread scenario: SC bid=20, ask=32 → mid=26 (shorts must be bought back at ask=32).
+    Mid-based pnl=3615 (>13% of 17415) but fill_gross=(58.05-62)*300=-1185 → fee-negative."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     s._position = _make_bnf_position()
 
-    # Stale LTP shows 15% profit (above 13% trigger): current_premium = 58.05 - 7.55 = 50.50
-    def ltp_side_effect(sym):
-        if sym in ("SC", "SP"):
-            return 27.0  # (27+27)-(2+2) = 50
-        if sym in ("LC", "LP"):
-            return 2.0
-        return 56000.0  # safe spot — between strikes (55000 < 56000 < 57000)
-
-    # Fresh bid/ask shows premiums have rallied: exit_premium = (31+31)-(1+1) = 60 > 58.05
-    # fill_gross = (58.05 - 60) * 300 = -585 → clearly fee-negative → must defer
+    # Mid: SC/SP=(20+32)/2=26, LC/LP=(1+5)/2=3 → premium=46 → pnl=12.05*300=3615 > trigger ✓
+    # Fill: exit_prem=(32+32)-(1+1)=62 > entry=58.05 → fill_gross=-1185 → fee-negative → DEFER ✓
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
-            return QuoteBook(symbol=sym, bid=30.0, ask=31.0, bid_qty=100, ask_qty=100)
-        return QuoteBook(symbol=sym, bid=1.0, ask=2.0, bid_qty=100, ask_qty=100)
+            return QuoteBook(symbol=sym, bid=20.0, ask=32.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=1.0, ask=5.0, bid_qty=100, ask_qty=100)
 
-    mock_md.get_ltp.side_effect = ltp_side_effect
     mock_md.get_quote_book.side_effect = qb_side_effect
+    # Spot between strikes (sp_strike=55000 < 56000 < sc_strike=57000) so breach logic doesn't fire
+    mock_md.get_ltp.return_value = 56000.0
     result = s.monitor()
     assert result is None, (
-        "Harvest must be deferred when bid/ask exit would be fee-negative, "
-        "even though stale LTP shows the trigger crossed"
+        "Harvest must be deferred when fill-side bid/ask exit is fee-negative, "
+        "even though mid-based P&L shows the trigger crossed"
     )
 
 
@@ -477,22 +470,13 @@ def test_harvest_proceeds_when_bidasked_exit_is_fee_positive(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     s._position = _make_bnf_position()
 
-    # LTP shows 20% profit: current_premium = 58.05 - 11.61 = 46.44; use round numbers
-    def ltp_side_effect(sym):
-        if sym in ("SC", "SP"):
-            return 24.0  # (24+24)-(2+2) = 44; pnl_unit=14.05; total=4215 ≈ 24%
-        if sym in ("LC", "LP"):
-            return 2.0
-        return 0.0
-
-    # bid/ask confirms a clean fill: exit_premium = (25+25)-(1.5+1.5) = 47
-    # fill_gross = (58.05 - 47) * 300 = 3315 → well above fees
+    # mid: SC/SP=(24+25)/2=24.5, LC/LP=(1.5+2)/2=1.75 → premium=45.5 → pnl=12.55*300=3765 > trigger
+    # fill: exit_prem=(25+25)-(1.5+1.5)=47; fill_gross=(58.05-47)*300=3315 → well above fees
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
             return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
         return QuoteBook(symbol=sym, bid=1.5, ask=2.0, bid_qty=100, ask_qty=100)
 
-    mock_md.get_ltp.side_effect = ltp_side_effect
     mock_md.get_quote_book.side_effect = qb_side_effect
     result = s.monitor()
     assert (
@@ -500,26 +484,85 @@ def test_harvest_proceeds_when_bidasked_exit_is_fee_positive(mock_om, mock_md):
     ), "Harvest must fire when both LTP threshold and bid/ask fill-check are satisfied"
 
 
-def test_harvest_fail_open_when_quote_book_unavailable(mock_om, mock_md):
-    """When get_quote_book returns None (API glitch), _harvest_fill_viable must fail open
-    so transient data gaps don't permanently block harvests."""
+def test_harvest_skipped_when_quote_book_unavailable(mock_om, mock_md, caplog):
+    """When get_quote_book returns None (API contamination or glitch), monitor() cannot
+    compute a reliable premium and must skip the cycle rather than firing a harvest on
+    unknown data. This is the safer behavior: a transient gap (30s) is acceptable;
+    firing a harvest with no price data risks an exit at a stale or zero fill price."""
+    import logging
+
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     s._position = _make_bnf_position()
 
-    def ltp_side_effect(sym):
-        if sym in ("SC", "SP"):
-            return 24.0
-        if sym in ("LC", "LP"):
-            return 2.0
-        return 0.0
+    mock_md.get_quote_book.return_value = None  # all legs unavailable
+    with caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"):
+        result = s.monitor()
 
-    mock_md.get_ltp.side_effect = ltp_side_effect
-    mock_md.get_quote_book.return_value = None  # API unavailable for all legs
+    assert result is None, "monitor() must skip when quotes are unavailable — no harvest on unknown data"
+    assert any(
+        "quote unavailable" in r.message.lower() for r in caplog.records
+    ), "monitor() must log a WARNING when skipping due to unavailable quotes"
+
+
+def test_monitor_logs_warning_when_quote_unavailable(mock_om, mock_md, caplog):
+    """Regression: monitor() was silent when API contamination staled all LTPs past
+    TTL (2026-05-08 — 56-minute blind spot). After fix, monitor() uses get_quote_book
+    mid for premium computation; if any leg's quote is None/not tradable it must log a
+    WARNING naming the affected leg(s) so operators can diagnose contamination vs hang."""
+    import logging
+
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    good_book = QuoteBook(symbol="X", bid=10.0, ask=10.2, bid_qty=100, ask_qty=100)
+
+    def qb_sc_unavailable(sym):
+        if sym == "SC":
+            return None  # contaminated / API gap
+        return good_book
+
+    mock_md.get_quote_book.side_effect = qb_sc_unavailable
+
+    with caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"):
+        result = s.monitor()
+
+    assert result is None, "monitor() must return None when any quote is unavailable"
+    assert any(
+        "sc" in r.message.lower() and "quote unavailable" in r.message.lower() for r in caplog.records
+    ), "monitor() must log a WARNING naming the unavailable leg(s)"
+
+
+def test_monitor_no_phantom_pnl_from_stale_ltp_illusion(mock_om, mock_md):
+    """Regression: stale-LTP illusion (2026-05-08) — monitor() computed phantom
+    P&L > harvest trigger using last_valid prices from different market moments,
+    creating a false peak_pnl and repeatedly deferring harvests. After fix,
+    monitor() uses get_quote_book mid; when fresh bid/ask show the position is
+    at a loss the harvest trigger must not fire."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    pos = _make_bnf_position()
+    s._position = pos
+
+    # Fresh bid/ask show shorts expanded: exit_prem=70 > entry=57.10 → net loss.
+    # (SC ask=38, SP ask=33, LC bid=0.5, LP bid=0.5 → exit_prem=70)
+    # Mid-based premium: (37+38)/2+(32+33)/2-(0.4+0.5)/2-(0.4+0.5)/2=70.55-0.45=70.1
+    def loss_books(sym):
+        if sym == "SC":
+            return QuoteBook(symbol=sym, bid=37.0, ask=38.0, bid_qty=100, ask_qty=100)
+        if sym == "SP":
+            return QuoteBook(symbol=sym, bid=32.0, ask=33.0, bid_qty=100, ask_qty=100)
+        # LC and LP (longs, sold cheaply)
+        return QuoteBook(symbol=sym, bid=0.4, ask=0.5, bid_qty=100, ask_qty=100)
+
+    mock_md.get_quote_book.side_effect = loss_books
+    initial_peak = pos.peak_pnl
+
     result = s.monitor()
-    assert (
-        result is not None and result.get("exit_reason") == "PROFIT_HARVEST"
-    ), "Harvest must proceed (fail open) when quote book is unavailable"
+
+    assert result is None, "monitor() must not trigger harvest when position is at a loss"
+    assert pos.peak_pnl == initial_peak, "peak_pnl must not be updated when position is at a loss"
 
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):

@@ -238,6 +238,21 @@ class MarketData:
             logger.warning("get_quote_book: malformed fields for %s (quote=%s)", symbol_key, quote)
             return None
 
+        # FixQ3: Shoonya intermittently returns the underlying futures price in
+        # bp1/sp1 for option token queries (same contamination as lp in FixQ1).
+        # A futures price (~55,000) passes is_tradable checks (bid>0, ask>=bid)
+        # and would produce a corrupted QuoteBook used by _harvest_fill_viable.
+        if self._is_option_symbol_key(symbol_key) and (
+            bid > settings.PAPER_OPTION_LTP_MAX or ask > settings.PAPER_OPTION_LTP_MAX
+        ):
+            logger.warning(
+                "get_quote_book: contaminated bid/ask for option %s (bid=%.2f ask=%.2f) — returning None",
+                symbol_key,
+                bid,
+                ask,
+            )
+            return None
+
         return QuoteBook(
             symbol=symbol_key,
             bid=bid,

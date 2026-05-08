@@ -203,6 +203,44 @@ def test_get_quote_book_unresolved_nfo_token_returns_none():
     assert md.get_quote_book("NFO|NIFTY25APR26C22150") is None
 
 
+def test_get_quote_book_rejects_contaminated_option_bid_ask():
+    """Regression (2026-05-08 FixQ3): Shoonya intermittently returns the underlying
+    futures price in bp1/sp1 for option queries (same contamination as lp in FixQ1).
+    A bid or ask > PAPER_OPTION_LTP_MAX (5000) must cause get_quote_book to return None
+    rather than a QuoteBook whose is_tradable would pass and corrupt _harvest_fill_viable."""
+
+    class MockAPI:
+        def get_quotes(self, exchange=None, token=None):
+            return {
+                "bp1": "55568.0",  # futures price bled into option bid
+                "sp1": "55600.0",  # futures price in option ask
+                "bq1": "50",
+                "sq1": "50",
+            }
+
+    md = MarketData(MockAPI(), _FakeSymbolManager())
+    result = md.get_quote_book("NFO|BANKNIFTY26MAY26C56700")
+    assert result is None, (
+        "get_quote_book must return None when bid or ask exceeds PAPER_OPTION_LTP_MAX "
+        "(futures-price contamination in bp1/sp1)"
+    )
+
+
+def test_get_quote_book_allows_valid_option_bid_ask():
+    """Non-contaminated option bid/ask within [PAPER_OPTION_LTP_MIN, PAPER_OPTION_LTP_MAX]
+    must still produce a QuoteBook normally."""
+
+    class MockAPI:
+        def get_quotes(self, exchange=None, token=None):
+            return {"bp1": "562.0", "sp1": "563.5", "bq1": "200", "sq1": "150"}
+
+    md = MarketData(MockAPI(), _FakeSymbolManager())
+    result = md.get_quote_book("NFO|BANKNIFTY26MAY26C56700")
+    assert result is not None
+    assert result.bid == 562.0
+    assert result.ask == 563.5
+
+
 def test_reset_daily_clears_open_price_fallback():
     """reset_daily() clears _open_price_fallback."""
     call_count = [0]

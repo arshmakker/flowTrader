@@ -1189,17 +1189,29 @@ class IronCondorStrategy:
             return None
 
         pos = self._position
-        prices = {
-            "sc": self.md.get_ltp(pos.sc_sym),
-            "sp": self.md.get_ltp(pos.sp_sym),
-            "lc": self.md.get_ltp(pos.lc_sym),
-            "lp": self.md.get_ltp(pos.lp_sym),
+        # Use fresh bid/ask mid rather than get_ltp (last_valid) so that the
+        # premium is computed from a single coherent market snapshot. Using
+        # last_valid across legs creates a stale-LTP illusion: different legs
+        # can cache their last clean tick at different market moments, producing
+        # a phantom spread that falsely crosses the harvest trigger even when
+        # the position is at a loss.
+        books = {
+            "sc": self.md.get_quote_book(pos.sc_sym),
+            "sp": self.md.get_quote_book(pos.sp_sym),
+            "lc": self.md.get_quote_book(pos.lc_sym),
+            "lp": self.md.get_quote_book(pos.lp_sym),
         }
-
-        if any(p <= 0 for p in prices.values()):
+        unavailable = [k for k, b in books.items() if b is None or not b.is_tradable]
+        if unavailable:
+            logger.warning("IC %s monitor: quote unavailable for %s — skipping cycle", self.instrument, unavailable)
             return None
 
-        current_premium = (prices["sc"] + prices["sp"]) - (prices["lc"] + prices["lp"])
+        current_premium = (
+            (books["sc"].bid + books["sc"].ask) / 2
+            + (books["sp"].bid + books["sp"].ask) / 2
+            - (books["lc"].bid + books["lc"].ask) / 2
+            - (books["lp"].bid + books["lp"].ask) / 2
+        )
         pnl_unit = pos.entry_credit - current_premium
 
         # Get actual lot size from master via market data
