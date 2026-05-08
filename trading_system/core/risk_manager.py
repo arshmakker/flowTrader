@@ -19,12 +19,12 @@ class RiskManager:
     def is_recovery_allowed(self, regime: Any = None) -> bool:
         """AGENTS.md: Recovery exception — single-sided re-entry after stop-loss.
         Allowed only if:
-        1. Stop was hit (self.halted is True)
+        1. Stop was hit via combined-stop (not daily-cap — that halt is final for the day)
         2. It is before 1:00 PM IST
         3. VIX is stable (optional check via regime parameter)
         4. Recovery not already used this session (self._recovery_used)
         """
-        if not self.halted or self._recovery_used:
+        if not self.halted or self._recovery_used or self._daily_cap_halted:
             return False
         now = datetime.now().time()
         if now >= time(13, 0):
@@ -48,6 +48,7 @@ class RiskManager:
         self._stop_breach_streak = 0
         self._rollback_failures: List[Dict] = []
         self._recovery_used = False  # AGENTS.md: recovery allowed only once per stop
+        self._daily_cap_halted = False  # daily-cap halt; recovery is not allowed after this
         # LIVE-23: alerts channel. Default to NullAlertChannel so existing
         # RiskManager() call sites keep working unchanged.
         self._alerts: AlertChannel = alerts if alerts is not None else NullAlertChannel()
@@ -148,6 +149,7 @@ class RiskManager:
                 settings.SHAKEDOWN_MODE,
             )
             self.halted = True
+            self._daily_cap_halted = True
             self.stop_hit_at = datetime.now()
             self._alerts.send(
                 Alert(
@@ -194,6 +196,7 @@ class RiskManager:
         self.halted = False
         self.stop_hit_at = None
         self._stop_breach_streak = 0
+        self._daily_cap_halted = False
 
     def save_state(self) -> Dict:
         return {
@@ -201,6 +204,7 @@ class RiskManager:
             "stop_hit_at": self.stop_hit_at.isoformat() if self.stop_hit_at else None,
             "stop_breach_streak": self._stop_breach_streak,
             "rollback_failures": self._rollback_failures,
+            "daily_cap_halted": self._daily_cap_halted,
         }
 
     def restore_state(self, state: Dict, *, reset_daily: bool = False) -> None:
@@ -210,6 +214,7 @@ class RiskManager:
         self.halted = state.get("halted", False)
         self._stop_breach_streak = state.get("stop_breach_streak", 0)
         self._rollback_failures = state.get("rollback_failures", [])
+        self._daily_cap_halted = state.get("daily_cap_halted", False)
         stop_hit_str = state.get("stop_hit_at")
         if stop_hit_str:
             self.stop_hit_at = datetime.fromisoformat(stop_hit_str)

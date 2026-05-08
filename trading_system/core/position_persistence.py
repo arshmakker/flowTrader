@@ -172,6 +172,16 @@ def load(
             target_data = payload.get("target_state", {})
             if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
                 daily_target.restore_state(target_data, reset_hit=False)
+            # Entry counters (e.g. SHAKEDOWN cap) live inside strategy state and must
+            # survive flat restarts — a flat session means no open legs, not no entries.
+            for key, state in payload.get("strategies", {}).items():
+                strat = strategies.get(key)
+                if strat is None:
+                    continue
+                try:
+                    strat.restore_state(state)
+                except Exception:
+                    logger.exception("Failed to restore strategy counters for %s (flat restart)", key)
         return {
             "restored_strategies": 0,
             "tracker_positions": 0,
