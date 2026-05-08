@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 # so the harvest-and-re-enter loop can run unlimited within a single day.
 # FORCE_EXIT and any future stop-loss reason are intentionally excluded —
 # entries after those should be refused if the cap is consumed.
-_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED")
+# SHUTDOWN_FLATTEN is added so a user-initiated Ctrl+C flatten (process restart)
+# does not consume the per-day SHAKEDOWN fresh-entry cap. Risk-triggered FORCE_EXIT
+# (daily cap halt, 3x stop-loss) intentionally stays excluded.
+_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED", "SHUTDOWN_FLATTEN")
 
 _EXPIRY_RE = re.compile(r"(\d{2})([A-Z]{3})(\d{2})", re.IGNORECASE)
 _MONTH_MAP = {
@@ -1366,11 +1369,11 @@ class IronCondorStrategy:
         self._last_exit_date = datetime.now().date().isoformat()
         return result
 
-    def force_exit(self) -> Optional[Dict]:
+    def force_exit(self, reason: str = "FORCE_EXIT") -> Optional[Dict]:
         if not self.is_active():
             return None
         pnl = self._calculate_current_pnl()
-        return self.exit("FORCE_EXIT", pnl)
+        return self.exit(reason, pnl)
 
     def save_state(self) -> Optional[Dict]:
         # SHAKEDOWN-03a: counter persists alongside the position so a same-day

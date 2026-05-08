@@ -184,7 +184,7 @@ def _check_kill_switch(strats, pnl_engine, risk, log, alerts=None) -> bool:
     return True
 
 
-def _force_exit_all(strats, pnl_engine, risk):
+def _force_exit_all(strats, pnl_engine, risk, reason: str = "FORCE_EXIT"):
     """Flatten all active strategies and route each exit through the P&L engine.
     Used by the EOD pre-holiday flatten and the combined-hard-stop paths.
     Axiom 5: realised P&L has exactly one home — `pnl_engine.record_trade`.
@@ -192,7 +192,7 @@ def _force_exit_all(strats, pnl_engine, risk):
     that may hook off exits."""
     for s in strats:
         if s.is_active():
-            result = s.force_exit()
+            result = s.force_exit(reason)
             if result:
                 pnl_engine.record_trade(s.instrument, result["gross_pnl"], result)
 
@@ -1287,7 +1287,7 @@ def run():
                         "Abnormal shutdown before TRADE_END with open positions and "
                         "next day is non-trading — force-flattening (no-weekend-carry rule)."
                     )
-                    _force_exit_all(strats, pnl_engine, risk)
+                    _force_exit_all(strats, pnl_engine, risk, reason="SHUTDOWN_FLATTEN")
                 # Case 2: Non-EOD shutdown after market hours (crash/kill during/after trading)
                 elif is_abnormal_shutdown and past_market_hours:
                     log.warning(
@@ -1295,7 +1295,7 @@ def run():
                         "force-flattening to prevent stale P&L carryover.",
                         meta.get("last_shutdown_reason"),
                     )
-                    _force_exit_all(strats, pnl_engine, risk)
+                    _force_exit_all(strats, pnl_engine, risk, reason="SHUTDOWN_FLATTEN")
         except Exception:
             log.exception("Shutdown-time force-flatten raised")
         try:

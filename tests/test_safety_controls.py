@@ -923,6 +923,40 @@ class TestShakedownLooseHarvestSemantics:
             strat._last_exit_date = today
             assert strat._check_session_entry_cap() is False  # halted, no bypass
 
+    def test_shutdown_flatten_enables_re_entry_bypass(self):
+        """Regression (2026-05-08): user pressed Ctrl+C on a Friday; finally-block
+        force-flattened with reason=FORCE_EXIT, blocking re-entry after restart.
+        SHUTDOWN_FLATTEN must qualify as a re-entry signal so a process restart
+        does not consume the daily fresh-entry cap."""
+        strat = self._make_strategy()
+        with (
+            patch.object(settings, "SHAKEDOWN_MODE", True),
+            patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1),
+        ):
+            strat._record_session_entry()  # fresh entry: count=1
+            today = datetime.now().date().isoformat()
+            strat._last_exit_reason = "SHUTDOWN_FLATTEN"
+            strat._last_exit_date = today
+            assert strat._is_re_entry() is True, (
+                "SHUTDOWN_FLATTEN must qualify as a re-entry so process restart " "does not consume the daily cap"
+            )
+            assert strat._check_session_entry_cap() is True
+
+    def test_force_exit_still_blocked_after_shutdown_flatten_added(self):
+        """FORCE_EXIT (risk halt / daily cap) must still block re-entry even after
+        SHUTDOWN_FLATTEN was added to the qualifying set."""
+        strat = self._make_strategy()
+        with (
+            patch.object(settings, "SHAKEDOWN_MODE", True),
+            patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1),
+        ):
+            strat._record_session_entry()
+            today = datetime.now().date().isoformat()
+            strat._last_exit_reason = "FORCE_EXIT"
+            strat._last_exit_date = today
+            assert strat._is_re_entry() is False
+            assert strat._check_session_entry_cap() is False
+
     def test_unlimited_harvest_re_entries_in_one_day(self):
         """100 harvest cycles: 1 fresh entry + 99 harvest re-entries — all
         permitted, count stays at 1. The harvest revenue model is preserved
