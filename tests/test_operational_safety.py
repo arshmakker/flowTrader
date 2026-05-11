@@ -310,3 +310,39 @@ def test_flat_session_restores_entry_counter_on_same_day_restart():
             assert strat.restored_state["entries_today"] == 1
     finally:
         position_persistence.STATE_FILE = original
+
+
+def test_eod_shutdown_reason_not_overwritten_by_finally_block():
+    """Regression: main.py finally block always saved shutdown_reason='shutdown',
+    overwriting the 'eod' written by the in-loop TRADE_END save. After the fix,
+    eod_completed=True guards the finally-block save so it is skipped.
+
+    This test verifies position_persistence.save preserves 'eod' when called once
+    (the fixed path) and documents that a second call with 'shutdown' would
+    overwrite it (the pre-fix bug path)."""
+    import json
+    from datetime import date
+
+    from trading_system.core.position_persistence import SESSION_ACTIVE, save
+
+    today = date.today().isoformat()
+    original = position_persistence.STATE_FILE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            position_persistence.STATE_FILE = os.path.join(tmp, "open_positions.json")
+
+            # Fixed path: EOD in-loop save runs, finally-block save is skipped.
+            save({}, object(), shutdown_reason="eod", trading_date=today, session_status=SESSION_ACTIVE)
+            with open(position_persistence.STATE_FILE) as f:
+                state = json.load(f)
+            assert state["last_shutdown_reason"] == "eod", "EOD save must write shutdown_reason='eod'"
+
+            # Bug path (pre-fix): finally block then overwrites with 'shutdown'.
+            save({}, object(), shutdown_reason="shutdown", trading_date=today, session_status=SESSION_ACTIVE)
+            with open(position_persistence.STATE_FILE) as f:
+                state = json.load(f)
+            assert (
+                state["last_shutdown_reason"] == "shutdown"
+            ), "Confirms the pre-fix bug: a second save overwrites 'eod' with 'shutdown'"
+    finally:
+        position_persistence.STATE_FILE = original

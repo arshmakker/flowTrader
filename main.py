@@ -1050,6 +1050,7 @@ def run():
 
     day_classes = {"NIFTY": None, "BANKNIFTY": None}
     collection_started = False
+    eod_completed = False
     _auth_state = {"attempted": False}
     _last_session_check = 0.0
 
@@ -1170,6 +1171,7 @@ def run():
                         "Daily session ended.%s",
                         " All positions closed." if not next_day_is_trading else " Positions carried overnight.",
                     )
+                    eod_completed = True
                     break
 
                 # 3. Day Classification — per instrument (BUG-08).
@@ -1308,20 +1310,23 @@ def run():
                     _force_exit_all(strats, pnl_engine, risk, reason="SHUTDOWN_FLATTEN")
         except Exception:
             log.exception("Shutdown-time force-flatten raised")
-        try:
-            flat_now = position_persistence.is_flat(strats_map, pos_mgr)
-            position_persistence.save(
-                strats_map,
-                pos_mgr,
-                pnl_engine,
-                risk,
-                regime,
-                session_status=(position_persistence.SESSION_FLAT if flat_now else position_persistence.SESSION_ACTIVE),
-                shutdown_reason="shutdown",
-                flat_verified_at=datetime.now().isoformat() if flat_now else None,
-            )
-        except Exception:
-            log.exception("Failed to persist state on shutdown")
+        if not eod_completed:
+            try:
+                flat_now = position_persistence.is_flat(strats_map, pos_mgr)
+                position_persistence.save(
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    regime,
+                    session_status=(
+                        position_persistence.SESSION_FLAT if flat_now else position_persistence.SESSION_ACTIVE
+                    ),
+                    shutdown_reason="shutdown",
+                    flat_verified_at=datetime.now().isoformat() if flat_now else None,
+                )
+            except Exception:
+                log.exception("Failed to persist state on shutdown")
 
 
 if __name__ == "__main__":
