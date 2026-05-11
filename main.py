@@ -991,15 +991,19 @@ def run():
 
     # Stale-trading-day guard: if the persisted state is from a prior trading
     # day (not a weekend/holiday gap — that's Fix #5b above) and positions are
-    # still active, the prior session ended abnormally before EOD. Force-flatten
-    # so today's daily counters start clean.
-    if meta.get("is_stale_trading_day") and not currently_flat:
+    # still active AND the prior session ended abnormally (not a clean EOD),
+    # force-flatten so today's daily counters start clean.
+    # Intentional overnight carries have shutdown_reason="eod" — those positions
+    # are restored and monitored normally through the main loop.
+    last_reason = meta.get("last_shutdown_reason", "") or ""
+    if meta.get("is_stale_trading_day") and not currently_flat and last_reason != "eod":
         open_syms = [s.instrument for s in strats if s.is_active()]
         log.warning(
-            "Prior-day positions still active (%s, stale_date=%s) — force-flattening "
-            "at current prices so today starts clean.",
+            "Prior-day positions still active (%s, stale_date=%s, reason=%s) — "
+            "abnormal carry: force-flattening at current prices so today starts clean.",
             ", ".join(open_syms) or "(tracker-only)",
             meta.get("trading_date"),
+            last_reason or "(unknown)",
         )
         _force_exit_all(strats, pnl_engine, risk, reason="STALE_DAY_FLATTEN")
 

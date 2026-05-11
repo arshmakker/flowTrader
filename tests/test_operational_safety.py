@@ -312,6 +312,141 @@ def test_flat_session_restores_entry_counter_on_same_day_restart():
         position_persistence.STATE_FILE = original
 
 
+def test_intentional_eod_carry_not_stale_day_flattened():
+    """Regression: stale-day guard must NOT force-flatten a position that was
+    intentionally carried overnight by the EOD path (shutdown_reason='eod').
+    Only abnormal carries (crash/Ctrl-C) should be flattened at startup."""
+    import json
+
+    from trading_system.core.position_persistence import SESSION_ACTIVE
+
+    class _StrategyStub:
+        def __init__(self):
+            self.force_exit_called = False
+            self._active = True
+
+        def is_active(self):
+            return self._active
+
+        def force_exit(self, reason):
+            self.force_exit_called = True
+            self._active = False
+            return {"gross_pnl": 0.0}
+
+        def restore_state(self, state):
+            pass
+
+        def save_state(self):
+            return {}
+
+    original = position_persistence.STATE_FILE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            position_persistence.STATE_FILE = os.path.join(tmp, "open_positions.json")
+            payload = {
+                "saved_at": "2026-05-11T15:10:21",
+                "session_status": SESSION_ACTIVE,
+                "trading_date": "2026-05-08",  # prior trading day → stale
+                "last_shutdown_reason": "eod",  # intentional carry
+                "strategies": {"BANKNIFTY": {}},
+                "tracker_positions": {
+                    "NFO|BN_SC": {"symbol": "NFO|BN_SC", "qty": -300, "avg_price": 100.0, "side": "SELL", "costs": 0}
+                },
+                "pnl_state": {},
+                "risk_state": {},
+                "target_state": {},
+                "regime_state": {},
+            }
+            with open(position_persistence.STATE_FILE, "w") as f:
+                json.dump(payload, f)
+
+            strat = _StrategyStub()
+
+            class _TrackerStub:
+                def has_open_positions(self):
+                    return True
+
+                def save_state(self):
+                    return {}
+
+            tracker = _TrackerStub()
+            meta = position_persistence.load({"BANKNIFTY": strat}, tracker)
+
+            # Guard condition as written in main.py
+            last_reason = meta.get("last_shutdown_reason", "") or ""
+            should_flatten = (
+                meta.get("is_stale_trading_day")
+                and not position_persistence.is_flat({"BANKNIFTY": strat}, tracker)
+                and last_reason != "eod"
+            )
+            assert (
+                not should_flatten
+            ), "Intentional EOD carry (shutdown_reason='eod') must not trigger stale-day flatten"
+    finally:
+        position_persistence.STATE_FILE = original
+
+
+def test_abnormal_stale_carry_is_flattened():
+    """Complement: stale-day guard MUST flatten a position whose prior session
+    ended abnormally (crash/Ctrl-C, shutdown_reason='shutdown')."""
+    import json
+
+    from trading_system.core.position_persistence import SESSION_ACTIVE
+
+    class _StrategyStub:
+        def is_active(self):
+            return True
+
+        def restore_state(self, state):
+            pass
+
+        def save_state(self):
+            return {}
+
+    original = position_persistence.STATE_FILE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            position_persistence.STATE_FILE = os.path.join(tmp, "open_positions.json")
+            payload = {
+                "saved_at": "2026-05-11T13:52:33",
+                "session_status": SESSION_ACTIVE,
+                "trading_date": "2026-05-08",
+                "last_shutdown_reason": "shutdown",  # abnormal carry
+                "strategies": {"BANKNIFTY": {}},
+                "tracker_positions": {
+                    "NFO|BN_SC": {"symbol": "NFO|BN_SC", "qty": -300, "avg_price": 100.0, "side": "SELL", "costs": 0}
+                },
+                "pnl_state": {},
+                "risk_state": {},
+                "target_state": {},
+                "regime_state": {},
+            }
+            with open(position_persistence.STATE_FILE, "w") as f:
+                json.dump(payload, f)
+
+            strat = _StrategyStub()
+
+            class _TrackerStub:
+                def has_open_positions(self):
+                    return True
+
+                def save_state(self):
+                    return {}
+
+            tracker = _TrackerStub()
+            meta = position_persistence.load({"BANKNIFTY": strat}, tracker)
+
+            last_reason = meta.get("last_shutdown_reason", "") or ""
+            should_flatten = (
+                meta.get("is_stale_trading_day")
+                and not position_persistence.is_flat({"BANKNIFTY": strat}, tracker)
+                and last_reason != "eod"
+            )
+            assert should_flatten, "Abnormal carry (shutdown_reason='shutdown') must trigger stale-day flatten"
+    finally:
+        position_persistence.STATE_FILE = original
+
+
 def test_eod_shutdown_reason_not_overwritten_by_finally_block():
     """Regression: main.py finally block always saved shutdown_reason='shutdown',
     overwriting the 'eod' written by the in-loop TRADE_END save. After the fix,
