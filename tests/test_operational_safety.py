@@ -191,7 +191,11 @@ def test_recovery_not_allowed_after_daily_cap_halt():
         from trading_system.config import settings
 
         risk = RiskManager()
-        with patch.object(settings, "SHAKEDOWN_MODE", True), patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000):
+        with (
+            patch.object(settings, "SHAKEDOWN_MODE", True),
+            patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000),
+            patch.object(settings, "PAPER_TRADE_MODE", False),
+        ):
             risk.check_daily_loss_cap(pnl)
 
         assert risk.halted is True

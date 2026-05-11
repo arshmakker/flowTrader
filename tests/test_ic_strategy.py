@@ -565,6 +565,70 @@ def test_monitor_no_phantom_pnl_from_stale_ltp_illusion(mock_om, mock_md):
     assert pos.peak_pnl == initial_peak, "peak_pnl must not be updated when position is at a loss"
 
 
+def test_monitor_no_phantom_harvest_when_ltp_shows_loss(mock_om, mock_md):
+    """Regression: 2026-05-11 phantom PROFIT_HARVEST — quote-book mids at market
+    open showed phantom profit (stale/wide resting orders on bp1/sp1) while LTP
+    (last-trade) showed the position at a loss. monitor() fired harvest; fills
+    at LTP-based prices produced net PnL=-5,594 instead of profit.
+
+    Fix: dual-source check — both mid-based AND LTP-based PnL must clear the
+    harvest trigger before exit() is called. This test verifies that when mids
+    show profit >= trigger but LTP shows a loss, monitor() defers the harvest."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    # Mirrors today's position: entry_credit=67.60, 10 lots, lot_size=30
+    # max_profit = 67.60 * 10 * 30 = 20,280; trigger = 20,280 * 0.13 = 2,636.40
+    s._position = IC_Position(
+        instrument="BANKNIFTY",
+        sc_sym="SC",
+        sp_sym="SP",
+        lc_sym="LC",
+        lp_sym="LP",
+        sc_strike=55900,
+        sp_strike=54200,
+        lc_strike=56000,
+        lp_strike=54100,
+        max_profit=20280,
+        entry_credit=67.60,
+        lots=10,
+        entry_time="09:30:34",
+    )
+
+    # Phantom mids: stale resting orders make shorts look cheap (SC mid=25, SP mid=20)
+    # and longs look near-zero (LC/LP mid=1.25).
+    # mid_premium = 25+20-1.25-1.25 = 42.5
+    # pnl_unit_mid = 67.60 - 42.5 = 25.1; total_pnl_mid = 25.1*300 = 7,530 > 2,636 ✓
+    def phantom_qb(sym):
+        if sym == "SC":
+            return QuoteBook(symbol=sym, bid=20.0, ask=30.0, bid_qty=100, ask_qty=100)
+        if sym == "SP":
+            return QuoteBook(symbol=sym, bid=15.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=0.5, ask=2.0, bid_qty=100, ask_qty=100)
+
+    # Actual LTP (last-trade): shorts still expensive, position at a loss
+    # ltp_premium = 535+480-495-445 = 75; pnl_ltp = (67.60-75)*300 = -2,220 < trigger
+    def real_ltp(sym):
+        if sym == "SC":
+            return 535.0
+        if sym == "SP":
+            return 480.0
+        if sym == "LC":
+            return 495.0
+        if sym == "LP":
+            return 445.0
+        return 55000.0  # spot between strikes — no breach
+
+    mock_md.get_quote_book.side_effect = phantom_qb
+    mock_md.get_ltp.side_effect = real_ltp
+
+    result = s.monitor()
+
+    assert result is None, (
+        "Harvest must be deferred when mid-based PnL shows phantom profit "
+        "but LTP-based PnL shows the position is at a loss"
+    )
+
+
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):
     """LIVE-29: when 20-day range forces SC far from spot, cap to IC_SR_CAP_OTM_FROM_SPOT.
     S/R (SR_HIGH=57477) forced SC=57600 (3600 OTM from spot=54000) — illiquid, ~0 credit.

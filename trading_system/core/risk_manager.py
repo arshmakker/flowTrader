@@ -49,6 +49,7 @@ class RiskManager:
         self._rollback_failures: List[Dict] = []
         self._recovery_used = False  # AGENTS.md: recovery allowed only once per stop
         self._daily_cap_halted = False  # daily-cap halt; recovery is not allowed after this
+        self._paper_cap_notified = False  # paper mode: log once, don't spam every cycle
         # LIVE-23: alerts channel. Default to NullAlertChannel so existing
         # RiskManager() call sites keep working unchanged.
         self._alerts: AlertChannel = alerts if alerts is not None else NullAlertChannel()
@@ -136,12 +137,40 @@ class RiskManager:
 
         Effective cap is settings.DAILY_MAX_LOSS_SHAKEDOWN when SHAKEDOWN_MODE
         is True (proving-period tighter ceiling), else settings.DAILY_MAX_LOSS.
+
+        Paper-mode carve-out: in pure paper trading (PAPER_TRADE_MODE=True) the
+        loss cap fires a one-time CRITICAL log + alert but does NOT halt the session.
+        The cap is informational only in paper mode — real-money discipline applies
+        in live/shakedown-live context.
         """
         if self.halted:
             return True
+        if self._paper_cap_notified:
+            return False
         cap = settings.DAILY_MAX_LOSS_SHAKEDOWN if settings.SHAKEDOWN_MODE else settings.DAILY_MAX_LOSS
         daily = pnl_engine.daily_realised_pnl + pnl_engine.unrealised_pnl
         if daily < -cap:
+            if settings.PAPER_TRADE_MODE:
+                if not self._paper_cap_notified:
+                    logger.critical(
+                        "DAILY LOSS CAP HIT (paper mode — no halt): daily_pnl=%.2f < -%.0f "
+                        "(shakedown=%s). Logging only; trading continues.",
+                        daily,
+                        cap,
+                        settings.SHAKEDOWN_MODE,
+                    )
+                    self._alerts.send(
+                        Alert(
+                            event="daily_loss_cap",
+                            severity="critical",
+                            title="RegimeTrader: daily loss cap hit (paper mode)",
+                            body=(
+                                f"Daily P&L ₹{daily:,.0f} breached cap ₹{-cap:,.0f}. " "Paper mode — trading continues."
+                            ),
+                        )
+                    )
+                    self._paper_cap_notified = True
+                return False
             logger.critical(
                 "DAILY LOSS CAP HIT: daily_pnl=%.2f < -%.0f (shakedown=%s). Halting entries and flattening.",
                 daily,
@@ -197,6 +226,7 @@ class RiskManager:
         self.stop_hit_at = None
         self._stop_breach_streak = 0
         self._daily_cap_halted = False
+        self._paper_cap_notified = False
 
     def save_state(self) -> Dict:
         return {

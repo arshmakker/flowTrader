@@ -967,12 +967,8 @@ def run():
     # require the operator to reconcile intentionally.
     last_reason = meta.get("last_shutdown_reason", "") or ""
     last_saved_at = meta.get("saved_at", "") or ""
-    if (
-        last_reason
-        and last_reason != "eod"
-        and not position_persistence.is_flat(strats_map, pos_mgr)
-        and _crossed_non_trading_day(last_saved_at)
-    ):
+    currently_flat = position_persistence.is_flat(strats_map, pos_mgr)
+    if last_reason and last_reason != "eod" and not currently_flat and _crossed_non_trading_day(last_saved_at):
         open_syms = [s.instrument for s in strats if s.is_active()]
         log.error(
             "Past-abnormal-exit position(s): %s. Previous session ended with reason=%r "
@@ -992,6 +988,20 @@ def run():
         risk.halted = True
         risk.stop_hit_at = datetime.now()
         return
+
+    # Stale-trading-day guard: if the persisted state is from a prior trading
+    # day (not a weekend/holiday gap — that's Fix #5b above) and positions are
+    # still active, the prior session ended abnormally before EOD. Force-flatten
+    # so today's daily counters start clean.
+    if meta.get("is_stale_trading_day") and not currently_flat:
+        open_syms = [s.instrument for s in strats if s.is_active()]
+        log.warning(
+            "Prior-day positions still active (%s, stale_date=%s) — force-flattening "
+            "at current prices so today starts clean.",
+            ", ".join(open_syms) or "(tracker-only)",
+            meta.get("trading_date"),
+        )
+        _force_exit_all(strats, pnl_engine, risk, reason="STALE_DAY_FLATTEN")
 
     # LIVE-07: broker is the authoritative source of open exposure in live
     # mode. A crash between leg-2 fill and leg-3 send leaves the engine's

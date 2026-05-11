@@ -196,15 +196,17 @@ class TestDailyLossCap:
         """Daily P&L one rupee below cap — halts."""
         risk = RiskManager()
         pnl = self._make_pnl(daily_realised=-40_000, unrealised=-10_001)
-        # total = -50_001 < -50_000 → breached
-        assert risk.check_daily_loss_cap(pnl) is True
+        # total = -50_001 < -50_000 → breached; paper mode off so halt fires
+        with patch.object(settings, "PAPER_TRADE_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is True
         assert risk.halted is True
 
     def test_over_cap_returns_true_and_halts(self):
         """Daily P&L beyond the cap — halts."""
         risk = RiskManager()
         pnl = self._make_pnl(daily_realised=-45_000, unrealised=-10_000)
-        assert risk.check_daily_loss_cap(pnl) is True
+        with patch.object(settings, "PAPER_TRADE_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is True
         assert risk.halted is True
 
     def test_already_halted_returns_true_without_recalculating(self):
@@ -224,8 +226,9 @@ class TestDailyLossCap:
         risk = RiskManager()
         pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
 
-        # Cycle 1: cap hit → halted
-        assert risk.check_daily_loss_cap(pnl) is True
+        # Cycle 1: cap hit → halted (live mode)
+        with patch.object(settings, "PAPER_TRADE_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is True
         assert risk.halted is True
 
         # Cycles 2+: entry block skipped because risk.halted is True
@@ -258,7 +261,8 @@ class TestAlertEmission:
         risk = RiskManager(alerts=alerts)
         pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
 
-        assert risk.check_daily_loss_cap(pnl) is True
+        with patch.object(settings, "PAPER_TRADE_MODE", False):
+            assert risk.check_daily_loss_cap(pnl) is True
         assert len(alerts.sent) == 1
         assert alerts.sent[0].event == "daily_loss_cap"
         assert alerts.sent[0].severity == "critical"
@@ -361,7 +365,11 @@ class TestShakedownDailyLossCap:
         # Default DAILY_MAX_LOSS=50k would NOT halt at -12k loss; shakedown
         # cap of 10k DOES halt. The tighter cap is the whole point.
         pnl = self._make_pnl(daily_realised=-12_000, unrealised=0)
-        with patch.object(settings, "SHAKEDOWN_MODE", True), patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000):
+        with (
+            patch.object(settings, "SHAKEDOWN_MODE", True),
+            patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000),
+            patch.object(settings, "PAPER_TRADE_MODE", False),
+        ):
             assert risk.check_daily_loss_cap(pnl) is True
             assert risk.halted is True
 
@@ -387,11 +395,54 @@ class TestShakedownDailyLossCap:
         alerts = NullAlertChannel()
         risk = RiskManager(alerts=alerts)
         pnl = self._make_pnl(daily_realised=-15_000, unrealised=0)
-        with patch.object(settings, "SHAKEDOWN_MODE", True), patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000):
+        with (
+            patch.object(settings, "SHAKEDOWN_MODE", True),
+            patch.object(settings, "DAILY_MAX_LOSS_SHAKEDOWN", 10_000),
+            patch.object(settings, "PAPER_TRADE_MODE", False),
+        ):
             assert risk.check_daily_loss_cap(pnl) is True
         assert len(alerts.sent) == 1
         assert alerts.sent[0].event == "daily_loss_cap"
         assert "10,000" in alerts.sent[0].body  # tighter cap, not 50k
+
+    def test_paper_mode_does_not_halt_on_daily_cap_breach(self):
+        """Regression (2026-05-08 Bug 5): in pure paper mode the daily loss cap
+        must NOT set halted=True. A phantom stale-position loss triggered the cap
+        at 09:31, halting the entire session before any real trades ran.
+        Paper mode logs + alerts once but keeps trading."""
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+        pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
+        with (
+            patch.object(settings, "PAPER_TRADE_MODE", True),
+            patch.object(settings, "DAILY_MAX_LOSS", 50_000),
+        ):
+            result = risk.check_daily_loss_cap(pnl)
+        assert result is False
+        assert risk.halted is False
+        assert risk._daily_cap_halted is False
+        assert len(alerts.sent) == 1
+        assert alerts.sent[0].event == "daily_loss_cap"
+
+    def test_paper_mode_cap_alert_fires_only_once(self):
+        """Second call after cap breach in paper mode must not re-log or re-alert."""
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+        pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
+        with patch.object(settings, "PAPER_TRADE_MODE", True), patch.object(settings, "DAILY_MAX_LOSS", 50_000):
+            risk.check_daily_loss_cap(pnl)
+            risk.check_daily_loss_cap(pnl)
+        assert len(alerts.sent) == 1  # not 2
+
+    def test_live_mode_still_halts_on_daily_cap_breach(self):
+        """Paper-mode carve-out must not affect live/shakedown behaviour."""
+        risk = RiskManager()
+        pnl = self._make_pnl(daily_realised=-60_000, unrealised=0)
+        with patch.object(settings, "PAPER_TRADE_MODE", False), patch.object(settings, "DAILY_MAX_LOSS", 50_000):
+            result = risk.check_daily_loss_cap(pnl)
+        assert result is True
+        assert risk.halted is True
+        assert risk._daily_cap_halted is True
 
 
 # ── SHAKEDOWN: live-ACK handshake required for live mode ─────────────────────
@@ -923,11 +974,12 @@ class TestShakedownLooseHarvestSemantics:
             strat._last_exit_date = today
             assert strat._check_session_entry_cap() is False  # halted, no bypass
 
-    def test_shutdown_flatten_enables_re_entry_bypass(self):
-        """Regression (2026-05-08): user pressed Ctrl+C on a Friday; finally-block
-        force-flattened with reason=FORCE_EXIT, blocking re-entry after restart.
-        SHUTDOWN_FLATTEN must qualify as a re-entry signal so a process restart
-        does not consume the daily fresh-entry cap."""
+    def test_shutdown_flatten_does_not_bypass_entry_cap(self):
+        """Regression (2026-05-08 Bug 2): SHUTDOWN_FLATTEN was briefly added to
+        _RE_ENTRY_EXIT_REASONS, allowing trade 2 to enter after a process restart
+        mid-session when the SHAKEDOWN cap was already consumed by trade 1.
+        SHUTDOWN_FLATTEN must NOT qualify as a re-entry signal — only strategy-
+        driven exits (PROFIT_HARVEST, ADJUSTMENT_REQUIRED) bypass the cap."""
         strat = self._make_strategy()
         with (
             patch.object(settings, "SHAKEDOWN_MODE", True),
@@ -936,23 +988,6 @@ class TestShakedownLooseHarvestSemantics:
             strat._record_session_entry()  # fresh entry: count=1
             today = datetime.now().date().isoformat()
             strat._last_exit_reason = "SHUTDOWN_FLATTEN"
-            strat._last_exit_date = today
-            assert strat._is_re_entry() is True, (
-                "SHUTDOWN_FLATTEN must qualify as a re-entry so process restart " "does not consume the daily cap"
-            )
-            assert strat._check_session_entry_cap() is True
-
-    def test_force_exit_still_blocked_after_shutdown_flatten_added(self):
-        """FORCE_EXIT (risk halt / daily cap) must still block re-entry even after
-        SHUTDOWN_FLATTEN was added to the qualifying set."""
-        strat = self._make_strategy()
-        with (
-            patch.object(settings, "SHAKEDOWN_MODE", True),
-            patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1),
-        ):
-            strat._record_session_entry()
-            today = datetime.now().date().isoformat()
-            strat._last_exit_reason = "FORCE_EXIT"
             strat._last_exit_date = today
             assert strat._is_re_entry() is False
             assert strat._check_session_entry_cap() is False

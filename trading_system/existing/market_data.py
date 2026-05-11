@@ -432,11 +432,12 @@ class MarketData:
         except Exception:
             logger.debug("get_lot_size failed for %s", symbol_key)
 
-        # Fallback to settings
-        if "NIFTY" in symbol_key:
-            return settings.NIFTY_LOT_SIZE
+        # Fallback to settings — BANKNIFTY must be checked before NIFTY because
+        # "NIFTY" is a substring of "BANKNIFTY" and would return the wrong lot size.
         if "BANKNIFTY" in symbol_key:
             return settings.BANKNIFTY_LOT_SIZE
+        if "NIFTY" in symbol_key:
+            return settings.NIFTY_LOT_SIZE
         return 1
 
     def reset_daily(self) -> None:

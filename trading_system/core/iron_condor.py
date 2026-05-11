@@ -20,16 +20,13 @@ from trading_system.live.live_order_manager import OrderPollingAbandoned, persis
 
 logger = logging.getLogger(__name__)
 
-# SHAKEDOWN-03b (loose semantics): exit reasons that mark the next enter()
-# call as a continuation of the current trading session (a "re-entry"), not
-# a fresh session start. Re-entries do not consume the per-session entry cap,
-# so the harvest-and-re-enter loop can run unlimited within a single day.
-# FORCE_EXIT and any future stop-loss reason are intentionally excluded —
-# entries after those should be refused if the cap is consumed.
-# SHUTDOWN_FLATTEN is added so a user-initiated Ctrl+C flatten (process restart)
-# does not consume the per-day SHAKEDOWN fresh-entry cap. Risk-triggered FORCE_EXIT
-# (daily cap halt, 3x stop-loss) intentionally stays excluded.
-_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED", "SHUTDOWN_FLATTEN")
+# SHAKEDOWN-03b (loose semantics): exit reasons that qualify the next enter()
+# as a re-entry (harvest loop continuation), not a fresh session start.
+# Re-entries do not consume the per-session entry cap so intraday harvest-and-
+# re-enter runs unlimited. Risk/abnormal exits (FORCE_EXIT, SHUTDOWN_FLATTEN,
+# STALE_DAY_FLATTEN) are excluded — a halt or abnormal exit must not silently
+# bypass the proving-period fresh-entry cap.
+_RE_ENTRY_EXIT_REASONS = ("PROFIT_HARVEST", "ADJUSTMENT_REQUIRED")
 
 _EXPIRY_RE = re.compile(r"(\d{2})([A-Z]{3})(\d{2})", re.IGNORECASE)
 _MONTH_MAP = {
@@ -1229,10 +1226,59 @@ class IronCondorStrategy:
         # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
         harvest_trigger = pos.max_profit * self._harvest_pct()
         if total_pnl >= harvest_trigger:
-            if self._harvest_fill_viable(pos):
-                logger.info(f"IC {self.instrument} HARVEST: PnL {total_pnl:.2f} >= Trigger {harvest_trigger:.2f}")
-                return self.exit("PROFIT_HARVEST", total_pnl)
-            # bid/ask shows exit would be fee-negative — skip this cycle, re-check next tick
+            # Dual-source guard: require LTP-based PnL to also confirm profit.
+            # Quote-book mids can be wide/stale at market open — bp1/sp1 resting
+            # orders diverge from last-trade prices, producing phantom triggers.
+            # (2026-05-11: mid-pnl=+13,792 vs fill-based pnl=-5,594 at 09:31.)
+            ltp_vals = {
+                "sc": self.md.get_ltp(pos.sc_sym),
+                "sp": self.md.get_ltp(pos.sp_sym),
+                "lc": self.md.get_ltp(pos.lc_sym),
+                "lp": self.md.get_ltp(pos.lp_sym),
+            }
+            logger.debug(
+                "IC %s harvest check: mid_pnl=%.2f trigger=%.2f | "
+                "sc(bid=%.2f ask=%.2f ltp=%.2f) sp(bid=%.2f ask=%.2f ltp=%.2f) "
+                "lc(bid=%.2f ask=%.2f ltp=%.2f) lp(bid=%.2f ask=%.2f ltp=%.2f)",
+                self.instrument,
+                total_pnl,
+                harvest_trigger,
+                books["sc"].bid,
+                books["sc"].ask,
+                ltp_vals["sc"],
+                books["sp"].bid,
+                books["sp"].ask,
+                ltp_vals["sp"],
+                books["lc"].bid,
+                books["lc"].ask,
+                ltp_vals["lc"],
+                books["lp"].bid,
+                books["lp"].ask,
+                ltp_vals["lp"],
+            )
+            ltp_missing = [k for k, v in ltp_vals.items() if v <= 0]
+            if ltp_missing:
+                logger.info(
+                    "IC %s HARVEST DEFERRED: LTP unavailable for %s — cannot dual-confirm; re-checking next cycle",
+                    self.instrument,
+                    ltp_missing,
+                )
+            else:
+                ltp_premium = ltp_vals["sc"] + ltp_vals["sp"] - ltp_vals["lc"] - ltp_vals["lp"]
+                total_pnl_ltp = (pos.entry_credit - ltp_premium) * pos.lots * lot_size
+                if total_pnl_ltp < harvest_trigger:
+                    logger.info(
+                        "IC %s HARVEST DEFERRED: LTP-based PnL %.2f < trigger %.2f "
+                        "(mid-based=%.2f) — sources disagree; re-checking next cycle",
+                        self.instrument,
+                        total_pnl_ltp,
+                        harvest_trigger,
+                        total_pnl,
+                    )
+                elif self._harvest_fill_viable(pos):
+                    logger.info("IC %s HARVEST: PnL %.2f >= Trigger %.2f", self.instrument, total_pnl, harvest_trigger)
+                    return self.exit("PROFIT_HARVEST", total_pnl)
+            # LTP disagrees or _harvest_fill_viable returned False — skip this cycle
 
         # 3. Adjustment Logic (Breach + Profit)
         # Roll tested side OTM and safe side closer if overall position in profit
