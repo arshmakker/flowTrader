@@ -622,11 +622,99 @@ def test_monitor_no_phantom_harvest_when_ltp_shows_loss(mock_om, mock_md):
     mock_md.get_ltp.side_effect = real_ltp
 
     result = s.monitor()
+    pos = s._position  # still active (harvest deferred, not exited)
 
     assert result is None, (
         "Harvest must be deferred when mid-based PnL shows phantom profit "
         "but LTP-based PnL shows the position is at a loss"
     )
+    assert pos.peak_pnl == 0, (
+        "peak_pnl must not be updated when mid-based PnL is phantom "
+        "(above trigger but LTP disagrees) — confirmed by 2026-05-11 12:36 session"
+    )
+
+
+def test_monitor_harvest_fires_when_only_wings_have_no_book(mock_om, mock_md):
+    """Regression: monitor() skipped every cycle when lc/lp had empty books even
+    though sc/sp were live and the position was above the harvest trigger.
+    After fix, missing wing books fall back to get_ltp() and harvest can fire.
+    (Root cause: 2026-05-11 — lp/lc routinely bid=0,ask=0 throughout session.)"""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    def qb_wings_empty(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=0.0, ask=0.0, bid_qty=0, ask_qty=0)
+
+    def ltp_side(sym):
+        if sym in ("SC", "SP"):
+            return 24.5
+        if sym in ("LC", "LP"):
+            return 1.5
+        return 56000.0
+
+    mock_md.get_quote_book.side_effect = qb_wings_empty
+    mock_md.get_ltp.side_effect = ltp_side
+    result = s.monitor()
+    assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST"
+
+
+def test_monitor_harvest_deferred_when_wings_missing_and_ltp_zero(mock_om, mock_md):
+    """When wing books are empty AND get_ltp() returns 0 for wings, the ltp_missing
+    branch in the dual-source guard defers harvest conservatively. monitor() must
+    not crash and must not fire harvest on incomplete data."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    def qb_wings_empty(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=0.0, ask=0.0, bid_qty=0, ask_qty=0)
+
+    def ltp_zero_wings(sym):
+        if sym in ("SC", "SP"):
+            return 24.5
+        if sym == "NSE|Nifty Bank":
+            return 56000.0  # spot between strikes — no breach
+        return 0.0  # wings have no LTP — ltp_missing guard should defer
+
+    mock_md.get_quote_book.side_effect = qb_wings_empty
+    mock_md.get_ltp.side_effect = ltp_zero_wings
+    result = s.monitor()
+    assert result is None  # deferred via ltp_missing, not crashed
+
+
+def test_peak_pnl_updated_only_after_ltp_confirmation(mock_om, mock_md):
+    """When both mid-based and LTP-based PnL clear the harvest trigger, peak_pnl
+    must be recorded before the fill-viability check. Complement of the phantom
+    test: confirmed profit must update the peak."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    pos = _make_bnf_position()
+    s._position = pos
+
+    # mid: SC/SP=(24+25)/2=24.5, LC/LP=(1.5+2)/2=1.75 → premium=45.5
+    # pnl_unit=58.05-45.5=12.55; total_pnl=12.55*300=3765 > trigger(2732) ✓
+    def qb_side(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=1.5, ask=2.0, bid_qty=100, ask_qty=100)
+
+    # LTP confirms: ltp_premium=24.5+24.5-1.5-1.5=46; pnl_ltp=(58.05-46)*300=3615 > trigger ✓
+    def ltp_side(sym):
+        if sym in ("SC", "SP"):
+            return 24.5
+        if sym in ("LC", "LP"):
+            return 1.5
+        return 56000.0
+
+    mock_md.get_quote_book.side_effect = qb_side
+    mock_md.get_ltp.side_effect = ltp_side
+    s.monitor()
+    assert pos.peak_pnl > 0, "peak_pnl must be updated when both sources confirm profit above trigger"
 
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):

@@ -1201,16 +1201,38 @@ class IronCondorStrategy:
             "lc": self.md.get_quote_book(pos.lc_sym),
             "lp": self.md.get_quote_book(pos.lp_sym),
         }
-        unavailable = [k for k, b in books.items() if b is None or not b.is_tradable]
-        if unavailable:
-            logger.warning("IC %s monitor: quote unavailable for %s — skipping cycle", self.instrument, unavailable)
+        # Short legs (sc/sp) must have live books — they are the legs closed on harvest.
+        # Wings (lc/lp) are far OTM and routinely illiquid (bid=0, ask=0); when their
+        # book is missing, fall back to get_ltp(). If LTP is also 0, the dual-source
+        # ltp_missing branch defers harvest conservatively rather than blocking the cycle.
+        short_unavailable = [k for k in ("sc", "sp") if books.get(k) is None or not books[k].is_tradable]
+        if short_unavailable:
+            logger.warning(
+                "IC %s monitor: short leg quote unavailable for %s — skipping cycle",
+                self.instrument,
+                short_unavailable,
+            )
             return None
+
+        wing_unavailable = [k for k in ("lc", "lp") if books.get(k) is None or not books[k].is_tradable]
+        if wing_unavailable:
+            logger.info(
+                "IC %s monitor: wing quote unavailable for %s — using LTP fallback",
+                self.instrument,
+                wing_unavailable,
+            )
+
+        def _wing_price(key: str, sym: str) -> float:
+            b = books.get(key)
+            if b is not None and b.is_tradable:
+                return (b.bid + b.ask) / 2.0
+            return self.md.get_ltp(sym)
 
         current_premium = (
             (books["sc"].bid + books["sc"].ask) / 2
             + (books["sp"].bid + books["sp"].ask) / 2
-            - (books["lc"].bid + books["lc"].ask) / 2
-            - (books["lp"].bid + books["lp"].ask) / 2
+            - _wing_price("lc", pos.lc_sym)
+            - _wing_price("lp", pos.lp_sym)
         )
         pnl_unit = pos.entry_credit - current_premium
 
@@ -1218,13 +1240,16 @@ class IronCondorStrategy:
         lot_size = self.md.get_lot_size(pos.sc_sym)
         total_pnl = pnl_unit * pos.lots * lot_size
 
-        # 1. Update Peak P&L
-        if total_pnl > pos.peak_pnl:
+        # 1. Update Peak P&L — only below the harvest trigger where mid-based PnL is
+        # trustworthy. Above the trigger, book mids can be phantom (stale wide resting
+        # orders). Peak above the trigger is recorded inside dual-source confirmation.
+        # (2026-05-11: mid-based=+4,350 vs LTP-based=-1,230 at 12:36 — phantom peak.)
+        harvest_trigger = pos.max_profit * self._harvest_pct()
+        if total_pnl > pos.peak_pnl and total_pnl < harvest_trigger:
             pos.peak_pnl = total_pnl
 
         # 2. Check Profit Harvest Cycle (2% NIFTY, 13% BANKNIFTY)
         # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
-        harvest_trigger = pos.max_profit * self._harvest_pct()
         if total_pnl >= harvest_trigger:
             # Dual-source guard: require LTP-based PnL to also confirm profit.
             # Quote-book mids can be wide/stale at market open — bp1/sp1 resting
@@ -1236,6 +1261,15 @@ class IronCondorStrategy:
                 "lc": self.md.get_ltp(pos.lc_sym),
                 "lp": self.md.get_ltp(pos.lp_sym),
             }
+
+            def _b(k: str) -> float:
+                b = books.get(k)
+                return b.bid if b and b.is_tradable else 0.0
+
+            def _a(k: str) -> float:
+                b = books.get(k)
+                return b.ask if b and b.is_tradable else 0.0
+
             logger.debug(
                 "IC %s harvest check: mid_pnl=%.2f trigger=%.2f | "
                 "sc(bid=%.2f ask=%.2f ltp=%.2f) sp(bid=%.2f ask=%.2f ltp=%.2f) "
@@ -1243,17 +1277,17 @@ class IronCondorStrategy:
                 self.instrument,
                 total_pnl,
                 harvest_trigger,
-                books["sc"].bid,
-                books["sc"].ask,
+                _b("sc"),
+                _a("sc"),
                 ltp_vals["sc"],
-                books["sp"].bid,
-                books["sp"].ask,
+                _b("sp"),
+                _a("sp"),
                 ltp_vals["sp"],
-                books["lc"].bid,
-                books["lc"].ask,
+                _b("lc"),
+                _a("lc"),
                 ltp_vals["lc"],
-                books["lp"].bid,
-                books["lp"].ask,
+                _b("lp"),
+                _a("lp"),
                 ltp_vals["lp"],
             )
             ltp_missing = [k for k, v in ltp_vals.items() if v <= 0]
@@ -1275,9 +1309,15 @@ class IronCondorStrategy:
                         harvest_trigger,
                         total_pnl,
                     )
-                elif self._harvest_fill_viable(pos):
-                    logger.info("IC %s HARVEST: PnL %.2f >= Trigger %.2f", self.instrument, total_pnl, harvest_trigger)
-                    return self.exit("PROFIT_HARVEST", total_pnl)
+                else:
+                    # Both sources agree — record the confirmed peak before fill check
+                    if total_pnl > pos.peak_pnl:
+                        pos.peak_pnl = total_pnl
+                    if self._harvest_fill_viable(pos):
+                        logger.info(
+                            "IC %s HARVEST: PnL %.2f >= Trigger %.2f", self.instrument, total_pnl, harvest_trigger
+                        )
+                        return self.exit("PROFIT_HARVEST", total_pnl)
             # LTP disagrees or _harvest_fill_viable returned False — skip this cycle
 
         # 3. Adjustment Logic (Breach + Profit)
