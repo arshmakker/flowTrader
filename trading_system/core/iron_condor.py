@@ -9,6 +9,7 @@ Iron Condor Strategist — implements the core Nifty/BankNifty strategist logic 
 
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -64,8 +65,8 @@ class IC_Position:
     # BUG-18 / Axiom 2: ISO date "YYYY-MM-DD" of this IC's expiry. Empty string
     # is tolerated only to support loading state saved before this field existed.
     expiry_date: str = ""
-    # ISO date "YYYY-MM-DD" of when the IC was entered (may differ from exit date
-    # for positions carried overnight).
+    # ISO date "YYYY-MM-DD" of when the IC was entered. Normally matches exit date
+    # since all positions are hard-closed at TRADE_END (15:10) per axiom.
     entry_date: str = ""
     entry_vix: float = 0.0
     day_type: str = ""
@@ -458,9 +459,9 @@ class IronCondorStrategy:
         sc = round((spot + otm_dist) / step) * step
         sp = round((spot - otm_dist) / step) * step
 
-        # Apply 20-day S/R Buffer (50 points)
-        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, "CE", step=step)
-        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, "PE", step=step)
+        sr_buffer = settings.IC_SR_BUFFER_BY_INSTRUMENT[self.instrument]
+        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, "CE", step=step, buffer=sr_buffer)
+        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, "PE", step=step, buffer=sr_buffer)
 
         # LIVE-29: cap S/R-adjusted strikes so a wide 20-day range can't push
         # them into illiquid far-OTM territory where credit collapses.
@@ -1207,8 +1208,16 @@ class IronCondorStrategy:
         # ltp_missing branch defers harvest conservatively rather than blocking the cycle.
         short_unavailable = [k for k in ("sc", "sp") if books.get(k) is None or not books[k].is_tradable]
         if short_unavailable:
+            for _attempt in range(2):
+                time.sleep(2)
+                for k in list(short_unavailable):
+                    books[k] = self.md.get_quote_book(getattr(pos, f"{k}_sym"))
+                short_unavailable = [k for k in ("sc", "sp") if books.get(k) is None or not books[k].is_tradable]
+                if not short_unavailable:
+                    break
+        if short_unavailable:
             logger.warning(
-                "IC %s monitor: short leg quote unavailable for %s — skipping cycle",
+                "IC %s monitor: short leg quote unavailable for %s after retries — skipping cycle",
                 self.instrument,
                 short_unavailable,
             )

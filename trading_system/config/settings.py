@@ -27,11 +27,11 @@ NIFTY_SPOT_EXCHANGE = "NSE"
 
 # ══ SESSION ═════════════════════════════════════════════════════════
 CLASSIFY_TIME = "10:30"
-TRADE_END = "15:10"  # Hard close all non-expiring positions
+TRADE_END = "15:10"  # Hard close ALL positions (expiring and non-expiring)
 TRADE_END_EXPIRY = "15:00"  # Hard close positions expiring today (30 min before expiry-day settlement squeeze)
-# Entries after this time are blocked. Any position entered near TRADE_END that does
-# not get force-exited (next day is a trading day) will carry overnight — guaranteed
-# gap risk. 14:30 leaves 40 min for monitoring/harvest without opening new overnight risk.
+# Entries after this time are blocked. Combined with hard TRADE_END close at 15:10,
+# this ensures no unmanaged overnight exposure. Historical data: overnight carries lose
+# money (0% win, avg -₹9.4k loss). 14:30 leaves 40 min for monitoring/harvest.
 ENTRY_CUTOFF = "14:30"
 SIGNAL_RECHECK_SEC = 30
 
@@ -41,7 +41,9 @@ IC_VIX_MAX = 30.0
 IC_VIX_STABLE_MINS = 8  # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
-IC_SR_BUFFER = 50  # 50-point buffer from 20-day H/L
+# Per-instrument S/R buffer. BANKNIFTY median overnight gap is 325 pts, p85 is 803 pts;
+# 400 pts covers the typical gap and places SP at P53900 which fills at <0.3% slippage.
+IC_SR_BUFFER_BY_INSTRUMENT = {"NIFTY": 50, "BANKNIFTY": 400}
 IC_HARVEST_PCT = 0.01  # 1% of max profit for harvest and re-entry (NIFTY default)
 # Per-instrument harvest threshold, calibrated against the LIVE-12 cost stack.
 # BANKNIFTY 8-leg round-trip fees ≈ ₹760 on 10 lots; break-even ratio ≈ 11.8%.
