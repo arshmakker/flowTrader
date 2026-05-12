@@ -114,17 +114,17 @@ class SRManager:
         self._cache[index_name] = (sr_high, sr_low, fingerprint)
         return sr_high, sr_low
 
-    def apply_buffer(self, strike: float, sr_high: float, sr_low: float, opt_type: str, step: int = 50) -> float:
+    def apply_buffer(
+        self, strike: float, sr_high: float, sr_low: float, opt_type: str, step: int = 50, buffer: int = 50
+    ) -> float:
         """
-        Adjusts strike to respect the IC_SR_BUFFER (50 points).
-        - Short Call: must be at least sr_high + 50.
-        - Short Put: must be at least sr_low - 50.
+        Adjusts strike to respect the S/R buffer distance.
+        - Short Call: must be at least sr_high + buffer.
+        - Short Put: must be at least sr_low - buffer.
         Rounding is based on the 'step' of the instrument.
         """
         if sr_high == 0.0 or sr_low == 0.0:
             return strike
-
-        buffer = settings.IC_SR_BUFFER
 
         if opt_type == "CE":
             # CE strike must be ABOVE sr_high + buffer

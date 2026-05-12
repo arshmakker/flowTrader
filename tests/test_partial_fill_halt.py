@@ -88,7 +88,7 @@ def _build_ic(om):
 
 def _sr_stub():
     m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50: strike
+    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50, **kw: strike
     return m
 
 

@@ -71,7 +71,7 @@ def _rejected(reason="REJECT"):
 
 def _sr_mgr():
     m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    m.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
     return m
 
 

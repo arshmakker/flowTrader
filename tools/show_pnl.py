@@ -42,7 +42,7 @@ def print_summary(data: dict) -> None:
     daily = data.get("daily", {})
     d_realised = fmt_inr(daily.get("realised_pnl"))
     d_unrealised = "—"
-    d_net = ""
+    d_net = fmt_inr(daily.get("realised_pnl"))
     d_trades = str(daily.get("trades", "—"))
     d_winrate = f"{daily.get('win_rate_pct', 0):.0f}%" if daily.get("trades") else "—"
 
@@ -50,7 +50,7 @@ def print_summary(data: dict) -> None:
     a_unrealised = fmt_inr(data["unrealised_pnl"])
     a_net = fmt_inr(data["total_pnl"])
     a_trades = str(data["total_trades"])
-    a_winrate = f"{data['win_rate_pct']:.0f}%"
+    a_winrate = f"{data['win_rate_pct']:.0f}%" if data.get("total_trades") else "—"
 
     rows = [
         ("Realised PnL", d_realised, a_realised),
@@ -172,13 +172,14 @@ def print_open_positions(open_pos: dict) -> None:
         print("  No open positions.\n")
         return
 
-    w1 = max(len(r[0]) for r in rows)
-    w2 = max(len(r[1]) for r in rows)
-    w3 = max(len(r[2]) for r in rows)
-    w4 = max(len(r[3]) for r in rows)
-    w5 = max(len(r[4]) for r in rows)
-    w6 = max(len(r[5]) for r in rows)
-    w7 = max(len(r[6]) for r in rows)
+    header = ("Instrument", "Entry", "Credit", "Peak P&L", "Max Profit", "Lots", "Expiry")
+    w1 = max(len(r[0]) for r in rows + [header])
+    w2 = max(len(r[1]) for r in rows + [header])
+    w3 = max(len(r[2]) for r in rows + [header])
+    w4 = max(len(r[3]) for r in rows + [header])
+    w5 = max(len(r[4]) for r in rows + [header])
+    w6 = max(len(r[5]) for r in rows + [header])
+    w7 = max(len(r[6]) for r in rows + [header])
 
     def _sep(l="├", m="┼", r="┤"):
         return f"  {l}{'─' * (w1+2)}{m}{'─' * (w2+2)}{m}{'─' * (w3+2)}{m}{'─' * (w4+2)}{m}{'─' * (w5+2)}{m}{'─' * (w6+2)}{m}{'─' * (w7+2)}{r}"

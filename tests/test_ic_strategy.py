@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -48,7 +48,7 @@ def test_ic_strategy_entry_success(mock_om, mock_md):
     # spot=22000, vix=15 (NORMAL tier: OTM=200, width=100, step=50)
     # SC=22200, SP=21800, LC=22300, LP=21700 (S/R bypass via mock)
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     def ltp_side_effect(sym):
         if "C22200" in sym or "P21800" in sym:
@@ -199,7 +199,7 @@ def test_freeze_qty_breach_refuses_entry_and_places_no_orders(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
 
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # Good LTPs — credit rule passes so we reach the freeze check.
     def ltp_side_effect(sym):
@@ -229,7 +229,7 @@ def test_just_below_freeze_qty_allows_entry(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
 
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # VIX=15 NORMAL tier: SC=22200, SP=21800, LC=22300, LP=21700
     def ltp_side_effect(sym):
@@ -253,7 +253,7 @@ def test_freeze_qty_breach_for_banknifty_uses_banknifty_cap(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE  # 30
 
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # Tighten to a symbol-agnostic LTP table — BANKNIFTY strikes differ.
     mock_md.get_ltp.side_effect = lambda sym: (
@@ -306,7 +306,7 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # (17+17) - (1+1) = 32 > 30 floor → must enter
     mock_md.get_ltp.side_effect = lambda sym: (
@@ -322,7 +322,7 @@ def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # (15+15) - (1+1) = 28 < 30 floor → must refuse
     mock_md.get_ltp.side_effect = lambda sym: (
@@ -495,8 +495,11 @@ def test_harvest_skipped_when_quote_book_unavailable(mock_om, mock_md, caplog):
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     s._position = _make_bnf_position()
 
-    mock_md.get_quote_book.return_value = None  # all legs unavailable
-    with caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"):
+    mock_md.get_quote_book.return_value = None  # all legs unavailable across all retries
+    with (
+        patch("trading_system.core.iron_condor.time.sleep"),
+        caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"),
+    ):
         result = s.monitor()
 
     assert result is None, "monitor() must skip when quotes are unavailable — no harvest on unknown data"
@@ -525,13 +528,45 @@ def test_monitor_logs_warning_when_quote_unavailable(mock_om, mock_md, caplog):
 
     mock_md.get_quote_book.side_effect = qb_sc_unavailable
 
-    with caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"):
+    with (
+        patch("trading_system.core.iron_condor.time.sleep"),
+        caplog.at_level(logging.WARNING, logger="trading_system.core.iron_condor"),
+    ):
         result = s.monitor()
 
     assert result is None, "monitor() must return None when any quote is unavailable"
     assert any(
         "sc" in r.message.lower() and "quote unavailable" in r.message.lower() for r in caplog.records
     ), "monitor() must log a WARNING naming the unavailable leg(s)"
+
+
+def test_monitor_retries_short_leg_quote_before_skipping(mock_om, mock_md):
+    """Regression: monitor() skipped immediately on first empty short-leg book, causing
+    57 blind cycles in one session. After fix, it retries twice before giving up — a
+    transient Shoonya API glitch clears on retry and the cycle proceeds normally."""
+    good_book = QuoteBook(symbol="X", bid=10.0, ask=10.2, bid_qty=100, ask_qty=100)
+    call_counts = {"sc": 0}
+
+    def qb_flaky(sym):
+        if "SC" in sym or sym == "SC":
+            call_counts["sc"] += 1
+            if call_counts["sc"] == 1:
+                return None  # first call: API glitch
+            return good_book  # retry succeeds
+        return good_book
+
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    mock_md.get_ltp.return_value = 10.0
+    mock_md.get_quote_book.side_effect = qb_flaky
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    with patch("trading_system.core.iron_condor.time.sleep") as mock_sleep:
+        result = s.monitor()
+
+    mock_sleep.assert_called()
+    assert call_counts["sc"] >= 2, "monitor() must retry the short-leg quote at least once"
+    assert result is None or isinstance(result, dict), "monitor() must not crash after retry"
 
 
 def test_monitor_no_phantom_pnl_from_stale_ltp_illusion(mock_om, mock_md):
@@ -726,8 +761,8 @@ def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
 
-    def real_sr_buffer(strike, h, l, opt_type, step=50):
-        buf = settings.IC_SR_BUFFER
+    def real_sr_buffer(strike, h, l, opt_type, step=50, buffer=50):
+        buf = buffer
         if opt_type == "CE":
             min_a = h + buf
             if strike < min_a:
@@ -756,8 +791,8 @@ def test_sr_cap_disabled_wide_range_banknifty_fails_on_illiquid(monkeypatch, moc
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
 
-    def real_sr_buffer(strike, h, l, opt_type, step=50):
-        buf = settings.IC_SR_BUFFER
+    def real_sr_buffer(strike, h, l, opt_type, step=50, buffer=50):
+        buf = buffer
         if opt_type == "CE":
             min_a = h + buf
             if strike < min_a:
@@ -778,12 +813,30 @@ def test_sr_cap_disabled_wide_range_banknifty_fails_on_illiquid(monkeypatch, moc
     assert mock_om.place_order.call_count == 0
 
 
+def test_banknifty_sr_buffer_400_places_sp_below_sr_low(mock_om, mock_md):
+    """Regression: 2026-05-12 ADJUSTMENT_REQUIRED at 54064 — SP=54200 was only 136 pts
+    above breach. Root cause: IC_SR_BUFFER=50 (flat) placed SP just 50 pts below sr_low.
+    Fix: BANKNIFTY buffer=400. At entry conditions (spot=54900, sr_low=54347, VIX=18.58),
+    SP must land at 53900, which was not breached by today's 54064 print."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+
+    from trading_system.core.sr_manager import SRManager
+
+    sr_mgr = SRManager.__new__(SRManager)
+
+    sc, sp, lc, lp = s.calculate_strikes(spot=54900, vix=18.58, sr_high=57477.0, sr_low=54346.75, sr_manager=sr_mgr)
+
+    assert sp == 53900.0, f"BANKNIFTY SP must be 53900 with buffer=400 at sr_low=54347; got {sp}"
+    assert sp < 54064.0, "SP must be below today's breach price of 54064"
+
+
 def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
     """LIVE-30: IC_NIFTY_MIN_VIX must gate only NIFTY; BANKNIFTY enters normally at VIX=12."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # BANKNIFTY VIX=12 LOW tier: SC=50200, SP=49800, LC=50300, LP=49700
     mock_md.get_ltp.side_effect = lambda sym: (

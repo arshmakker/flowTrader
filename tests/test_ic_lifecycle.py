@@ -39,7 +39,7 @@ class FakeMD:
 class FakeSR:
     """No-op SR manager — returns strikes unchanged."""
 
-    def apply_buffer(self, strike, sr_high, sr_low, opt_type, step):
+    def apply_buffer(self, strike, sr_high, sr_low, opt_type, step, buffer=50):
         return strike
 
 

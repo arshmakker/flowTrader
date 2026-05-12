@@ -183,7 +183,7 @@ class TestAwaitTerminal:
 @pytest.fixture
 def sr_mgr():
     m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50: strike
+    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50, **kw: strike
     return m
 
 
@@ -315,7 +315,7 @@ class TestExitStateMachine:
 
         ic = _make_ic(om, md)
         sr_mgr_m = MagicMock()
-        sr_mgr_m.apply_buffer.side_effect = lambda s, h, l, t, step=50: s
+        sr_mgr_m.apply_buffer.side_effect = lambda s, h, l, t, step=50, **kw: s
 
         stuck_path = tmp_path / "stuck_legs.json"
         with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):

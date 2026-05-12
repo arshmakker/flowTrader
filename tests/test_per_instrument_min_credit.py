@@ -85,7 +85,7 @@ def test_banknifty_entry_at_credit_between_floors_is_rejected(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
 
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     mock_md.get_ltp.side_effect = _ltp_close_to(spot=50000, short_premium=15.0, wing_premium=5.0)
 
@@ -102,7 +102,7 @@ def test_nifty_entry_at_same_credit_is_accepted(mock_om, mock_md):
     mock_md.get_lot_size.return_value = settings.NIFTY_LOT_SIZE
 
     sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50: strike
+    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     mock_md.get_ltp.side_effect = _ltp_close_to(spot=22000, short_premium=15.0, wing_premium=5.0)
 
