@@ -1150,9 +1150,15 @@ def run():
                                 next_session.isoformat(),
                                 settings.IC_DTE_THRESHOLD,
                             )
+                    # Enforce hard TRADE_END close for ALL positions, weekday or not.
+                    # Historical data: overnight carries lose money (0% win rate, -₹9.4k avg).
+                    # Weekday carries are gap/adjustment risks. Close unconditionally.
+                    remaining = [s for s in strats if s.is_active()]
+                    if remaining:
+                        _force_exit_all(remaining, pnl_engine, risk)
+                        log.info("Hard TRADE_END close: force-exited %d remaining position(s).", len(remaining))
                     if not next_day_is_trading:
-                        _force_exit_all(strats, pnl_engine, risk)
-                        log.info("Pre-holiday/weekend close: force-exited all positions.")
+                        log.info("Pre-holiday/weekend session confirmed flat.")
                     if pnl_engine:
                         pnl_engine.write_snapshot()
                     if collection_started:
@@ -1171,10 +1177,7 @@ def run():
                         shutdown_reason="eod",
                         flat_verified_at=datetime.now().isoformat() if flat_now else None,
                     )
-                    log.info(
-                        "Daily session ended.%s",
-                        " All positions closed." if not next_day_is_trading else " Positions carried overnight.",
-                    )
+                    log.info("Daily session ended. All positions closed.")
                     eod_completed = True
                     break
 
