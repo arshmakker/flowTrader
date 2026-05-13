@@ -31,7 +31,6 @@ from trading_system.core.iron_condor import IronCondorStrategy
 from trading_system.core.regime_filter import RegimeFilter
 from trading_system.core.risk_manager import RiskManager
 from trading_system.core.signal_engine import SignalEngine
-from trading_system.core.sr_manager import SRManager
 from trading_system.core.trade_logger import TradeLogger
 from trading_system.existing.market_data import MarketData
 from trading_system.live.live_order_manager import LiveOrderManager
@@ -889,7 +888,6 @@ def run():
     }
     risk = RiskManager(alerts=alerts)
     expiry_mgr = ExpiryManager(sm)
-    sr_mgr = SRManager()
     trade_logger = TradeLogger()
 
     pos_mgr, order_mgr, pnl_engine = _build_order_stack(api, md, trade_logger)
@@ -1218,16 +1216,12 @@ def run():
                         spot_key = settings.NIFTY_SPOT_KEY if s.instrument == "NIFTY" else settings.BANKNIFTY_SPOT_KEY
                         spot = md.get_ltp(spot_key)
                         vix = regime.get_vix()
-                        sr_high, sr_low = sr_mgr.get_20day_high_low(s.instrument)
                         expiry = expiry_mgr.get_expiry(s.instrument)
 
                         if spot > 0 and expiry:
                             s.enter(
                                 spot,
                                 vix,
-                                sr_high,
-                                sr_low,
-                                sr_mgr,
                                 expiry,
                                 settings.IC_LOT_SIZE,
                                 dc.day_type if dc else "",

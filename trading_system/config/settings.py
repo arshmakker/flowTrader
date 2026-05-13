@@ -41,9 +41,6 @@ IC_VIX_MAX = 30.0
 IC_VIX_STABLE_MINS = 8  # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
-# Per-instrument S/R buffer. BANKNIFTY median overnight gap is 325 pts, p85 is 803 pts;
-# 400 pts covers the typical gap and places SP at P53900 which fills at <0.3% slippage.
-IC_SR_BUFFER_BY_INSTRUMENT = {"NIFTY": 50, "BANKNIFTY": 400}
 IC_HARVEST_PCT = 0.01  # 1% of max profit for harvest and re-entry (NIFTY default)
 # Per-instrument harvest threshold, calibrated against the LIVE-12 cost stack.
 # BANKNIFTY 8-leg round-trip fees ≈ ₹760 on 10 lots; break-even ratio ≈ 11.8%.

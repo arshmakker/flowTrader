@@ -181,13 +181,6 @@ class TestAwaitTerminal:
 
 
 @pytest.fixture
-def sr_mgr():
-    m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50, **kw: strike
-    return m
-
-
-@pytest.fixture
 def mock_md():
     md = MagicMock()
     # enter() calls get_ltp in order: sc, sp, lc, lp.
@@ -212,15 +205,15 @@ class TestEntryStateMachine:
         om.get_available_margin.return_value = float("inf")
         return om
 
-    def test_all_complete_entry_succeeds(self, mock_md, sr_mgr):
+    def test_all_complete_entry_succeeds(self, mock_md):
         """All 4 legs COMPLETE → entry returns True, no rollback."""
         om = self._om_all_complete()
         ic = _make_ic(om, mock_md)
-        result = ic.enter(24000, 12.0, 24500, 23500, sr_mgr, "17-APR-2026", 10)
+        result = ic.enter(24000, 12.0, "17-APR-2026", 10)
         assert result is True
         assert om.place_order.call_count == 4
 
-    def test_leg2_rejected_triggers_rollback_for_leg1_only(self, mock_md, sr_mgr, tmp_path):
+    def test_leg2_rejected_triggers_rollback_for_leg1_only(self, mock_md, tmp_path):
         """Leg 2 REJECTED → rollback covers only leg 1 (fill_qty=650)."""
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
@@ -235,7 +228,7 @@ class TestEntryStateMachine:
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
         with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-            result = ic.enter(24000, 12.0, 24500, 23500, sr_mgr, "17-APR-2026", 10)
+            result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
         assert result is False
         # 2 entry attempts + 1 rollback = 3 calls
@@ -244,7 +237,7 @@ class TestEntryStateMachine:
         rollback_call = om.place_order.call_args_list[2]
         assert rollback_call.args[2] == 650 or rollback_call[0][2] == 650
 
-    def test_leg3_canceled_no_fill_treated_as_rejected(self, mock_md, sr_mgr, tmp_path):
+    def test_leg3_canceled_no_fill_treated_as_rejected(self, mock_md, tmp_path):
         """CANCELED with fill_qty=0 on leg 3 → same rollback path as REJECTED."""
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
@@ -261,14 +254,14 @@ class TestEntryStateMachine:
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
         with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-            result = ic.enter(24000, 12.0, 24500, 23500, sr_mgr, "17-APR-2026", 10)
+            result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
         assert result is False
         # leg 3 (cancel) is not rolled back (fill_qty=0); legs 1+2 are
         rollback_calls = om.place_order.call_args_list[3:]
         assert len(rollback_calls) == 2
 
-    def test_leg2_canceled_partial_fill_halt_reversal_uses_fill_qty(self, mock_md, sr_mgr, tmp_path):
+    def test_leg2_canceled_partial_fill_halt_reversal_uses_fill_qty(self, mock_md, tmp_path):
         """CANCELED with fill_qty=300 on leg 2 → reversal is for 300, not 650; stuck JSON written."""
         om = MagicMock()
         om.build_option_symbol.side_effect = lambda inst, exp, s, t: f"NFO|{inst}{exp}{t[0]}{int(s)}"
@@ -285,7 +278,7 @@ class TestEntryStateMachine:
         ic = _make_ic(om, mock_md)
         stuck_path = tmp_path / "stuck_legs.json"
         with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-            result = ic.enter(24000, 12.0, 24500, 23500, sr_mgr, "17-APR-2026", 10)
+            result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
         assert result is False
         # Leg 2 reversal must be for fill_qty=300, not requested qty=650
@@ -314,12 +307,9 @@ class TestExitStateMachine:
         om.get_available_margin.return_value = float("inf")
 
         ic = _make_ic(om, md)
-        sr_mgr_m = MagicMock()
-        sr_mgr_m.apply_buffer.side_effect = lambda s, h, l, t, step=50, **kw: s
-
         stuck_path = tmp_path / "stuck_legs.json"
         with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-            entered = ic.enter(24000, 12.0, 24500, 23500, sr_mgr_m, "17-APR-2026", 10)
+            entered = ic.enter(24000, 12.0, "17-APR-2026", 10)
             assert entered is True, "entry must succeed for exit test to be meaningful"
             ic.exit("test_reason", pnl=0.0)
 

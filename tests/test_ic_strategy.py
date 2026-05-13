@@ -46,10 +46,7 @@ def test_ic_strategy_entry_success(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
 
     # spot=22000, vix=15 (NORMAL tier: OTM=200, width=100, step=50)
-    # SC=22200, SP=21800, LC=22300, LP=21700 (S/R bypass via mock)
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
-
+    # SC=22200, SP=21800, LC=22300, LP=21700
     def ltp_side_effect(sym):
         if "C22200" in sym or "P21800" in sym:
             return 15.0
@@ -59,7 +56,7 @@ def test_ic_strategy_entry_success(mock_om, mock_md):
 
     mock_md.get_ltp.side_effect = ltp_side_effect
 
-    success = s.enter(22000, 15, 22500, 21500, sr_mgr, "19-MAR-2026", settings.IC_LOT_SIZE)
+    success = s.enter(22000, 15, "19-MAR-2026", settings.IC_LOT_SIZE)
     assert success is True
     assert s.is_active() is True
     assert s._position.max_profit == 20.0 * settings.IC_LOT_SIZE * settings.NIFTY_LOT_SIZE
@@ -198,9 +195,6 @@ def test_freeze_qty_breach_refuses_entry_and_places_no_orders(mock_om, mock_md):
     LIVE-03's rollback path."""
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
 
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
-
     # Good LTPs — credit rule passes so we reach the freeze check.
     def ltp_side_effect(sym):
         if "C22150" in sym or "P21850" in sym:
@@ -216,7 +210,7 @@ def test_freeze_qty_breach_refuses_entry_and_places_no_orders(mock_om, mock_md):
     breaching_lots = 30
     assert breaching_lots * settings.NIFTY_LOT_SIZE > settings.FREEZE_QTY_NIFTY
 
-    success = s.enter(22000, 12, 22500, 21500, sr_mgr, "19-MAR-2026", breaching_lots)
+    success = s.enter(22000, 12, "19-MAR-2026", breaching_lots)
 
     assert success is False
     assert s.is_active() is False
@@ -228,9 +222,6 @@ def test_just_below_freeze_qty_allows_entry(mock_om, mock_md):
     """Qty under the freeze cap passes the guard; 27 × 65 = 1755 < 1800."""
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
 
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
-
     # VIX=15 NORMAL tier: SC=22200, SP=21800, LC=22300, LP=21700
     def ltp_side_effect(sym):
         if "C22200" in sym or "P21800" in sym:
@@ -241,7 +232,7 @@ def test_just_below_freeze_qty_allows_entry(mock_om, mock_md):
 
     mock_md.get_ltp.side_effect = ltp_side_effect
 
-    s.enter(22000, 15, 22500, 21500, sr_mgr, "19-MAR-2026", 27)
+    s.enter(22000, 15, "19-MAR-2026", 27)
 
     assert mock_om.place_order.call_count == 4  # all four legs went out
 
@@ -251,9 +242,6 @@ def test_freeze_qty_breach_for_banknifty_uses_banknifty_cap(mock_om, mock_md):
     setting — not silently fall through to NIFTY's value."""
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE  # 30
-
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # Tighten to a symbol-agnostic LTP table — BANKNIFTY strikes differ.
     mock_md.get_ltp.side_effect = lambda sym: (
@@ -267,7 +255,7 @@ def test_freeze_qty_breach_for_banknifty_uses_banknifty_cap(mock_om, mock_md):
     assert breaching_lots * settings.BANKNIFTY_LOT_SIZE > settings.FREEZE_QTY_BANKNIFTY
     assert breaching_lots * settings.BANKNIFTY_LOT_SIZE < settings.FREEZE_QTY_NIFTY
 
-    success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", breaching_lots)
+    success = s.enter(50000, 12, "19-MAR-2026", breaching_lots)
 
     assert success is False
     assert mock_om.place_order.call_count == 0
@@ -305,14 +293,12 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
     SC=50700, SP=49300, LC=50800, LP=49200."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # (17+17) - (1+1) = 32 > 30 floor → must enter
     mock_md.get_ltp.side_effect = lambda sym: (
         17.0 if sym.endswith(("C50700", "P49300")) else 1.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
-    success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
+    success = s.enter(50000, 12, "19-MAR-2026", 10)
     assert success is True
     assert mock_om.place_order.call_count == 4
 
@@ -321,14 +307,12 @@ def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
     """LIVE-27: BANKNIFTY at ₹28 credit must be refused below the ₹30 floor."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # (15+15) - (1+1) = 28 < 30 floor → must refuse; floor-widened strikes at 700pt OTM
     mock_md.get_ltp.side_effect = lambda sym: (
         15.0 if sym.endswith(("C50700", "P49300")) else 1.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
-    success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
+    success = s.enter(50000, 12, "19-MAR-2026", 10)
     assert success is False
     assert mock_om.place_order.call_count == 0
 
@@ -847,100 +831,40 @@ def test_peak_pnl_updated_only_after_ltp_confirmation(mock_om, mock_md):
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):
     """LIVE-29: when 20-day range forces SC far from spot, cap to IC_SR_CAP_OTM_FROM_SPOT.
-    S/R (SR_HIGH=57477) forced SC=57600 (3600 OTM from spot=54000) — illiquid, ~0 credit.
     Cap=1000 clamps SC=55000, SP=53000; entry succeeds at viable credit.
-    VIX=18 (NORMAL tier): step=100, OTM=200 → capped strikes at SC=55000, SP=53000,
-    LC=55100, LP=52900."""
+    VIX=18 (NORMAL tier): step=100, OTM=200 → floor widens to 700pt: SC=54700, SP=53300,
+    LC=54800, LP=53200."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
 
-    def real_sr_buffer(strike, h, l, opt_type, step=50, buffer=50):
-        buf = buffer
-        if opt_type == "CE":
-            min_a = h + buf
-            if strike < min_a:
-                return float((int(min_a / step) + 1) * step)
-        else:
-            max_a = l - buf
-            if strike > max_a:
-                return float(int(max_a / step) * step)
-        return float(strike)
-
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = real_sr_buffer
-
     mock_md.get_ltp.side_effect = lambda sym: (
-        23.0 if sym.endswith(("C55000", "P53000")) else 5.0 if sym.endswith(("C55100", "P52900")) else 0.1
+        23.0 if sym.endswith(("C54700", "P53300")) else 5.0 if sym.endswith(("C54800", "P53200")) else 0.1
     )
-    success = s.enter(54000, 18.0, 57477, 51100, sr_mgr, "19-MAR-2026", 10)
-    assert success is True, "S/R cap must clamp illiquid far-OTM strikes to viable range"
+    success = s.enter(54000, 18.0, "19-MAR-2026", 10)
+    assert success is True, "entry must succeed at viable credit"
     assert mock_om.place_order.call_count == 4
 
 
 def test_sr_cap_disabled_wide_range_banknifty_fails_on_illiquid(monkeypatch, mock_om, mock_md):
-    """Regression proof: without the cap, S/R-forced SC=57600 has near-zero credit → refused.
-    Pins the pre-LIVE-29 failure mode that this cap prevents."""
-    monkeypatch.setitem(settings.IC_SR_CAP_OTM_FROM_SPOT, "BANKNIFTY", 10000)
+    """Regression proof: without the floor, illiquid near-zero credit strikes are refused."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
 
-    def real_sr_buffer(strike, h, l, opt_type, step=50, buffer=50):
-        buf = buffer
-        if opt_type == "CE":
-            min_a = h + buf
-            if strike < min_a:
-                return float((int(min_a / step) + 1) * step)
-        else:
-            max_a = l - buf
-            if strike > max_a:
-                return float(int(max_a / step) * step)
-        return float(strike)
-
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = real_sr_buffer
-
-    # S/R-forced strikes (C57600/P51000) have ~0 credit — illiquid far-OTM.
-    mock_md.get_ltp.side_effect = lambda sym: 0.5 if sym.endswith(("C57600", "P51000")) else 0.1
-    success = s.enter(54000, 18.0, 57477, 51100, sr_mgr, "19-MAR-2026", 10)
-    assert success is False, "Without cap, illiquid S/R-forced strikes must fail credit floor"
+    mock_md.get_ltp.side_effect = lambda sym: 0.1
+    success = s.enter(54000, 18.0, "19-MAR-2026", 10)
+    assert success is False, "illiquid near-zero credit must fail credit floor"
     assert mock_om.place_order.call_count == 0
 
 
-def test_banknifty_sr_buffer_400_places_sp_below_sr_low(mock_om, mock_md):
-    """Regression: 2026-05-12 ADJUSTMENT_REQUIRED at 54064 — SP=54200 was only 136 pts
-    above breach. Root cause: IC_SR_BUFFER=50 (flat) placed SP just 50 pts below sr_low.
-    Fix: BANKNIFTY buffer=400. At entry conditions (spot=54900, sr_low=54347, VIX=18.58),
-    SP must land at 53900, which was not breached by today's 54064 print."""
+def test_banknifty_otm_floor_widens_strikes(mock_om, mock_md):
+    """VIX tier gives initial OTM; floor widens strikes to IC_MIN_OTM_BANKNIFTY.
+    Scenario: spot=54000, VIX=18 (NORMAL tier, OTM=200). Floor=700pt widens:
+    SC=54700, SP=53300."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-
-    from trading_system.core.sr_manager import SRManager
-
-    sr_mgr = SRManager.__new__(SRManager)
-
-    sc, sp, lc, lp = s.calculate_strikes(spot=54900, vix=18.58, sr_high=57477.0, sr_low=54346.75, sr_manager=sr_mgr)
-
-    assert sp == 53900.0, f"BANKNIFTY SP must be 53900 with buffer=400 at sr_low=54347; got {sp}"
-    assert sp < 54064.0, "SP must be below today's breach price of 54064"
-
-
-def test_banknifty_otm_floor_widens_sr_compressed_strikes(mock_om, mock_md):
-    """Regression: S/R buffer can push SC/SP toward spot below the 700pt profitable floor.
-    Floor must widen strikes back to IC_MIN_OTM_BANKNIFTY after all S/R adjustments.
-    Scenario: spot=54000, VIX=18 (NORMAL tier, OTM=200). S/R buffer at apply_buffer
-    pushes SC to 54200 (200pt OTM) and SP to 53800 (200pt OTM) — both below 700pt floor.
-    Expected: SC widened to 54700, SP to 53300."""
-    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
-    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-
-    from trading_system.core.sr_manager import SRManager
-
-    sr_mgr = SRManager.__new__(SRManager)
-    # apply_buffer returns strikes unchanged (no S/R nearby) — VIX tier gives 200pt OTM
-    sr_mgr.apply_buffer = lambda strike, h, l, opt_type, step=100, buffer=400: strike
 
     spot = 54000.0
-    sc, sp, lc, lp = s.calculate_strikes(spot=spot, vix=18.0, sr_high=60000.0, sr_low=48000.0, sr_manager=sr_mgr)
+    sc, sp, lc, lp = s.calculate_strikes(spot=spot, vix=18.0)
 
     floor = settings.IC_MIN_OTM_BANKNIFTY  # 700
     assert sc >= spot + floor, f"SC {sc} must be >= spot+700={spot+floor}"
@@ -951,14 +875,12 @@ def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
     """LIVE-30: IC_NIFTY_MIN_VIX must gate only NIFTY; BANKNIFTY enters normally at VIX=12."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-    sr_mgr = MagicMock()
-    sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
     # BANKNIFTY VIX=12 LOW tier: OTM=150 → floor widens to 700pt: SC=50700, SP=49300, LC=50800, LP=49200
     mock_md.get_ltp.side_effect = lambda sym: (
         23.0 if sym.endswith(("C50700", "P49300")) else 5.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
-    success = s.enter(50000, 12.0, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
+    success = s.enter(50000, 12.0, "19-MAR-2026", 10)
     assert success is True
     assert mock_om.place_order.call_count == 4
 

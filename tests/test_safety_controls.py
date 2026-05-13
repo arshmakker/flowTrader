@@ -572,13 +572,9 @@ class TestShakedownEntryCap:
             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1),
             patch.object(settings, "IC_ENTRY_MODE", "sequential"),
         ):
-            sr_manager = MagicMock()
             result = strat.enter(
                 spot=24000,
                 vix=15,
-                sr_high=24500,
-                sr_low=23500,
-                sr_manager=sr_manager,
                 expiry="29-MAY-2026",
                 lots=10,
             )
@@ -598,13 +594,9 @@ class TestShakedownEntryCap:
             patch.object(settings, "SHAKEDOWN_MODE", True),
             patch.object(settings, "IC_MAX_ENTRIES_PER_SESSION_SHAKEDOWN", 1),
         ):
-            sr_manager = MagicMock()
             result = strat.enter_hedge_first(
                 spot=24000,
                 vix=15,
-                sr_high=24500,
-                sr_low=23500,
-                sr_manager=sr_manager,
                 expiry="29-MAY-2026",
                 lots=10,
             )

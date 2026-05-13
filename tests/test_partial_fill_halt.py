@@ -86,12 +86,6 @@ def _build_ic(om):
     return ic, md
 
 
-def _sr_stub():
-    m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, t, step=50, **kw: strike
-    return m
-
-
 # ── Legacy enter() — partial fill must escalate halt even on clean reversal ──
 
 
@@ -116,7 +110,7 @@ def test_legacy_partial_fill_escalates_halt_on_clean_reversal(tmp_path, monkeypa
     ic, _ = _build_ic(om)
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert result is False
     # Critical: halt sentinel present even though reversals succeeded.
@@ -150,7 +144,7 @@ def test_legacy_partial_fill_reversal_incomplete_still_escalates(tmp_path, monke
     ic, _ = _build_ic(om)
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     # Sentinel + one unreversed leg
     assert len(ic._last_rollback_stuck_legs) == 2
@@ -189,7 +183,7 @@ def test_hedgefirst_phase5b_partial_short_unwound_by_fill_qty(tmp_path, monkeypa
     ic, _ = _build_ic(om)
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert result is False
     # The 5th place_order call is the SC reverse. Its side is BUY (reversing
@@ -228,7 +222,7 @@ def test_hedgefirst_phase5b_partial_short_skips_cycle(tmp_path, monkeypatch):
     ic, _ = _build_ic(om)
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert (
         ic._last_rollback_stuck_legs == []
@@ -263,7 +257,7 @@ def test_hedgefirst_phase5b_partial_fill_cap_reached_suspends_not_halts(tmp_path
     ic._consecutive_partial_fails = settings.IC_PARTIAL_FAIL_CAP - 1
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert ic._phase5b_suspended is True, "cap reached → adjustments suspended"
     assert (
@@ -294,7 +288,7 @@ def test_hedgefirst_phase5b_no_partial_does_not_escalate_halt(tmp_path, monkeypa
     ic, _ = _build_ic(om)
     stuck_path = tmp_path / "stuck.json"
     with patch("trading_system.live.live_order_manager._STUCK_LEGS_PATH", str(stuck_path)):
-        ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+        ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     # Non-partial shorts timeout isn't a partial-fill event — no halt sentinel.
     assert ic._last_rollback_stuck_legs == []
@@ -317,7 +311,7 @@ def test_phase5b_cooloff_not_expired_blocks_reentry(monkeypatch):
     ic._last_exit_reason = "PROFIT_HARVEST"
     ic._last_exit_date = datetime.now().date().isoformat()
 
-    result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+    result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert result is False
     om.place_order.assert_not_called()
@@ -349,7 +343,7 @@ def test_phase5b_cooloff_expired_resets_and_probes(monkeypatch):
     ic._last_exit_reason = "PROFIT_HARVEST"
     ic._last_exit_date = datetime.now().date().isoformat()
 
-    result = ic.enter(24000, 12.0, 24500, 23500, _sr_stub(), "17-APR-2026", 10)
+    result = ic.enter(24000, 12.0, "17-APR-2026", 10)
 
     assert result is True, "probe after cool-off expiry must succeed on a clean fill"
     assert ic._phase5b_suspended is False

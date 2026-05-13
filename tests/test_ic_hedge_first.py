@@ -69,12 +69,6 @@ def _rejected(reason="REJECT"):
     return {"status": "REJECTED", "fill_qty": 0, "fill_price": 0.0, "reason": reason, "order_id": "X"}
 
 
-def _sr_mgr():
-    m = MagicMock()
-    m.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
-    return m
-
-
 # ── Happy path ────────────────────────────────────────────────────────
 
 
@@ -97,7 +91,7 @@ def test_happy_path_all_four_legs_fill(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is True
     assert s.is_active() is True
@@ -120,7 +114,7 @@ def test_happy_path_wings_placed_before_shorts(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     # First two calls must be the long wings (C22200, P21800).
     assert "C22200" in calls_order[0]  # LC
@@ -150,7 +144,7 @@ def test_phase2_one_wing_fails_closes_other_wing_at_market(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert s.is_active() is False
@@ -168,7 +162,7 @@ def test_phase2_both_wings_fail_nothing_to_unwind(mock_om, mock_md):
     mock_om.place_order.return_value = _rejected()
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # Both wing submissions but zero unwinds.
@@ -204,7 +198,7 @@ def test_phase3_credit_infeasible_refuses_and_unwinds_wings(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     # Phase 3 projection: sc_bid(18) + sp_bid(18) - lc_fill(15) - lp_fill(15) = 6 < 18.
     assert ok is False
@@ -242,7 +236,7 @@ def test_phase2_partial_wing_fill_halts_without_submitting_shorts(mock_om, mock_
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # LC buy (partial 300) + LP buy (full) + LC sell (300) + LP sell (650) = 4 orders.
@@ -277,7 +271,7 @@ def test_phase5b_both_shorts_cancel_unwinds_all(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # 2 wing buys + 2 short LMT (canceled) + 2 wing sells (unwind) = 6
@@ -312,7 +306,7 @@ def test_phase5b_one_short_fills_one_cancels_unwinds_everything(mock_om, mock_md
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # LC+LP entry + SC+SP (one fills, one cancels) + SC buyback + LC+LP unwind = 7
@@ -336,7 +330,7 @@ def test_untradable_book_on_any_leg_refuses_before_submitting(mock_om, mock_md):
     mock_md.get_quote_book.side_effect = _gqb
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert mock_om.place_order.call_count == 0
@@ -360,7 +354,7 @@ def test_zero_bid_on_short_leg_refuses_pre_entry(mock_om, mock_md):
     mock_md.get_quote_book.side_effect = _gqb
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert mock_om.place_order.call_count == 0
@@ -375,7 +369,7 @@ def test_freeze_qty_breach_refuses_under_hedge_first_too(mock_om, mock_md):
     breaching_lots = 30  # 30 * 65 = 1950 > FREEZE_QTY_NIFTY=1800
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", breaching_lots)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", breaching_lots)
 
     assert ok is False
     assert mock_om.place_order.call_count == 0
@@ -404,7 +398,7 @@ def test_ic_entry_mode_sequential_does_not_route_to_hedge_first(mock_om, mock_md
     mock_md.get_ltp.side_effect = lambda sym: 5.0 if "2220" in sym or "2180" in sym else 18.0
     mock_om.place_order.return_value = _fill(18.0, 650)
 
-    s.enter(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    s.enter(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert called["hedge_first"] is False
 
@@ -431,7 +425,7 @@ def test_ic_entry_mode_hedge_first_routes_through_enter_hedge_first(mock_om, moc
 
     monkeypatch.setattr(s, "enter_hedge_first", _spy)
 
-    ok = s.enter(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert called["hedge_first"] is True
     assert ok is True
@@ -470,7 +464,7 @@ def test_phase5a_post_fill_credit_under_floor_unwinds_all_four(mock_om, mock_md)
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     # Actual credit = 8+8 - 8-8 = 0 < IC_MIN_CREDIT=18 → Phase 5a unwinds.
     assert ok is False
@@ -499,7 +493,7 @@ def test_wing_buys_pass_book_ask_as_price_fallback(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     wing_buy_calls = [
         c
@@ -534,7 +528,7 @@ def test_phase5a_unwind_passes_price_fallback_on_all_four_legs(mock_om, mock_md)
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     # 4 entry orders + 4 unwind orders. The last 4 are the unwind.
     unwind_calls = mock_om.place_order.call_args_list[-4:]
@@ -582,7 +576,7 @@ def test_fresh_entry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     # No prior exit → fresh entry. Under unified policy, this still skips.
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert s._last_rollback_stuck_legs == [], (
@@ -601,7 +595,7 @@ def test_harvest_reentry_partial_fill_skips_cycle_no_halt(mock_om, mock_md):
     s._last_exit_reason = "PROFIT_HARVEST"
     s._last_exit_date = _dt.datetime.now().date().isoformat()
 
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert (
@@ -620,7 +614,7 @@ def test_consecutive_partial_fail_cap_suspends_not_halts(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     s._consecutive_partial_fails = settings.IC_PARTIAL_FAIL_CAP - 1
 
-    s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert s._phase5b_suspended is True, "cap reached → adjustments suspended"
     assert s._last_rollback_stuck_legs == [], (
@@ -641,7 +635,7 @@ def test_phase5b_suspended_blocks_re_entry(mock_om, mock_md):
     s._last_exit_reason = "ADJUSTMENT_REQUIRED"
     s._last_exit_date = _dt.datetime.now().date().isoformat()
 
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     assert mock_om.place_order.call_count == 0, "suspended path must place no orders"
@@ -669,7 +663,7 @@ def test_phase5b_suspended_does_not_block_fresh_entry(mock_om, mock_md):
     s._phase5b_suspended = True
     # No prior exit → _is_re_entry() returns False → guard does not fire.
 
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is True, "fresh entry must not be blocked by Phase-5b suspension"
 
@@ -697,7 +691,7 @@ def test_successful_entry_resets_partial_fail_counter(mock_om, mock_md):
     s._consecutive_partial_fails = 2
     s._phase5b_suspended = True
 
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is True
     assert s._consecutive_partial_fails == 0, "counter must reset on success"
@@ -755,7 +749,7 @@ def test_phase3_sc_limit_uses_refetched_bid_not_initial(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     tick = settings.PRICE_TICK
     tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
@@ -803,7 +797,7 @@ def test_phase3_refetch_above_initial_proceeds_with_higher_credit(mock_om, mock_
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     tick = settings.PRICE_TICK
     tol = settings.IC_SHORT_LIMIT_DRIFT_TOL
@@ -843,7 +837,7 @@ def test_phase3_refetch_untradable_aborts_and_unwinds_wings(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # 2 BUY wings (Phase 1) + 2 SELL wing unwinds (Phase 3 abort) = 4 calls.
@@ -893,7 +887,7 @@ def test_phase3_refetch_below_min_credit_routes_through_existing_refuse(mock_om,
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     assert ok is False
     # Wings round-tripped cleanly; no shorts submitted (refuse fires before Phase 4).
@@ -952,7 +946,7 @@ def test_sc_limit_drift_tolerance_absorbs_normal_bid_drift(mock_om, mock_md):
     mock_om.place_order.side_effect = place_side_effect
 
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
-    ok = s.enter_hedge_first(22000, 12, 22500, 21500, _sr_mgr(), "19-MAR-2026", settings.IC_LOT_SIZE)
+    ok = s.enter_hedge_first(22000, 12, "19-MAR-2026", settings.IC_LOT_SIZE)
 
     tick = settings.PRICE_TICK
     drift_tol = settings.IC_SHORT_LIMIT_DRIFT_TOL

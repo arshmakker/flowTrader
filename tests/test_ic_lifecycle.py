@@ -36,13 +36,6 @@ class FakeMD:
         return None
 
 
-class FakeSR:
-    """No-op SR manager — returns strikes unchanged."""
-
-    def apply_buffer(self, strike, sr_high, sr_low, opt_type, step, buffer=50):
-        return strike
-
-
 def _prices_for_22000():
     """With spot=22000, vix=12 (low tier: OTM=150, width=50): strikes 22150/21850/22200/21800."""
     return {
@@ -64,7 +57,7 @@ def _make_strategy():
 def test_tracker_unwinds_after_exit():
     """BUG-03: IC.exit() must remove the 4 legs from the tracker."""
     strat, tracker, _ = _make_strategy()
-    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    ok = strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert ok is True
     assert len(tracker._positions) == 4, f"expected 4 legs tracked after entry, got {tracker._positions}"
     strat.exit("PROFIT_HARVEST", 100.0)
@@ -74,7 +67,7 @@ def test_tracker_unwinds_after_exit():
 def test_tracker_unwinds_after_force_exit():
     """BUG-03: force_exit() → exit() path must also unwind the tracker."""
     strat, tracker, _ = _make_strategy()
-    strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert len(tracker._positions) == 4
     result = strat.force_exit()
     assert result is not None
@@ -108,7 +101,7 @@ def test_tracker_unwinds_after_rollback():
 
     om.place_order = flaky_place_order
 
-    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    ok = strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert ok is False
     assert strat._position is None
     assert len(tracker._positions) == 0, f"rollback must clean tracker, got {tracker._positions}"
@@ -117,7 +110,7 @@ def test_tracker_unwinds_after_rollback():
 def test_entry_sets_expiry_date_iso():
     """BUG-18: IC_Position.expiry_date must be set to the ISO date parsed from the DD-MMM-YYYY expiry string."""
     strat, _, _ = _make_strategy()
-    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    ok = strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert ok is True
     assert strat._position is not None
     assert strat._position.expiry_date == "2026-03-19"
@@ -132,7 +125,7 @@ def test_exit_uses_realised_pnl_from_tracker():
     om = PaperOrderManager(md, tracker)
     strat = IronCondorStrategy(om, md, instrument="NIFTY")
 
-    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    ok = strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert ok is True
 
     mock_close_returns = [100.0, 150.0, -20.0, -30.0]
@@ -183,7 +176,7 @@ def test_rollback_failure_records_stuck_legs():
     real_place_order = om.place_order
     om.place_order = always_after_2_fails
 
-    ok = strat.enter(22000, 12, 22500, 21500, FakeSR(), "19-MAR-2026", lots=1)
+    ok = strat.enter(22000, 12, "19-MAR-2026", lots=1)
     assert ok is False
     # Legs are now ordered [SC(SELL), LC(BUY), SP(SELL), LP(BUY)].
     # Leg 3 (SP SELL) rejects → rollback of legs 1 (SC SELL) and 2 (LC BUY) both fail.

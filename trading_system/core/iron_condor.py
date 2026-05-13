@@ -448,20 +448,14 @@ class IronCondorStrategy:
             return settings.VIX_NORMAL_OTM, settings.VIX_NORMAL_WIDTH
         return settings.VIX_HIGH_OTM, settings.VIX_HIGH_WIDTH
 
-    def calculate_strikes(
-        self, spot: float, vix: float, sr_high: float, sr_low: float, sr_manager: Any
-    ) -> Tuple[float, float, float, float]:
-        """Calculates 4 strikes (SC, SP, LC, LP) based on VIX and S/R buffer."""
+    def calculate_strikes(self, spot: float, vix: float) -> Tuple[float, float, float, float]:
+        """Calculates 4 strikes (SC, SP, LC, LP) based on VIX tier and OTM floor."""
         otm_dist, width = self.get_vix_tier_params(vix)
         step = settings.NIFTY_STRIKE_STEP if self.instrument == "NIFTY" else settings.BANKNIFTY_STRIKE_STEP
 
         # Initial OTM strikes
         sc = round((spot + otm_dist) / step) * step
         sp = round((spot - otm_dist) / step) * step
-
-        sr_buffer = settings.IC_SR_BUFFER_BY_INSTRUMENT[self.instrument]
-        sc = sr_manager.apply_buffer(sc, sr_high, sr_low, "CE", step=step, buffer=sr_buffer)
-        sp = sr_manager.apply_buffer(sp, sr_high, sr_low, "PE", step=step, buffer=sr_buffer)
 
         # LIVE-29: cap S/R-adjusted strikes so a wide 20-day range can't push
         # them into illiquid far-OTM territory where credit collapses.
@@ -529,9 +523,6 @@ class IronCondorStrategy:
         self,
         spot: float,
         vix: float,
-        sr_high: float,
-        sr_low: float,
-        sr_manager: Any,
         expiry: str,
         lots: int,
         day_type: str = "",
@@ -541,13 +532,13 @@ class IronCondorStrategy:
         # Default stays 'sequential' (the legacy path) until the proving period
         # validates the new path on real money.
         if settings.IC_ENTRY_MODE == "hedge_first":
-            return self.enter_hedge_first(spot, vix, sr_high, sr_low, sr_manager, expiry, lots)
+            return self.enter_hedge_first(spot, vix, expiry, lots)
 
         # SHAKEDOWN: refuse new entries beyond the per-session cap.
         if not self._check_session_entry_cap():
             return False
 
-        sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
+        sc, sp, lc, lp = self.calculate_strikes(spot, vix)
 
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
         sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
@@ -701,9 +692,6 @@ class IronCondorStrategy:
         self,
         spot: float,
         vix: float,
-        sr_high: float,
-        sr_low: float,
-        sr_manager: Any,
         expiry: str,
         lots: int,
         day_type: str = "",
@@ -739,7 +727,7 @@ class IronCondorStrategy:
             self._phase5b_suspended_at = None
             self._consecutive_partial_fails = 0
 
-        sc, sp, lc, lp = self.calculate_strikes(spot, vix, sr_high, sr_low, sr_manager)
+        sc, sp, lc, lp = self.calculate_strikes(spot, vix)
         sc_sym = self.om.build_option_symbol(self.instrument, expiry, sc, "CE")
         sp_sym = self.om.build_option_symbol(self.instrument, expiry, sp, "PE")
         lc_sym = self.om.build_option_symbol(self.instrument, expiry, lc, "CE")
