@@ -62,6 +62,9 @@ IC_MIN_CREDIT_BY_INSTRUMENT = {"NIFTY": 18.0, "BANKNIFTY": 30.0}
 # When the S/R-adjusted strike exceeds this cap, the strike is clamped and a
 # WARNING is logged so the operator can see when the rule fires.
 IC_SR_CAP_OTM_FROM_SPOT = {"NIFTY": 400, "BANKNIFTY": 1000}
+# Backtest (86 days): BANKNIFTY breach rate is 56% at 300pt OTM, drops to 10.7% at 700pt.
+# S/R buffer can compress strikes below this floor — enforce it after all S/R adjustments.
+IC_MIN_OTM_BANKNIFTY = 700
 # LIVE-30: on VIX < 14 (quiet market) NIFTY IC credit is structurally below the
 # ₹18 fee break-even — market delivers ₹3–9 regardless of strike selection.
 # Skip NIFTY entry explicitly (avoid 500+ wasted quote-API calls per day) and log

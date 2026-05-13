@@ -490,6 +490,31 @@ class IronCondorStrategy:
                 )
                 sp = sp_min
 
+        # BANKNIFTY floor: S/R buffer can compress strikes below the profitable threshold.
+        # Backtest shows 700pt OTM needed for positive EV; widen if S/R pushed too close.
+        if self.instrument == "BANKNIFTY":
+            floor = settings.IC_MIN_OTM_BANKNIFTY
+            sc_floor = round((spot + floor) / step) * step
+            sp_floor = round((spot - floor) / step) * step
+            if sc < sc_floor:
+                logger.warning(
+                    "IC BANKNIFTY OTM floor: SC %.0f → %.0f (%.0f OTM < floor %d)",
+                    sc,
+                    sc_floor,
+                    sc - spot,
+                    floor,
+                )
+                sc = sc_floor
+            if sp > sp_floor:
+                logger.warning(
+                    "IC BANKNIFTY OTM floor: SP %.0f → %.0f (%.0f OTM < floor %d)",
+                    sp,
+                    sp_floor,
+                    spot - sp,
+                    floor,
+                )
+                sp = sp_floor
+
         # Define Wings
         # Ensure width is at least the strike step and a multiple of it
         actual_width = max(round(width / step) * step, step)

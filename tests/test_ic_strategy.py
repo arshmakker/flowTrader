@@ -301,8 +301,8 @@ def test_exit_result_contains_entry_date(mock_om, mock_md):
 
 def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
     """LIVE-27: BANKNIFTY at ₹32 credit must enter above the ₹30 floor.
-    Strikes: spot=50000, VIX=12 (low tier OTM=150, step=100) →
-    SC=50200, SP=49800, LC=50300, LP=49700."""
+    Strikes: spot=50000, VIX=12 (low tier OTM=150, step=100) → floor widens to 700pt:
+    SC=50700, SP=49300, LC=50800, LP=49200."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     sr_mgr = MagicMock()
@@ -310,7 +310,7 @@ def test_banknifty_credit_floor_allows_entry_above_floor(mock_om, mock_md):
 
     # (17+17) - (1+1) = 32 > 30 floor → must enter
     mock_md.get_ltp.side_effect = lambda sym: (
-        17.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        17.0 if sym.endswith(("C50700", "P49300")) else 1.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
     success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is True
@@ -324,9 +324,9 @@ def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
-    # (15+15) - (1+1) = 28 < 30 floor → must refuse
+    # (15+15) - (1+1) = 28 < 30 floor → must refuse; floor-widened strikes at 700pt OTM
     mock_md.get_ltp.side_effect = lambda sym: (
-        15.0 if sym.endswith(("C50200", "P49800")) else 1.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        15.0 if sym.endswith(("C50700", "P49300")) else 1.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
     success = s.enter(50000, 12, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is False
@@ -924,6 +924,29 @@ def test_banknifty_sr_buffer_400_places_sp_below_sr_low(mock_om, mock_md):
     assert sp < 54064.0, "SP must be below today's breach price of 54064"
 
 
+def test_banknifty_otm_floor_widens_sr_compressed_strikes(mock_om, mock_md):
+    """Regression: S/R buffer can push SC/SP toward spot below the 700pt profitable floor.
+    Floor must widen strikes back to IC_MIN_OTM_BANKNIFTY after all S/R adjustments.
+    Scenario: spot=54000, VIX=18 (NORMAL tier, OTM=200). S/R buffer at apply_buffer
+    pushes SC to 54200 (200pt OTM) and SP to 53800 (200pt OTM) — both below 700pt floor.
+    Expected: SC widened to 54700, SP to 53300."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+
+    from trading_system.core.sr_manager import SRManager
+
+    sr_mgr = SRManager.__new__(SRManager)
+    # apply_buffer returns strikes unchanged (no S/R nearby) — VIX tier gives 200pt OTM
+    sr_mgr.apply_buffer = lambda strike, h, l, opt_type, step=100, buffer=400: strike
+
+    spot = 54000.0
+    sc, sp, lc, lp = s.calculate_strikes(spot=spot, vix=18.0, sr_high=60000.0, sr_low=48000.0, sr_manager=sr_mgr)
+
+    floor = settings.IC_MIN_OTM_BANKNIFTY  # 700
+    assert sc >= spot + floor, f"SC {sc} must be >= spot+700={spot+floor}"
+    assert sp <= spot - floor, f"SP {sp} must be <= spot-700={spot-floor}"
+
+
 def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
     """LIVE-30: IC_NIFTY_MIN_VIX must gate only NIFTY; BANKNIFTY enters normally at VIX=12."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
@@ -931,9 +954,9 @@ def test_banknifty_not_blocked_by_nifty_min_vix(mock_om, mock_md):
     sr_mgr = MagicMock()
     sr_mgr.apply_buffer.side_effect = lambda strike, h, l, type, step=50, **kw: strike
 
-    # BANKNIFTY VIX=12 LOW tier: SC=50200, SP=49800, LC=50300, LP=49700
+    # BANKNIFTY VIX=12 LOW tier: OTM=150 → floor widens to 700pt: SC=50700, SP=49300, LC=50800, LP=49200
     mock_md.get_ltp.side_effect = lambda sym: (
-        23.0 if sym.endswith(("C50200", "P49800")) else 5.0 if sym.endswith(("C50300", "P49700")) else 10.0
+        23.0 if sym.endswith(("C50700", "P49300")) else 5.0 if sym.endswith(("C50800", "P49200")) else 10.0
     )
     success = s.enter(50000, 12.0, 51000, 49000, sr_mgr, "19-MAR-2026", 10)
     assert success is True
