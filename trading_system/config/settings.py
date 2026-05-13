@@ -9,7 +9,7 @@ PAPER_TRADE_MODE = True  # Flip to False to go live
 
 # ══ INSTRUMENTS ════════════════════════════════════════════════════
 # Restrict which instruments may enter trades. Empty list = all instruments active.
-ACTIVE_INSTRUMENTS: list = ["NIFTY"]
+ACTIVE_INSTRUMENTS: list = ["NIFTY", "BANKNIFTY"]
 NIFTY_SYMBOL = "NIFTY"
 BANKNIFTY_SYMBOL = "BANKNIFTY"
 NIFTY_LOT_SIZE = 65  # updated for 2026
