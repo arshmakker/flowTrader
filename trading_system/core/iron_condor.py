@@ -1259,32 +1259,43 @@ class IronCondorStrategy:
 
         # 2. Check Profit Harvest Cycle (2% NIFTY, 13% BANKNIFTY)
         # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
-        if total_pnl >= harvest_trigger:
-            # Dual-source guard: require LTP-based PnL to also confirm profit.
-            # Quote-book mids can be wide/stale at market open — bp1/sp1 resting
-            # orders diverge from last-trade prices, producing phantom triggers.
-            # (2026-05-11: mid-pnl=+13,792 vs fill-based pnl=-5,594 at 09:31.)
-            ltp_vals = {
-                "sc": self.md.get_ltp(pos.sc_sym),
-                "sp": self.md.get_ltp(pos.sp_sym),
-                "lc": self.md.get_ltp(pos.lc_sym),
-                "lp": self.md.get_ltp(pos.lp_sym),
-            }
+        # Dual-source guard: two signals must agree before harvest fires.
+        # Mid-based uses bid/ask mids (can be phantom if books are stale wide resting orders).
+        # LTP-based uses last-traded prices (more reliable but can spike momentarily).
+        # Guard prevents either signal triggering harvest alone.
+        # (2026-05-11: mid-pnl=+13,792 vs fill-based pnl=-5,594 — phantom mid trigger.)
+        ltp_vals = {
+            "sc": self.md.get_ltp(pos.sc_sym),
+            "sp": self.md.get_ltp(pos.sp_sym),
+            "lc": self.md.get_ltp(pos.lc_sym),
+            "lp": self.md.get_ltp(pos.lp_sym),
+        }
 
-            def _b(k: str) -> float:
-                b = books.get(k)
-                return b.bid if b and b.is_tradable else 0.0
+        def _b(k: str) -> float:
+            b = books.get(k)
+            return b.bid if b and b.is_tradable else 0.0
 
-            def _a(k: str) -> float:
-                b = books.get(k)
-                return b.ask if b and b.is_tradable else 0.0
+        def _a(k: str) -> float:
+            b = books.get(k)
+            return b.ask if b and b.is_tradable else 0.0
 
+        ltp_missing = [k for k, v in ltp_vals.items() if v <= 0]
+        total_pnl_ltp: Optional[float] = None
+        if not ltp_missing:
+            ltp_premium = ltp_vals["sc"] + ltp_vals["sp"] - ltp_vals["lc"] - ltp_vals["lp"]
+            total_pnl_ltp = (pos.entry_credit - ltp_premium) * pos.lots * lot_size
+
+        mid_triggered = total_pnl >= harvest_trigger
+        ltp_triggered = total_pnl_ltp is not None and total_pnl_ltp >= harvest_trigger
+
+        if mid_triggered or ltp_triggered:
             logger.debug(
-                "IC %s harvest check: mid_pnl=%.2f trigger=%.2f | "
+                "IC %s harvest check: mid_pnl=%.2f ltp_pnl=%.2f trigger=%.2f | "
                 "sc(bid=%.2f ask=%.2f ltp=%.2f) sp(bid=%.2f ask=%.2f ltp=%.2f) "
                 "lc(bid=%.2f ask=%.2f ltp=%.2f) lp(bid=%.2f ask=%.2f ltp=%.2f)",
                 self.instrument,
                 total_pnl,
+                total_pnl_ltp if total_pnl_ltp is not None else -1,
                 harvest_trigger,
                 _b("sc"),
                 _a("sc"),
@@ -1299,35 +1310,62 @@ class IronCondorStrategy:
                 _a("lp"),
                 ltp_vals["lp"],
             )
-            ltp_missing = [k for k, v in ltp_vals.items() if v <= 0]
             if ltp_missing:
                 logger.info(
                     "IC %s HARVEST DEFERRED: LTP unavailable for %s — cannot dual-confirm; re-checking next cycle",
                     self.instrument,
                     ltp_missing,
                 )
-            else:
-                ltp_premium = ltp_vals["sc"] + ltp_vals["sp"] - ltp_vals["lc"] - ltp_vals["lp"]
-                total_pnl_ltp = (pos.entry_credit - ltp_premium) * pos.lots * lot_size
-                if total_pnl_ltp < harvest_trigger:
+            elif mid_triggered and ltp_triggered:
+                # Both sources above trigger — strongest confirmation
+                if total_pnl > pos.peak_pnl:
+                    pos.peak_pnl = total_pnl
+                if self._harvest_fill_viable(pos):
                     logger.info(
-                        "IC %s HARVEST DEFERRED: LTP-based PnL %.2f < trigger %.2f "
-                        "(mid-based=%.2f) — sources disagree; re-checking next cycle",
+                        "IC %s HARVEST: PnL %.2f >= Trigger %.2f (both sources agree)",
+                        self.instrument,
+                        total_pnl,
+                        harvest_trigger,
+                    )
+                    return self.exit("PROFIT_HARVEST", total_pnl)
+            elif mid_triggered and not ltp_triggered:
+                # Mid phantom scenario (2026-05-11): mid inflated, LTP below trigger
+                logger.info(
+                    "IC %s HARVEST DEFERRED: LTP-based PnL %.2f < trigger %.2f "
+                    "(mid-based=%.2f) — sources disagree; re-checking next cycle",
+                    self.instrument,
+                    total_pnl_ltp,
+                    harvest_trigger,
+                    total_pnl,
+                )
+            else:
+                # LTP-primary: LTP above trigger, mid below. Harvest if mid confirms
+                # profit direction (mid > 0). Mid lagging LTP is expected when book
+                # mids are slower to update than last-trade prices.
+                # (2026-05-13: ltp=+2,880 vs mid=+2,137 on a BANKNIFTY IC at 09:46.)
+                # Guard: if mid <= 0 the sources contradict each other — defer.
+                if total_pnl > 0:
+                    if total_pnl_ltp > pos.peak_pnl:
+                        pos.peak_pnl = total_pnl_ltp
+                    if self._harvest_fill_viable(pos):
+                        logger.info(
+                            "IC %s HARVEST: LTP-based PnL %.2f >= Trigger %.2f " "(mid-based=%.2f confirms direction)",
+                            self.instrument,
+                            total_pnl_ltp,
+                            harvest_trigger,
+                            total_pnl,
+                        )
+                        return self.exit("PROFIT_HARVEST", total_pnl_ltp)
+                else:
+                    logger.info(
+                        "IC %s HARVEST DEFERRED: LTP-based PnL %.2f >= trigger %.2f "
+                        "but mid-based %.2f <= 0 — direction mismatch; re-checking next cycle",
                         self.instrument,
                         total_pnl_ltp,
                         harvest_trigger,
                         total_pnl,
                     )
-                else:
-                    # Both sources agree — record the confirmed peak before fill check
-                    if total_pnl > pos.peak_pnl:
-                        pos.peak_pnl = total_pnl
-                    if self._harvest_fill_viable(pos):
-                        logger.info(
-                            "IC %s HARVEST: PnL %.2f >= Trigger %.2f", self.instrument, total_pnl, harvest_trigger
-                        )
-                        return self.exit("PROFIT_HARVEST", total_pnl)
-            # LTP disagrees or _harvest_fill_viable returned False — skip this cycle
+            # One source disagrees or _harvest_fill_viable returned False — skip this cycle
 
         # 3. Adjustment Logic (Breach + Profit)
         # Roll tested side OTM and safe side closer if overall position in profit

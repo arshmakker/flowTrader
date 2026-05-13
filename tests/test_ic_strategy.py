@@ -359,16 +359,23 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
     # current_premium mid = (SC+SP)-(LC+LP) = (17+17)-(1.95+1.95) = 30.1
     # pnl_unit = entry_credit - current_premium = 33.0 - 30.1 = 2.9
     # total_pnl = 2.9 * 10 * 30 = 870 = 8.7% of max_profit=10000 → below 13% gate
+    # LTP mirrors book mids so pnl_ltp is also ~870 — both sources below trigger.
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
             return QuoteBook(symbol=sym, bid=16.5, ask=17.5, bid_qty=100, ask_qty=100)
         return QuoteBook(symbol=sym, bid=1.45, ask=2.45, bid_qty=100, ask_qty=100)
 
+    def ltp_side(sym):
+        if sym in ("SC", "SP"):
+            return 17.0  # ltp_premium=17+17-1.95-1.95=30.1; pnl_ltp=870 < 1300
+        if sym in ("LC", "LP"):
+            return 1.95
+        return 51500.0  # spot between strikes (51000–52000) — no breach
+
     mock_md.get_quote_book.side_effect = qb_side_effect
+    mock_md.get_ltp.side_effect = ltp_side
     result = s.monitor()
-    assert (
-        result is None or result.get("exit_reason") != "PROFIT_HARVEST"
-    ), "BANKNIFTY should not harvest at 8.7% of max_profit (below 13% threshold)"
+    assert result is None, "BANKNIFTY must not harvest at 8.7% of max_profit (below 13% threshold)"
 
 
 def test_banknifty_harvest_above_threshold_triggers(mock_om, mock_md):
@@ -666,6 +673,92 @@ def test_monitor_no_phantom_harvest_when_ltp_shows_loss(mock_om, mock_md):
     assert pos.peak_pnl == 0, (
         "peak_pnl must not be updated when mid-based PnL is phantom "
         "(above trigger but LTP disagrees) — confirmed by 2026-05-11 12:36 session"
+    )
+
+
+def test_monitor_harvest_fires_ltp_primary_mid_confirms_direction(mock_om, mock_md):
+    """Regression: 2026-05-13 — LTP-based PnL crossed the harvest trigger (₹2,880 vs
+    ₹2,486 trigger) while mid-based lagged below it (₹2,137). The old code only checked
+    mid-based as primary; LTP never got to trigger the harvest.
+
+    Fix: LTP-primary path — when LTP >= trigger and mid > 0 (direction confirmed),
+    harvest fires. Mid > 0 prevents harvesting when mid shows an outright loss (which
+    would indicate a potentially corrupted LTP reading)."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+    # max_profit=17415; trigger=17415*0.13=2263.95
+
+    # Short legs have live, tradable books — mids show small profit (< trigger)
+    # Wings have empty books → _wing_price() falls back to get_ltp()
+    # SC mid=29, SP mid=27, wing LTP fallback=0.5 each
+    # mid_premium = 29+27-0.5-0.5 = 55; pnl_mid = (58.05-55)*300 = 915 > 0 < 2264 ✓
+    def qb_wings_empty(sym):
+        if sym == "SC":
+            return QuoteBook(symbol=sym, bid=28.0, ask=30.0, bid_qty=100, ask_qty=100)
+        if sym == "SP":
+            return QuoteBook(symbol=sym, bid=26.0, ask=28.0, bid_qty=100, ask_qty=100)
+        return None  # wings → LTP fallback; also makes _harvest_fill_viable fail-open
+
+    # LTP: shorts cheap, wings cheap → large profit signal above trigger
+    # ltp_premium = 25+22-0.5-0.5 = 46; pnl_ltp = (58.05-46)*300 = 3615 >= 2264 ✓
+    def real_ltp(sym):
+        if sym == "SC":
+            return 25.0
+        if sym == "SP":
+            return 22.0
+        if sym in ("LC", "LP"):
+            return 0.5
+        return 56000.0  # spot between strikes — no breach
+
+    mock_md.get_quote_book.side_effect = qb_wings_empty
+    mock_md.get_ltp.side_effect = real_ltp
+
+    result = s.monitor()
+
+    assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST", (
+        "harvest must fire when LTP-based PnL crosses the trigger and mid-based "
+        "confirms profit direction (mid > 0), even if mid is below the trigger"
+    )
+
+
+def test_monitor_harvest_deferred_ltp_primary_mid_shows_loss(mock_om, mock_md):
+    """Direction mismatch guard: LTP >= trigger but mid-based shows outright loss (mid <= 0).
+    The two sources contradict each other — harvest must be deferred to avoid acting on
+    a potentially stale or corrupted LTP reading."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    # Short leg books show expensive shorts (position at a large mid-based loss)
+    # SC mid=70, SP mid=65, wings LTP fallback=0.5 → mid_premium=134.0
+    # pnl_mid = (58.05-134)*300 = -22,785 < 0 ✓
+    def qb_expensive_shorts(sym):
+        if sym == "SC":
+            return QuoteBook(symbol=sym, bid=68.0, ask=72.0, bid_qty=100, ask_qty=100)
+        if sym == "SP":
+            return QuoteBook(symbol=sym, bid=63.0, ask=67.0, bid_qty=100, ask_qty=100)
+        return None
+
+    # LTP shows shorts cheap — large LTP-based profit above trigger
+    # ltp_premium = 25+22-0.5-0.5 = 46; pnl_ltp = (58.05-46)*300 = 3615 >= 2264 ✓
+    def real_ltp(sym):
+        if sym == "SC":
+            return 25.0
+        if sym == "SP":
+            return 22.0
+        if sym in ("LC", "LP"):
+            return 0.5
+        return 56000.0
+
+    mock_md.get_quote_book.side_effect = qb_expensive_shorts
+    mock_md.get_ltp.side_effect = real_ltp
+
+    result = s.monitor()
+
+    assert result is None, (
+        "harvest must be deferred when LTP is above trigger but mid-based shows "
+        "an outright loss — sources contradict, possible stale LTP"
     )
 
 
