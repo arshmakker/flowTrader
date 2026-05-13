@@ -41,11 +41,14 @@ IC_VIX_MAX = 30.0
 IC_VIX_STABLE_MINS = 8  # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
-IC_HARVEST_PCT = 0.01  # 1% of max profit for harvest and re-entry (NIFTY default)
-# Per-instrument harvest threshold, calibrated against the LIVE-12 cost stack.
-# BANKNIFTY 8-leg round-trip fees ≈ ₹760 on 10 lots; break-even ratio ≈ 11.8%.
-# A flat 1% threshold triggers harvests that are negative net of fees on BANKNIFTY.
-IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}
+IC_HARVEST_PCT = 0.15  # 15% of max profit for harvest and re-entry (NIFTY default)
+# Per-instrument harvest threshold, calibrated against round-trip cost stack.
+# NIFTY: round-trip ≈ ₹615 on 10 lots (65×10=650 shares); max_profit ≈ ₹36-45k at
+# 200pt OTM. Break-even ≈ 1.4% of max_profit; 2% (old) fired in minutes at ₹114 net/cycle
+# — churn with minimal capture. 15% gives ₹6,200 net/cycle and ~1 harvest/day,
+# optimal against daily theta decay model.
+# BANKNIFTY: round-trip ≈ ₹1,136 on 10 lots; break-even ≈ 6.9%; 13% fee-positive.
+IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.15, "BANKNIFTY": 0.13}
 IC_STOP_LOSS_MULT = 3.0  # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 # Per-instrument minimum net credit per lot. Calibrated against the LIVE-12

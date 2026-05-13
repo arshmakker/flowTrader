@@ -80,22 +80,22 @@ def test_ic_strategy_harvest(mock_om, mock_md):
         entry_time="10:00:00",
     )
 
-    # Harvest trigger = 2% of max_profit (1000) = 20 (NIFTY threshold).
-    # Current premium: 19.0. PnL = (20 - 19.0) * 2 * 25 = 1.0 * 50 = 50.
-    # Should trigger harvest (50 >= 20).
+    # Harvest trigger = 15% of max_profit (1000) = 150 (NIFTY threshold).
+    # LTP premium = 8.5+8.5-0.5-0.5 = 16.0. PnL = (20-16.0)*2*65 = 4.0*130 = 520 >= 150.
+    # LC/LP must be > 0 so ltp_missing is empty — dual-source guard requires both LTP sources.
+    # Spot ("NSE|Nifty 50") must be between strikes (22150/21850) to avoid false breach.
     def ltp_side_effect(sym):
         if sym in ("SC", "SP"):
-            return 14.5
+            return 8.5
         if sym in ("LC", "LP"):
-            return 5.0
-        return 0.0
+            return 0.5
+        return 22000  # spot — between sc_strike=22150 and sp_strike=21850
 
-    # bid/ask confirms a fee-viable fill: exit_premium=(14.6+14.6)-(5.0+5.0)=19.2
-    # fill_gross = (20 - 19.2) * 130 = 104 → fee-positive
+    # bid/ask: exit_premium=(8.5+8.5)-(0.4+0.4)=16.2, fill_gross=(20-16.2)*130=494>fees.
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
-            return QuoteBook(symbol=sym, bid=14.5, ask=14.6, bid_qty=100, ask_qty=100)
-        return QuoteBook(symbol=sym, bid=5.0, ask=5.1, bid_qty=100, ask_qty=100)
+            return QuoteBook(symbol=sym, bid=8.4, ask=8.5, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=0.4, ask=0.6, bid_qty=100, ask_qty=100)
 
     mock_md.get_ltp.side_effect = ltp_side_effect
     mock_md.get_quote_book.side_effect = qb_side_effect
