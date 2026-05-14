@@ -71,14 +71,20 @@ class RiskManager:
             if s.is_active():
                 active_count += 1
                 pos = s._position
-                # Calculate current unrealized P&L for this strategy
-                prices = {
-                    "sc": s.md.get_ltp(pos.sc_sym),
-                    "sp": s.md.get_ltp(pos.sp_sym),
-                    "lc": s.md.get_ltp(pos.lc_sym),
-                    "lp": s.md.get_ltp(pos.lp_sym),
+                # Per-leg LTP with freshness — stale-substituted legs poison the
+                # spread PnL the same way they poison iron_condor.monitor's
+                # harvest trigger (2026-05-14 BANKNIFTY 44s-stale SC). Treat
+                # stale-mix as invalid-quote and skip this tick.
+                ltp_age = {
+                    "sc": s.md.get_ltp_with_age(pos.sc_sym),
+                    "sp": s.md.get_ltp_with_age(pos.sp_sym),
+                    "lc": s.md.get_ltp_with_age(pos.lc_sym),
+                    "lp": s.md.get_ltp_with_age(pos.lp_sym),
                 }
+                prices = {k: v[0] for k, v in ltp_age.items()}
                 if any(p <= 0 for p in prices.values()):
+                    continue
+                if any(a > settings.IC_FRESH_LTP_MAX_AGE_SEC for _, a in ltp_age.values()):
                     continue
                 valid_count += 1
 

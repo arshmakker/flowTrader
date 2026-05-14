@@ -299,12 +299,9 @@ class TestAlertEmission:
         strat._position = pos
         # LTPs give current_prem huge vs entry_credit → big unrealised loss.
         strat.md = MagicMock()
-        strat.md.get_ltp.side_effect = lambda sym: {
-            "NFO|SC": 60.0,
-            "NFO|SP": 60.0,
-            "NFO|LC": 1.0,
-            "NFO|LP": 1.0,
-        }[sym]
+        _ltp_map = {"NFO|SC": 60.0, "NFO|SP": 60.0, "NFO|LC": 1.0, "NFO|LP": 1.0}
+        strat.md.get_ltp.side_effect = lambda sym: _ltp_map[sym]
+        strat.md.get_ltp_with_age.side_effect = lambda sym: (_ltp_map[sym], 0.0)
         strat.md.get_lot_size.return_value = 65
 
         # Feed confirm-ticks-required breaches so the hard stop fires.
@@ -315,6 +312,42 @@ class TestAlertEmission:
         assert risk.halted is True
         assert any(a.event == "combined_stop" for a in alerts.sent)
         assert all(a.severity == "critical" for a in alerts.sent if a.event == "combined_stop")
+
+    def test_combined_stop_skips_tick_when_any_leg_ltp_is_stale(self):
+        """Stop-loss must not act on a stale-mix LTP snapshot — a 30-44s old
+        last_valid substitution combined with fresh ticks on other legs produces
+        a phantom spread PnL that can both false-fire and miss the real stop.
+        Pin: any leg age > IC_FRESH_LTP_MAX_AGE_SEC → skip the tick entirely,
+        reset the breach streak (same semantics as 'invalid quote snapshot')."""
+        alerts = NullAlertChannel()
+        risk = RiskManager(alerts=alerts)
+
+        strat = MagicMock()
+        strat.is_active.return_value = True
+        pos = MagicMock()
+        pos.sc_sym, pos.sp_sym, pos.lc_sym, pos.lp_sym = "NFO|SC", "NFO|SP", "NFO|LC", "NFO|LP"
+        pos.entry_credit = 20.0
+        pos.lots = 10
+        pos.max_profit = 13_000.0
+        strat._position = pos
+
+        # LTPs would otherwise produce a breach-eligible loss, BUT one leg is stale
+        # beyond the freshness threshold → tick must be skipped.
+        _ltp_map = {"NFO|SC": 60.0, "NFO|SP": 60.0, "NFO|LC": 1.0, "NFO|LP": 1.0}
+        stale_age = settings.IC_FRESH_LTP_MAX_AGE_SEC + 30.0
+        _age_map = {"NFO|SC": stale_age, "NFO|SP": 0.0, "NFO|LC": 0.0, "NFO|LP": 0.0}
+        strat.md = MagicMock()
+        strat.md.get_ltp.side_effect = lambda sym: _ltp_map[sym]
+        strat.md.get_ltp_with_age.side_effect = lambda sym: (_ltp_map[sym], _age_map[sym])
+        strat.md.get_lot_size.return_value = 65
+
+        required = max(1, int(getattr(settings, "IC_HARD_STOP_CONFIRM_TICKS", 1)))
+        for _ in range(required + 1):  # one more than required — would have halted
+            hit = risk.check_combined_stop_loss([strat])
+
+        assert hit is False, "stop-loss must not fire when any leg's LTP is stale-substituted"
+        assert risk.halted is False
+        assert all(a.event != "combined_stop" for a in alerts.sent)
 
 
 # ── Security: cred.yml file mode locked to owner-only ──────────────────────

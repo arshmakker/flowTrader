@@ -95,15 +95,22 @@ class PaperPositionTracker:
         total = 0.0
         self._unmarked = []
         for sym, pos in self._positions.items():
-            ltp = market_data.get_ltp(sym)
+            # Freshness-aware mark: LTP first if fresh, else quote-book mid. A
+            # last_valid LTP substituted from N seconds ago is no more reliable
+            # than no LTP at all — both produce phantom marks under broker
+            # contamination (FixQ1, 2026-05-14).
+            if hasattr(market_data, "get_ltp_with_age"):
+                ltp, age = market_data.get_ltp_with_age(sym)
+                if age > settings.IC_FRESH_LTP_MAX_AGE_SEC:
+                    ltp = 0.0  # force the mid-fallback path below
+            else:
+                ltp = market_data.get_ltp(sym)
             if ltp <= 0:
-                # LTP stale or unavailable — try quote-book mid so risk checks see
-                # both real losses and real profits, not just zero.
                 qb = market_data.get_quote_book(sym) if hasattr(market_data, "get_quote_book") else None
                 if qb is not None and qb.is_tradable:
                     ltp = (qb.bid + qb.ask) / 2.0
                     logger.info(
-                        "Unrealised P&L: LTP stale for %s — using quote-book mid %.2f",
+                        "Unrealised P&L: LTP stale/missing for %s — using quote-book mid %.2f",
                         sym,
                         ltp,
                     )

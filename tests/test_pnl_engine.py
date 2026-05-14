@@ -347,6 +347,31 @@ def test_save_restore_drawdown():
     assert pnl2._trade_pnls == pnl1._trade_pnls
 
 
+def test_get_unrealised_pnl_uses_mid_when_ltp_is_stale():
+    """Regression: a stale-substituted LTP (FixQ1 last_valid fallback) must
+    not feed the unrealised mark; quote-book mid is the fresh source. Mirrors
+    the iron_condor freshness propagation (2026-05-14)."""
+    from trading_system.config import settings
+    from trading_system.existing.market_data import QuoteBook
+
+    class StaleMD:
+        def get_ltp(self, sym):
+            return 60.0  # stale value
+
+        def get_ltp_with_age(self, sym):
+            return (60.0, settings.IC_FRESH_LTP_MAX_AGE_SEC + 30.0)
+
+        def get_quote_book(self, sym):
+            return QuoteBook(symbol=sym, bid=80.0, ask=82.0, bid_qty=100, ask_qty=100)
+
+    trk = PaperPositionTracker()
+    trk._positions["NFO|SC"] = {"symbol": "NFO|SC", "qty": -300, "avg_price": 70.0, "side": "SELL", "costs": 0.0}
+    # Short 300 @ 70. With stale LTP=60: mark would be (70-60)*300 = +3,000 (false profit).
+    # With fresh mid=81: mark = (70-81)*300 = -3,300 (real loss).
+    pnl = trk.get_unrealised_pnl(StaleMD())
+    assert pnl == -3300.0, f"stale LTP must be rejected in favor of fresh mid (got {pnl})"
+
+
 def _cleanup():
     import shutil
 
