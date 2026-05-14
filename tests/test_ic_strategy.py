@@ -423,12 +423,13 @@ def test_banknifty_credit_floor_refuses_below_floor(mock_om, mock_md):
 
 
 def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
-    """BANKNIFTY at 8.7% MTM ratio must NOT harvest (threshold is 13%).
-    Regression: flat 1% threshold fires fee-negative harvests on BANKNIFTY
-    because the 8-leg round-trip fee stack breaks even at ~11.8% of max_profit."""
+    """BANKNIFTY at 3.48% MTM ratio must NOT harvest (threshold is 5%).
+    Calibrated 2026-05-14 from 70 historical PROFIT_HARVEST cycles: 5% trigger
+    excludes the 5 phantom-mid loss-bucket cycles while preserving ₹20k/day EV.
+    See settings.IC_HARVEST_PCT_BY_INSTRUMENT comment block for the data."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-    # max_profit=10000, so 13% trigger = 1300; 8.7% MTM = 870 — below threshold.
+    # max_profit=25000, so 5% trigger = 1250; 3.48% MTM = 870 — below threshold.
     s._position = IC_Position(
         instrument="BANKNIFTY",
         sc_sym="SC",
@@ -439,7 +440,7 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
         sp_strike=51000,
         lc_strike=52500,
         lp_strike=50500,
-        max_profit=10000,
+        max_profit=25000,
         entry_credit=33.0,
         lots=10,
         entry_time="10:30:00",
@@ -447,7 +448,7 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
 
     # current_premium mid = (SC+SP)-(LC+LP) = (17+17)-(1.95+1.95) = 30.1
     # pnl_unit = entry_credit - current_premium = 33.0 - 30.1 = 2.9
-    # total_pnl = 2.9 * 10 * 30 = 870 = 8.7% of max_profit=10000 → below 13% gate
+    # total_pnl = 2.9 * 10 * 30 = 870 = 3.48% of max_profit=25000 → below 5% gate
     # LTP mirrors book mids so pnl_ltp is also ~870 — both sources below trigger.
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
@@ -456,7 +457,7 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
 
     def ltp_side(sym):
         if sym in ("SC", "SP"):
-            return 17.0  # ltp_premium=17+17-1.95-1.95=30.1; pnl_ltp=870 < 1300
+            return 17.0  # ltp_premium=17+17-1.95-1.95=30.1; pnl_ltp=870 < 1250
         if sym in ("LC", "LP"):
             return 1.95
         return 51500.0  # spot between strikes (51000–52000) — no breach
@@ -464,7 +465,7 @@ def test_banknifty_harvest_below_threshold_does_not_trigger(mock_om, mock_md):
     mock_md.get_quote_book.side_effect = qb_side_effect
     mock_md.get_ltp.side_effect = ltp_side
     result = s.monitor()
-    assert result is None, "BANKNIFTY must not harvest at 8.7% of max_profit (below 13% threshold)"
+    assert result is None, "BANKNIFTY must not harvest at 3.48% of max_profit (below 5% threshold)"
 
 
 def test_banknifty_harvest_above_threshold_triggers(mock_om, mock_md):

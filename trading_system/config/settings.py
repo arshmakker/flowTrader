@@ -53,14 +53,22 @@ IC_HARVEST_PCT = 0.02  # 2% of max profit — fast-cycle thesis (see comment bel
 #   - Floor model is conservative for high triggers (assumes skipped cycles earn
 #     zero); realistic model (30% drift into LOSS bucket) makes 2% even more dominant.
 # NIFTY break-even per round-trip ≈ 1.4%; 2% leaves a thin fee-positive margin.
-# BANKNIFTY break-even ≈ 11.8% per the regression test in test_ic_strategy.py
-# (8-leg round-trip cost stack is steeper than NIFTY's). 13% leaves ~1.2% margin
-# and is pinned by test_banknifty_harvest_below_threshold_does_not_trigger.
-# BANKNIFTY needs its own historical cycle analysis before changing; the NIFTY
-# data does not transfer.
-# Prior 15% NIFTY setting (2026-05-13 calibration) was model-driven, not data-driven,
-# and would have cut historical ₹/day by 35-63%.
-IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}
+# BANKNIFTY: 70 historical PROFIT_HARVEST cycles over 8 trading days analysed
+# 2026-05-14:
+#     trigger  fires/day  total ₹/day (floor)
+#        2%      7.4       ₹20,501
+#        5%      6.5       ₹20,121
+#        8%      4.9       ₹18,323
+#       13%      3.5       ₹15,631  (prior setting)
+#       20%      2.1       ₹11,738
+# Empirical avg ₹/cycle at 2-5% trigger was ₹240-3,095 NET (post-cost), refuting
+# the "11.8% break-even" cost model previously pinned in the regression test.
+# 5% selected as conservative midpoint: excludes the 5 historical loss-bucket
+# cycles (cap -0.25% to -2.32%) that fired on phantom-positive mids (a failure
+# mode now blocked by IC_FRESH_LTP_MAX_AGE_SEC freshness gates), while leaving
+# ~₹4.5k/day of EV vs the prior 13%.
+# Prior 15%/13% setting (2026-05-13 calibration) was model-driven, not data-driven.
+IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.05}
 IC_STOP_LOSS_MULT = 3.0  # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 # Max age (sec) of any leg's LTP before the spread LTP-PnL is disqualified at
