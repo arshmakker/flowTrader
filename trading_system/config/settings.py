@@ -41,14 +41,26 @@ IC_VIX_MAX = 30.0
 IC_VIX_STABLE_MINS = 8  # LIVE-28: 15 → 8 min; opening-hour VIX swings sit outside the 8-min window
 IC_VIX_STABLE_BAND = 1.5
 IC_DTE_THRESHOLD = 3  # Roll to next week if current weekly < 3 DTE
-IC_HARVEST_PCT = 0.15  # 15% of max profit for harvest and re-entry (NIFTY default)
-# Per-instrument harvest threshold, calibrated against round-trip cost stack.
-# NIFTY: round-trip ≈ ₹615 on 10 lots (65×10=650 shares); max_profit ≈ ₹36-45k at
-# 200pt OTM. Break-even ≈ 1.4% of max_profit; 2% (old) fired in minutes at ₹114 net/cycle
-# — churn with minimal capture. 15% gives ₹6,200 net/cycle and ~1 harvest/day,
-# optimal against daily theta decay model.
-# BANKNIFTY: round-trip ≈ ₹1,136 on 10 lots; break-even ≈ 6.9%; 13% fee-positive.
-IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.15, "BANKNIFTY": 0.13}
+IC_HARVEST_PCT = 0.02  # 2% of max profit — fast-cycle thesis (see comment below)
+# Per-instrument harvest threshold, calibrated against historical capture distribution.
+# 2026-05-14 analysis of 104 PROFIT_HARVEST cycles over 10 trading days at the 2%
+# regime showed:
+#   - 10.4 cycles/day at 2% trigger (avg ₹2,406/cycle, total ~₹19.5k/day)
+#   - Simulating higher triggers against the historical capture distribution:
+#       trigger=5%  → 6.0 cycles/day, total ~₹18.4k/day (floor)
+#       trigger=15% → 2.8 cycles/day, total ~₹13.1k/day (floor)
+#       trigger=25% → 1.3 cycles/day, total ~₹8.0k/day  (floor)
+#   - Floor model is conservative for high triggers (assumes skipped cycles earn
+#     zero); realistic model (30% drift into LOSS bucket) makes 2% even more dominant.
+# NIFTY break-even per round-trip ≈ 1.4%; 2% leaves a thin fee-positive margin.
+# BANKNIFTY break-even ≈ 11.8% per the regression test in test_ic_strategy.py
+# (8-leg round-trip cost stack is steeper than NIFTY's). 13% leaves ~1.2% margin
+# and is pinned by test_banknifty_harvest_below_threshold_does_not_trigger.
+# BANKNIFTY needs its own historical cycle analysis before changing; the NIFTY
+# data does not transfer.
+# Prior 15% NIFTY setting (2026-05-13 calibration) was model-driven, not data-driven,
+# and would have cut historical ₹/day by 35-63%.
+IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.02, "BANKNIFTY": 0.13}
 IC_STOP_LOSS_MULT = 3.0  # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
 # Max age (sec) of any leg's LTP before the spread LTP-PnL is disqualified at

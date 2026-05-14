@@ -184,7 +184,7 @@ def test_breach_adjustment_fires_when_ltp_pnl_confirms_profit(mock_om, mock_md):
         sp_strike=21850,
         lc_strike=22200,
         lp_strike=21800,
-        max_profit=10000,  # high so harvest trigger (1500) is NOT crossed by 650 LTP-PnL
+        max_profit=100000,  # high so harvest trigger (2% = 2000) is NOT crossed by 650 LTP-PnL
         entry_credit=20,
         lots=2,
         entry_time="10:00:00",
