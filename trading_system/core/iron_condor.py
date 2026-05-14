@@ -1323,11 +1323,18 @@ class IronCondorStrategy:
             ltp_premium = ltp_vals["sc"] + ltp_vals["sp"] - ltp_vals["lc"] - ltp_vals["lp"]
             total_pnl_ltp = (pos.entry_credit - ltp_premium) * pos.lots * lot_size
 
-        # Peak P&L tracks fresh-LTP mark only. Mid is not a peak source — phantom
-        # inflated mids would falsely peg peak high. When LTP is missing/stale,
-        # skip the update this cycle (next fresh tick will catch up).
-        if total_pnl_ltp is not None and total_pnl_ltp > pos.peak_pnl:
-            pos.peak_pnl = total_pnl_ltp
+        # Peak P&L = the *actionable* mark, conservatively taken as the min of
+        # (fresh LTP-PnL, bid/ask fill-PnL). Both sources can lie independently:
+        #   - LTP can be a stale outlier on one leg (2026-05-14 11:38, sc 44s stale)
+        #   - bid/ask can be stale resting orders (2026-05-11 phantom mids)
+        # The min requires both to corroborate before peak rises. Skip the update
+        # when either source is unavailable; peak holds and next tick catches up.
+        if total_pnl_ltp is not None and all(books.get(k) and books[k].is_tradable for k in ("sc", "sp", "lc", "lp")):
+            exit_premium_fill = books["sc"].ask + books["sp"].ask - books["lc"].bid - books["lp"].bid
+            fill_pnl = (pos.entry_credit - exit_premium_fill) * pos.lots * lot_size
+            actionable_pnl = min(total_pnl_ltp, fill_pnl)
+            if actionable_pnl > pos.peak_pnl:
+                pos.peak_pnl = actionable_pnl
 
         if total_pnl_ltp is not None and total_pnl_ltp >= harvest_trigger:
             logger.debug(
@@ -1374,14 +1381,18 @@ class IronCondorStrategy:
             )
 
         # 3. Adjustment Logic (Breach + Profit)
-        # Roll tested side OTM and safe side closer if overall position in profit
-        if total_pnl > 0:
+        # Roll tested side OTM and safe side closer if overall position in profit.
+        # Profit gate uses fresh-LTP PnL only — mirrors the harvest path. A stale or
+        # phantom-positive mid (2026-05-11 +13,792 mid vs LTP-confirmed -5,594) could
+        # otherwise roll a losing position and lock in the loss. When LTP is unavailable
+        # or stale, skip the breach roll entirely; stop-loss is the loss-cutting path.
+        if total_pnl_ltp is not None and total_pnl_ltp > 0:
             # Check for breach
             spot = self.md.get_ltp(settings.NIFTY_SPOT_KEY if self.instrument == "NIFTY" else "NSE|Nifty Bank")
             breached = spot >= pos.sc_strike or spot <= pos.sp_strike
             if breached:
                 logger.info(f"IC {self.instrument} ADJUSTING: Spot={spot} breached strike. Rolling to cost-neutral.")
-                return self.exit("ADJUSTMENT_REQUIRED", total_pnl)  # Close to re-enter with adjusted strikes
+                return self.exit("ADJUSTMENT_REQUIRED", total_pnl_ltp)  # Close to re-enter with adjusted strikes
 
         return None
 

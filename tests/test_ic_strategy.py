@@ -119,6 +119,98 @@ def test_ic_strategy_harvest(mock_om, mock_md):
     assert lc_mark["oi"] == 1111
 
 
+def test_breach_adjustment_skipped_when_ltp_pnl_unavailable(mock_om, mock_md):
+    """Regression: breach-adjustment gate must use fresh-LTP PnL, not mid.
+    Mid can be phantom-positive when bid/ask are stale wide resting orders
+    (2026-05-11: mid +13,792 vs LTP-confirmed -5,594). If the gate trusts mid
+    and spot has breached a short strike, the position rolls and locks in the
+    real loss. With fresh LTP unavailable (stale or missing), skip the roll —
+    stop-loss handles loss-cutting, not this path."""
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s._position = IC_Position(
+        instrument="NIFTY",
+        sc_sym="SC",
+        sp_sym="SP",
+        lc_sym="LC",
+        lp_sym="LP",
+        sc_strike=22150,
+        sp_strike=21850,
+        lc_strike=22200,
+        lp_strike=21800,
+        max_profit=1000,
+        entry_credit=20,
+        lots=2,
+        entry_time="10:00:00",
+    )
+
+    # Mid-based premium = 8+8-0.5-0.5 = 15 → mid_pnl = (20-15)*2*65 = +650 (phantom positive).
+    # Harvest trigger = 15% of 1000 = 150. Mid would trigger harvest too if it were trusted.
+    def qb_side_effect(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=8.0, ask=8.0, bid_qty=100, ask_qty=100, volume=1, oi=1)
+        return QuoteBook(symbol=sym, bid=0.5, ask=0.5, bid_qty=100, ask_qty=100, volume=1, oi=1)
+
+    # LTP age > IC_FRESH_LTP_MAX_AGE_SEC (10s) on one leg → total_pnl_ltp becomes None.
+    def ltp_with_age_side_effect(sym):
+        if sym == "SC":
+            return (8.0, 60.0)  # stale
+        return (8.0 if sym == "SP" else 0.5, 0.0)
+
+    # Spot breached above sc_strike — would trigger ADJUSTMENT_REQUIRED if mid trusted.
+    def ltp_side_effect(sym):
+        return 22300  # > sc_strike=22150
+
+    mock_md.get_quote_book.side_effect = qb_side_effect
+    mock_md.get_ltp_with_age.side_effect = ltp_with_age_side_effect
+    mock_md.get_ltp.side_effect = ltp_side_effect
+
+    result = s.monitor()
+    assert result is None, "must not adjust on phantom-positive mid when fresh LTP unavailable"
+    assert s.is_active() is True
+
+
+def test_breach_adjustment_fires_when_ltp_pnl_confirms_profit(mock_om, mock_md):
+    """Companion to the freshness-gate regression: when LTP is fresh AND positive
+    AND spot breached, the adjustment roll must still fire. Otherwise we'd silently
+    disable the entire breach path."""
+    s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
+    s._position = IC_Position(
+        instrument="NIFTY",
+        sc_sym="SC",
+        sp_sym="SP",
+        lc_sym="LC",
+        lp_sym="LP",
+        sc_strike=22150,
+        sp_strike=21850,
+        lc_strike=22200,
+        lp_strike=21800,
+        max_profit=10000,  # high so harvest trigger (1500) is NOT crossed by 650 LTP-PnL
+        entry_credit=20,
+        lots=2,
+        entry_time="10:00:00",
+    )
+
+    def qb_side_effect(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=8.0, ask=8.0, bid_qty=100, ask_qty=100, volume=1, oi=1)
+        return QuoteBook(symbol=sym, bid=0.5, ask=0.5, bid_qty=100, ask_qty=100, volume=1, oi=1)
+
+    # Fresh LTP for all legs → LTP-PnL = (20 - 15) * 2 * 65 = +650 (positive, below harvest 1500).
+    def ltp_with_age_side_effect(sym):
+        return (8.0 if sym in ("SC", "SP") else 0.5, 0.0)
+
+    def ltp_side_effect(sym):
+        return 22300  # breach above sc_strike
+
+    mock_md.get_quote_book.side_effect = qb_side_effect
+    mock_md.get_ltp_with_age.side_effect = ltp_with_age_side_effect
+    mock_md.get_ltp.side_effect = ltp_side_effect
+
+    result = s.monitor()
+    assert result is not None
+    assert result["exit_reason"] == "ADJUSTMENT_REQUIRED"
+
+
 def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
     s = IronCondorStrategy(mock_om, mock_md, "NIFTY")
     s._position = IC_Position(
@@ -874,6 +966,48 @@ def test_monitor_harvest_fires_when_all_legs_fresh_and_both_signals_agree(mock_o
 
     result = s.monitor()
     assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST"
+
+
+def test_peak_pnl_not_raised_when_ltp_inflated_above_bidask(mock_om, mock_md):
+    """Regression: 2026-05-14 BANKNIFTY ran a phantom peak to ₹4,755 because the
+    LC leg's LTP (836) was a stale outlier above its bid (811) — fresh LTPs on
+    all four legs combined into an LTP-PnL of +₹4,335 while the actual bid/ask
+    close cost yielded -₹1,020. Peak now requires both sources to corroborate;
+    when fill_pnl is below LTP-pnl, peak rises only to the min (i.e. doesn't
+    rise at all when fill_pnl is negative)."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    pos = _make_bnf_position()
+    s._position = pos
+
+    # Bid/ask close cost: pay sc.ask+sp.ask, receive lc.bid+lp.bid.
+    # SC: ask=40, SP: ask=40, LC: bid=5, LP: bid=5
+    # fill_premium = 40+40-5-5 = 70; fill_pnl = (58.05-70)*300 = -3,585 (loss)
+    def wide_books(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=30.0, ask=40.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=5.0, ask=10.0, bid_qty=100, ask_qty=100)
+
+    # LTP-side phantom-inflated: LC/LP LTP=20 (far above bid=5).
+    # ltp_premium = 35+35-20-20 = 30; ltp_pnl = (58.05-30)*300 = +8,415 (phantom)
+    def inflated_ltp(sym):
+        if sym in ("SC", "SP"):
+            return (35.0, 0.0)
+        if sym in ("LC", "LP"):
+            return (20.0, 0.0)
+        return (56000.0, 0.0)
+
+    mock_md.get_quote_book.side_effect = wide_books
+    mock_md.get_ltp_with_age.side_effect = inflated_ltp
+    mock_md.get_ltp.side_effect = lambda sym: inflated_ltp(sym)[0]
+    initial_peak = pos.peak_pnl
+
+    s.monitor()
+
+    assert pos.peak_pnl == initial_peak, (
+        "peak_pnl must not rise when bid/ask fill-PnL is negative, even if "
+        "LTP-PnL is positive — peak must reflect actionable profit"
+    )
 
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):
