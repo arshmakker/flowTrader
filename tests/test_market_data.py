@@ -241,6 +241,83 @@ def test_get_quote_book_allows_valid_option_bid_ask():
     assert result.ask == 563.5
 
 
+class _MockSM:
+    def get_token_info(self, name, exchange=None):
+        return {"token": "12345"}
+
+
+def test_get_ltp_with_age_returns_zero_for_fresh_broker_response():
+    """A fresh broker response (valid lp) returns age=0 — the price reflects
+    the current tick."""
+
+    class MockAPI:
+        def get_quotes(self, exchange=None, token=None):
+            return {"lp": "120.50", "bp1": "120.0", "sp1": "121.0"}
+
+    md = MarketData(MockAPI(), _MockSM())
+    price, age = md.get_ltp_with_age("NFO|NIFTY13APR26C24850")
+    assert price == 120.50
+    assert age == 0.0
+
+
+def test_get_ltp_with_age_returns_positive_age_for_stale_fallback():
+    """When Shoonya returns the underlying spot in lp (FixQ1) and bid/ask are
+    also bogus, get_ltp_with_age falls back to last_valid and reports the age
+    of that substitution. Callers combining multi-leg PnL refuse stale-mix."""
+    import time
+
+    class MockAPI:
+        call = 0
+
+        def get_quotes(self, exchange=None, token=None):
+            self.call += 1
+            if self.call == 1:
+                return {"lp": "120.50", "bp1": "120.0", "sp1": "121.0"}
+            # Subsequent calls: spot-leak in lp + bogus bid/ask → forces last_valid fallback
+            return {"lp": "23500.0", "bp1": "0", "sp1": "0"}
+
+    md = MarketData(MockAPI(), _MockSM())
+    sym = "NFO|NIFTY13APR26C24850"
+
+    # First call seeds last_valid at t0
+    md.get_ltp_with_age(sym)
+    # Wait beyond cache window so second call goes to broker, hits poison, falls back
+    time.sleep(settings.LTP_CACHE_SEC + 0.05)
+
+    price, age = md.get_ltp_with_age(sym)
+    assert price == 120.50, "fallback must return last_valid, not the spot-leak"
+    assert age >= settings.LTP_CACHE_SEC, f"age must reflect time since last_valid was recorded (got {age:.2f}s)"
+
+
+def test_get_ltp_with_age_propagates_through_cache():
+    """Cached stale-fallback entries report growing age across cache hits — the
+    underlying market keeps moving while the substituted price stays frozen."""
+    import time
+
+    class MockAPI:
+        call = 0
+
+        def get_quotes(self, exchange=None, token=None):
+            self.call += 1
+            if self.call == 1:
+                return {"lp": "120.50", "bp1": "120.0", "sp1": "121.0"}
+            return {"lp": "23500.0", "bp1": "0", "sp1": "0"}
+
+    md = MarketData(MockAPI(), _MockSM())
+    sym = "NFO|NIFTY13APR26C24850"
+
+    md.get_ltp_with_age(sym)
+    time.sleep(settings.LTP_CACHE_SEC + 0.05)
+    _, age_first = md.get_ltp_with_age(sym)  # hits poison, stores fallback
+
+    # Immediate cache hit — age should still reflect last_valid origin, not the cache fetch
+    _, age_cached = md.get_ltp_with_age(sym)
+    assert age_cached >= age_first - 0.05, (
+        "cached stale-fallback must keep reporting age from last_valid origin, "
+        "not reset to 0 just because the cache fetch was recent"
+    )
+
+
 def test_reset_daily_clears_open_price_fallback():
     """reset_daily() clears _open_price_fallback."""
     call_count = [0]

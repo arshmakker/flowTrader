@@ -51,6 +51,14 @@ IC_HARVEST_PCT = 0.15  # 15% of max profit for harvest and re-entry (NIFTY defau
 IC_HARVEST_PCT_BY_INSTRUMENT = {"NIFTY": 0.15, "BANKNIFTY": 0.13}
 IC_STOP_LOSS_MULT = 3.0  # 3x max profit stop-loss
 IC_HARD_STOP_CONFIRM_TICKS = 2  # require 2 consecutive valid breaches before halt
+# Max age (sec) of any leg's LTP before the spread LTP-PnL is disqualified at
+# the harvest check. FixQ1 substitutes last_valid up to 60s old when Shoonya's
+# lp comes back as the underlying spot; that's fine for a single-leg mark, but
+# combining stale and fresh legs across a 4-leg spread produces a "frankenstein"
+# PnL that doesn't represent any moment in time (2026-05-14 11:38 — one leg 44s
+# stale → ltp_pnl=+33,120 while mid_pnl=-112). 10s allows ~2 polling cycles
+# (5s collector cycle) of slack.
+IC_FRESH_LTP_MAX_AGE_SEC = 10.0
 # Per-instrument minimum net credit per lot. Calibrated against the LIVE-12
 # cost stack (see docs/calibration_2026_04_26.md):
 #   NIFTY     wide-IC break-even ≈ ₹17.38 → 18 leaves ₹0.62 margin

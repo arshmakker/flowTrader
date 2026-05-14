@@ -39,6 +39,9 @@ def mock_md():
     # Default LTP
     md.get_ltp.return_value = 10.0
     md.get_lot_size.return_value = settings.NIFTY_LOT_SIZE
+    # Default get_ltp_with_age proxies to get_ltp with age=0 (fresh). Tests that
+    # exercise the staleness path override this explicitly.
+    md.get_ltp_with_age.side_effect = lambda sym: (md.get_ltp(sym), 0.0)
     return md
 
 
@@ -560,46 +563,51 @@ def test_monitor_retries_short_leg_quote_before_skipping(mock_om, mock_md):
     assert result is None or isinstance(result, dict), "monitor() must not crash after retry"
 
 
-def test_monitor_no_phantom_pnl_from_stale_ltp_illusion(mock_om, mock_md):
-    """Regression: stale-LTP illusion (2026-05-08) — monitor() computed phantom
-    P&L > harvest trigger using last_valid prices from different market moments,
-    creating a false peak_pnl and repeatedly deferring harvests. After fix,
-    monitor() uses get_quote_book mid; when fresh bid/ask show the position is
-    at a loss the harvest trigger must not fire."""
+def test_monitor_no_phantom_pnl_when_position_at_loss(mock_om, mock_md):
+    """Regression: when both fresh bid/ask AND fresh LTP show the position at a
+    loss, monitor() must neither fire harvest nor update peak_pnl. Pins the
+    LTP-only trigger logic (post 2026-05-14 dual-source removal)."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     pos = _make_bnf_position()
     s._position = pos
 
-    # Fresh bid/ask show shorts expanded: exit_prem=70 > entry=57.10 → net loss.
-    # (SC ask=38, SP ask=33, LC bid=0.5, LP bid=0.5 → exit_prem=70)
-    # Mid-based premium: (37+38)/2+(32+33)/2-(0.4+0.5)/2-(0.4+0.5)/2=70.55-0.45=70.1
+    # Bid/ask: shorts expanded — fillable exit at a loss
     def loss_books(sym):
         if sym == "SC":
             return QuoteBook(symbol=sym, bid=37.0, ask=38.0, bid_qty=100, ask_qty=100)
         if sym == "SP":
             return QuoteBook(symbol=sym, bid=32.0, ask=33.0, bid_qty=100, ask_qty=100)
-        # LC and LP (longs, sold cheaply)
         return QuoteBook(symbol=sym, bid=0.4, ask=0.5, bid_qty=100, ask_qty=100)
 
+    # LTPs match the loss state: ltp_premium = 37.5+32.5-0.45-0.45 = 69.1
+    # pnl_ltp = (58.05-69.1)*300 = -3,315 (below 0, below trigger) → no harvest, no peak
+    def loss_ltp(sym):
+        if sym == "SC":
+            return 37.5
+        if sym == "SP":
+            return 32.5
+        return 0.45
+
     mock_md.get_quote_book.side_effect = loss_books
+    mock_md.get_ltp.side_effect = loss_ltp
     initial_peak = pos.peak_pnl
 
     result = s.monitor()
 
     assert result is None, "monitor() must not trigger harvest when position is at a loss"
-    assert pos.peak_pnl == initial_peak, "peak_pnl must not be updated when position is at a loss"
+    assert pos.peak_pnl == initial_peak, "peak_pnl must not be updated when LTP-PnL is negative"
 
 
 def test_monitor_no_phantom_harvest_when_ltp_shows_loss(mock_om, mock_md):
     """Regression: 2026-05-11 phantom PROFIT_HARVEST — quote-book mids at market
     open showed phantom profit (stale/wide resting orders on bp1/sp1) while LTP
     (last-trade) showed the position at a loss. monitor() fired harvest; fills
-    at LTP-based prices produced net PnL=-5,594 instead of profit.
+    at LTP-based prices produced net PnL=-5,594.
 
-    Fix: dual-source check — both mid-based AND LTP-based PnL must clear the
-    harvest trigger before exit() is called. This test verifies that when mids
-    show profit >= trigger but LTP shows a loss, monitor() defers the harvest."""
+    Post-2026-05-14 fix: harvest fires only when fresh LTP-PnL clears the trigger.
+    Mid is debug-only. With LTP-PnL below trigger, harvest must defer regardless
+    of mid-PnL."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     # Mirrors today's position: entry_credit=67.60, 10 lots, lot_size=30
@@ -660,14 +668,10 @@ def test_monitor_no_phantom_harvest_when_ltp_shows_loss(mock_om, mock_md):
     )
 
 
-def test_monitor_harvest_fires_ltp_primary_mid_confirms_direction(mock_om, mock_md):
-    """Regression: 2026-05-13 — LTP-based PnL crossed the harvest trigger (₹2,880 vs
-    ₹2,486 trigger) while mid-based lagged below it (₹2,137). The old code only checked
-    mid-based as primary; LTP never got to trigger the harvest.
-
-    Fix: LTP-primary path — when LTP >= trigger and mid > 0 (direction confirmed),
-    harvest fires. Mid > 0 prevents harvesting when mid shows an outright loss (which
-    would indicate a potentially corrupted LTP reading)."""
+def test_monitor_harvest_fires_when_ltp_above_trigger(mock_om, mock_md):
+    """LTP-only trigger: when fresh LTP-PnL clears the harvest threshold and
+    _harvest_fill_viable allows the exit, harvest fires. Mid is not consulted
+    as a gate. Pinned 2026-05-13 case: ltp_pnl=+2,880, mid_pnl=+2,137."""
     mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
     s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
     s._position = _make_bnf_position()
@@ -703,46 +707,6 @@ def test_monitor_harvest_fires_ltp_primary_mid_confirms_direction(mock_om, mock_
     assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST", (
         "harvest must fire when LTP-based PnL crosses the trigger and mid-based "
         "confirms profit direction (mid > 0), even if mid is below the trigger"
-    )
-
-
-def test_monitor_harvest_deferred_ltp_primary_mid_shows_loss(mock_om, mock_md):
-    """Direction mismatch guard: LTP >= trigger but mid-based shows outright loss (mid <= 0).
-    The two sources contradict each other — harvest must be deferred to avoid acting on
-    a potentially stale or corrupted LTP reading."""
-    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
-    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
-    s._position = _make_bnf_position()
-
-    # Short leg books show expensive shorts (position at a large mid-based loss)
-    # SC mid=70, SP mid=65, wings LTP fallback=0.5 → mid_premium=134.0
-    # pnl_mid = (58.05-134)*300 = -22,785 < 0 ✓
-    def qb_expensive_shorts(sym):
-        if sym == "SC":
-            return QuoteBook(symbol=sym, bid=68.0, ask=72.0, bid_qty=100, ask_qty=100)
-        if sym == "SP":
-            return QuoteBook(symbol=sym, bid=63.0, ask=67.0, bid_qty=100, ask_qty=100)
-        return None
-
-    # LTP shows shorts cheap — large LTP-based profit above trigger
-    # ltp_premium = 25+22-0.5-0.5 = 46; pnl_ltp = (58.05-46)*300 = 3615 >= 2264 ✓
-    def real_ltp(sym):
-        if sym == "SC":
-            return 25.0
-        if sym == "SP":
-            return 22.0
-        if sym in ("LC", "LP"):
-            return 0.5
-        return 56000.0
-
-    mock_md.get_quote_book.side_effect = qb_expensive_shorts
-    mock_md.get_ltp.side_effect = real_ltp
-
-    result = s.monitor()
-
-    assert result is None, (
-        "harvest must be deferred when LTP is above trigger but mid-based shows "
-        "an outright loss — sources contradict, possible stale LTP"
     )
 
 
@@ -827,6 +791,79 @@ def test_peak_pnl_updated_only_after_ltp_confirmation(mock_om, mock_md):
     mock_md.get_ltp.side_effect = ltp_side
     s.monitor()
     assert pos.peak_pnl > 0, "peak_pnl must be updated when both sources confirm profit above trigger"
+
+
+def test_monitor_harvest_deferred_when_any_ltp_leg_is_stale(mock_om, mock_md):
+    """Regression: 2026-05-14 11:38 — Shoonya's lp for BANKNIFTY26MAY26C54400 came
+    back as the underlying spot (53,902); FixQ1 substituted a last_valid from 44s
+    earlier (579.85). The other three legs returned fresh LTPs. The 4-leg spread
+    LTP-PnL combined one stale leg with three fresh ones, producing +₹33,120 — a
+    frankenstein value where mid-PnL was -₹112. Without freshness propagation
+    the dual-source guard had to compensate via the direction-mismatch clause.
+    With freshness propagation, stale-mix is rejected at the source: total_pnl_ltp
+    is treated as None and the harvest defers via the LTP-unavailable path."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    pos = _make_bnf_position()
+    s._position = pos
+
+    # Mid above trigger (would normally pair with fresh-LTP confirmation).
+    # SC/SP mid=24.5, LC/LP mid=1.75 → premium=45.5; pnl=58.05-45.5=12.55 × 300 = 3,765 > 2,264 ✓
+    def qb_side(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=1.5, ask=2.0, bid_qty=100, ask_qty=100)
+
+    # SC's LTP is 44s stale (above IC_FRESH_LTP_MAX_AGE_SEC=10s); other three fresh.
+    # If we naively combined them, ltp_pnl would clear the trigger and the old
+    # symmetric guard would still let it through — but the value is meaningless.
+    def ltp_with_age(sym):
+        if sym == "SC":
+            return (24.5, 44.0)
+        if sym in ("SP", "LC", "LP"):
+            return ({"SP": 24.5, "LC": 1.5, "LP": 1.5}[sym], 0.0)
+        return (56000.0, 0.0)
+
+    mock_md.get_quote_book.side_effect = qb_side
+    mock_md.get_ltp_with_age.side_effect = ltp_with_age
+    mock_md.get_ltp.side_effect = lambda sym: ltp_with_age(sym)[0]
+    initial_peak = pos.peak_pnl
+
+    result = s.monitor()
+
+    assert result is None, "harvest must defer when any leg's LTP is stale beyond the freshness threshold"
+    assert pos.peak_pnl == initial_peak, (
+        "peak_pnl must not update from a stale-mix LTP-PnL — the value doesn't " "represent any moment in time"
+    )
+
+
+def test_monitor_harvest_fires_when_all_legs_fresh_and_both_signals_agree(mock_om, mock_md):
+    """Complement of the stale-leg defer: when every leg's LTP age is below the
+    freshness threshold and both mid + LTP clear the trigger, harvest fires.
+    This pins that the freshness check doesn't accidentally block honest signals."""
+    mock_md.get_lot_size.return_value = settings.BANKNIFTY_LOT_SIZE
+    s = IronCondorStrategy(mock_om, mock_md, "BANKNIFTY")
+    s._position = _make_bnf_position()
+
+    def qb_side(sym):
+        if sym in ("SC", "SP"):
+            return QuoteBook(symbol=sym, bid=24.0, ask=25.0, bid_qty=100, ask_qty=100)
+        return QuoteBook(symbol=sym, bid=1.5, ask=2.0, bid_qty=100, ask_qty=100)
+
+    # All four LTPs fresh (age=0) and clearing the trigger
+    def ltp_with_age(sym):
+        if sym in ("SC", "SP"):
+            return (24.5, 0.0)
+        if sym in ("LC", "LP"):
+            return (1.5, 0.0)
+        return (56000.0, 0.0)
+
+    mock_md.get_quote_book.side_effect = qb_side
+    mock_md.get_ltp_with_age.side_effect = ltp_with_age
+    mock_md.get_ltp.side_effect = lambda sym: ltp_with_age(sym)[0]
+
+    result = s.monitor()
+    assert result is not None and result.get("exit_reason") == "PROFIT_HARVEST"
 
 
 def test_sr_cap_clamps_wide_range_banknifty_to_liquid_strikes(mock_om, mock_md):

@@ -75,7 +75,11 @@ class MarketData:
     def __init__(self, api: Any, symbol_manager: Any) -> None:
         self.api = api
         self.sm = symbol_manager
-        self._ltp_cache: Dict[str, tuple[float, float]] = {}  # symbol → (ltp, mono_ts)
+        # symbol → (price, fetched_ts, last_valid_origin_ts_or_None)
+        # last_valid_origin_ts_or_None == None ⇒ price is fresh from broker at fetched_ts.
+        # Otherwise the ts when last_valid was originally recorded — drives age in
+        # get_ltp_with_age so callers can refuse stale-substituted prices.
+        self._ltp_cache: Dict[str, tuple[float, float, Optional[float]]] = {}
         self._last_valid_option_ltp: Dict[str, tuple[float, float]] = {}  # symbol → (price, mono_ts)
         self._open_prices: Dict[str, float] = {}
         self._open_price_fallback: set[str] = set()
@@ -112,15 +116,29 @@ class MarketData:
         self._last_valid_option_ltp[symbol_key] = (float(price), time.monotonic())
 
     def get_ltp(self, symbol_key: str) -> float:
+        """Get last-traded price. See get_ltp_with_age for freshness signal."""
+        price, _ = self._get_ltp_with_age(symbol_key)
+        return price
+
+    def get_ltp_with_age(self, symbol_key: str) -> tuple[float, float]:
+        """Return (price, age_seconds).
+
+        age_seconds == 0 means the price reflects the current broker response
+        (or its bid/ask mid fallback from the same response). age > 0 means the
+        price is a last_valid substitution from a prior tick — the value is
+        finite and in-range, but the underlying market may have moved since.
+        Callers computing multi-leg spread PnL should refuse to combine fresh
+        and stale legs (see iron_condor.monitor — IC_FRESH_LTP_MAX_AGE_SEC).
         """
-        Get last-traded price. Caches for 2 seconds to reduce API calls.
-        symbol_key: 'NSE|Nifty 50', 'NFO|NIFTY25MAR24000CE', etc.
-        """
+        return self._get_ltp_with_age(symbol_key)
+
+    def _get_ltp_with_age(self, symbol_key: str) -> tuple[float, float]:
         now = time.monotonic()
         if symbol_key in self._ltp_cache:
-            cached_ltp, ts = self._ltp_cache[symbol_key]
-            if (now - ts) < settings.LTP_CACHE_SEC:
-                return cached_ltp
+            cached_ltp, fetched_ts, fallback_origin_ts = self._ltp_cache[symbol_key]
+            if (now - fetched_ts) < settings.LTP_CACHE_SEC:
+                age = (now - fallback_origin_ts) if fallback_origin_ts is not None else (now - fetched_ts)
+                return cached_ltp, age
 
         try:
             parts = symbol_key.split("|", 1)
@@ -129,7 +147,7 @@ class MarketData:
                 token = self._resolve_token(exchange, tsym_or_name)
                 if token == tsym_or_name and exchange == "NFO":
                     logger.warning("get_ltp: could not resolve token for %s — symbol not in master", symbol_key)
-                    return 0.0
+                    return 0.0, 0.0
                 quote = self.api.get_quotes(exchange=exchange, token=token)
             else:
                 quote = self.api.get_quotes(exchange="NSE", token=symbol_key)
@@ -161,8 +179,8 @@ class MarketData:
                                 ask,
                             )
                             self._last_valid_option_ltp[symbol_key] = (mid, now)
-                            self._ltp_cache[symbol_key] = (mid, now)
-                            return mid
+                            self._ltp_cache[symbol_key] = (mid, now, None)
+                            return mid, 0.0
 
                         entry = self._last_valid_option_ltp.get(symbol_key)
                         if entry:
@@ -176,8 +194,8 @@ class MarketData:
                                     fallback,
                                     age,
                                 )
-                                self._ltp_cache[symbol_key] = (fallback, now)
-                                return fallback
+                                self._ltp_cache[symbol_key] = (fallback, now, fallback_ts)
+                                return fallback, age
                             logger.warning(
                                 "get_ltp: suspicious option LTP %.2f for %s; last valid %.2f is stale "
                                 "(%.0fs > %.0fs TTL) — returning 0 for fresh mark",
@@ -187,19 +205,19 @@ class MarketData:
                                 age,
                                 _LAST_VALID_LTP_TTL,
                             )
-                            return 0.0
+                            return 0.0, 0.0
                         logger.error(
                             "get_ltp: suspicious option LTP %.2f for %s; no valid fallback available", ltp, symbol_key
                         )
-                        return 0.0
+                        return 0.0, 0.0
                     self._last_valid_option_ltp[symbol_key] = (ltp, now)
-                self._ltp_cache[symbol_key] = (ltp, now)
-                return ltp
+                self._ltp_cache[symbol_key] = (ltp, now, None)
+                return ltp, 0.0
             else:
                 logger.warning("get_ltp: no quote or no 'lp' for %s (response=%s)", symbol_key, quote)
         except Exception:
             logger.warning("get_ltp failed for %s", symbol_key, exc_info=True)
-        return 0.0
+        return 0.0, 0.0
 
     def get_quote_book(self, symbol_key: str) -> Optional[QuoteBook]:
         """LIVE-06: top-of-book snapshot for an F&O symbol. Returns None on

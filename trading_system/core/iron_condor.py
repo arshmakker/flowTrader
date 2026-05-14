@@ -125,6 +125,10 @@ class IronCondorStrategy:
         # halts the session per the no-halt-below-top-stop rule).
         self._phase5b_suspended = False
         self._phase5b_suspended_at: Optional[datetime] = None
+        # Per-cycle marks for each leg — populated by monitor() and persisted via
+        # save_state for show_pnl tooling. Not restored on crash (next monitor()
+        # repopulates). Shape: {sym: {ltp, age, bid, ask, ts}}.
+        self._leg_marks: Dict[str, Dict[str, Any]] = {}
         if settings.SHAKEDOWN_MODE:
             logger.info(
                 "SHAKEDOWN: %s entry counter init=0 (cap=%d/day fresh entries; "
@@ -1262,27 +1266,41 @@ class IronCondorStrategy:
         lot_size = self.md.get_lot_size(pos.sc_sym)
         total_pnl = pnl_unit * pos.lots * lot_size
 
-        # 1. Update Peak P&L — only below the harvest trigger where mid-based PnL is
-        # trustworthy. Above the trigger, book mids can be phantom (stale wide resting
-        # orders). Peak above the trigger is recorded inside dual-source confirmation.
-        # (2026-05-11: mid-based=+4,350 vs LTP-based=-1,230 at 12:36 — phantom peak.)
+        # Harvest trigger.
         harvest_trigger = pos.max_profit * self._harvest_pct()
-        if total_pnl > pos.peak_pnl and total_pnl < harvest_trigger:
-            pos.peak_pnl = total_pnl
 
-        # 2. Check Profit Harvest Cycle (2% NIFTY, 13% BANKNIFTY)
-        # agents.md: "Close immediately when unrealized profit reaches harvest threshold"
-        # Dual-source guard: two signals must agree before harvest fires.
-        # Mid-based uses bid/ask mids (can be phantom if books are stale wide resting orders).
-        # LTP-based uses last-traded prices (more reliable but can spike momentarily).
-        # Guard prevents either signal triggering harvest alone.
-        # (2026-05-11: mid-pnl=+13,792 vs fill-based pnl=-5,594 — phantom mid trigger.)
-        ltp_vals = {
-            "sc": self.md.get_ltp(pos.sc_sym),
-            "sp": self.md.get_ltp(pos.sp_sym),
-            "lc": self.md.get_ltp(pos.lc_sym),
-            "lp": self.md.get_ltp(pos.lp_sym),
+        # LTP-based PnL drives both peak tracking and the harvest trigger. Mid-based
+        # PnL (total_pnl above) is retained as a debug reference only — 2026-05-11
+        # showed book mids can be phantom-inflated when bid/ask are stale wide
+        # resting orders (mid=+13,792 vs LTP-confirmed fill=-5,594). Freshness
+        # propagation (get_ltp_with_age + IC_FRESH_LTP_MAX_AGE_SEC) now catches
+        # the inverse stale-LTP failure mode (2026-05-14 11:38), so dual-source
+        # gating became redundant. _harvest_fill_viable remains the bid/ask cost
+        # gate before exit fires.
+        ltp_with_age = {
+            "sc": self.md.get_ltp_with_age(pos.sc_sym),
+            "sp": self.md.get_ltp_with_age(pos.sp_sym),
+            "lc": self.md.get_ltp_with_age(pos.lc_sym),
+            "lp": self.md.get_ltp_with_age(pos.lp_sym),
         }
+        ltp_vals = {k: v[0] for k, v in ltp_with_age.items()}
+
+        # Stash marks for show_pnl visibility; refreshed each cycle.
+        _leg_syms = {"sc": pos.sc_sym, "sp": pos.sp_sym, "lc": pos.lc_sym, "lp": pos.lp_sym}
+        _mark_ts = datetime.now().isoformat(timespec="seconds")
+        self._leg_marks = {}
+        for k, sym in _leg_syms.items():
+            ltp, age = ltp_with_age[k]
+            book = books.get(k)
+            self._leg_marks[sym] = {
+                "leg": k,
+                "ltp": round(ltp, 2),
+                "age_sec": round(age, 1),
+                "bid": round(book.bid, 2) if book else 0.0,
+                "ask": round(book.ask, 2) if book else 0.0,
+                "tradable": bool(book and book.is_tradable),
+                "ts": _mark_ts,
+            }
 
         def _b(k: str) -> float:
             b = books.get(k)
@@ -1293,23 +1311,31 @@ class IronCondorStrategy:
             return b.ask if b and b.is_tradable else 0.0
 
         ltp_missing = [k for k, v in ltp_vals.items() if v <= 0]
+        # Stale-mix guard: any leg's LTP that is a last_valid substitution older
+        # than the freshness threshold poisons the 4-leg spread PnL by mixing
+        # fresh and stale prices. Reject at source — total_pnl_ltp becomes None.
+        # (2026-05-14 11:38: sc 44s stale, others fresh → ltp_pnl=+33,120 phantom.)
+        ltp_stale = [k for k, (_, age) in ltp_with_age.items() if age > settings.IC_FRESH_LTP_MAX_AGE_SEC]
         total_pnl_ltp: Optional[float] = None
-        if not ltp_missing:
+        if not ltp_missing and not ltp_stale:
             ltp_premium = ltp_vals["sc"] + ltp_vals["sp"] - ltp_vals["lc"] - ltp_vals["lp"]
             total_pnl_ltp = (pos.entry_credit - ltp_premium) * pos.lots * lot_size
 
-        mid_triggered = total_pnl >= harvest_trigger
-        ltp_triggered = total_pnl_ltp is not None and total_pnl_ltp >= harvest_trigger
+        # Peak P&L tracks fresh-LTP mark only. Mid is not a peak source — phantom
+        # inflated mids would falsely peg peak high. When LTP is missing/stale,
+        # skip the update this cycle (next fresh tick will catch up).
+        if total_pnl_ltp is not None and total_pnl_ltp > pos.peak_pnl:
+            pos.peak_pnl = total_pnl_ltp
 
-        if mid_triggered or ltp_triggered:
+        if total_pnl_ltp is not None and total_pnl_ltp >= harvest_trigger:
             logger.debug(
-                "IC %s harvest check: mid_pnl=%.2f ltp_pnl=%.2f trigger=%.2f | "
+                "IC %s harvest check: ltp_pnl=%.2f trigger=%.2f mid_pnl=%.2f | "
                 "sc(bid=%.2f ask=%.2f ltp=%.2f) sp(bid=%.2f ask=%.2f ltp=%.2f) "
                 "lc(bid=%.2f ask=%.2f ltp=%.2f) lp(bid=%.2f ask=%.2f ltp=%.2f)",
                 self.instrument,
-                total_pnl,
-                total_pnl_ltp if total_pnl_ltp is not None else -1,
+                total_pnl_ltp,
                 harvest_trigger,
+                total_pnl,
                 _b("sc"),
                 _a("sc"),
                 ltp_vals["sc"],
@@ -1323,62 +1349,27 @@ class IronCondorStrategy:
                 _a("lp"),
                 ltp_vals["lp"],
             )
-            if ltp_missing:
+            if self._harvest_fill_viable(pos):
                 logger.info(
-                    "IC %s HARVEST DEFERRED: LTP unavailable for %s — cannot dual-confirm; re-checking next cycle",
-                    self.instrument,
-                    ltp_missing,
-                )
-            elif mid_triggered and ltp_triggered:
-                # Both sources above trigger — strongest confirmation
-                if total_pnl > pos.peak_pnl:
-                    pos.peak_pnl = total_pnl
-                if self._harvest_fill_viable(pos):
-                    logger.info(
-                        "IC %s HARVEST: PnL %.2f >= Trigger %.2f (both sources agree)",
-                        self.instrument,
-                        total_pnl,
-                        harvest_trigger,
-                    )
-                    return self.exit("PROFIT_HARVEST", total_pnl)
-            elif mid_triggered and not ltp_triggered:
-                # Mid phantom scenario (2026-05-11): mid inflated, LTP below trigger
-                logger.info(
-                    "IC %s HARVEST DEFERRED: LTP-based PnL %.2f < trigger %.2f "
-                    "(mid-based=%.2f) — sources disagree; re-checking next cycle",
+                    "IC %s HARVEST: LTP-PnL %.2f >= Trigger %.2f (mid=%.2f ref)",
                     self.instrument,
                     total_pnl_ltp,
                     harvest_trigger,
                     total_pnl,
                 )
-            else:
-                # LTP-primary: LTP above trigger, mid below. Harvest if mid confirms
-                # profit direction (mid > 0). Mid lagging LTP is expected when book
-                # mids are slower to update than last-trade prices.
-                # (2026-05-13: ltp=+2,880 vs mid=+2,137 on a BANKNIFTY IC at 09:46.)
-                # Guard: if mid <= 0 the sources contradict each other — defer.
-                if total_pnl > 0:
-                    if total_pnl_ltp > pos.peak_pnl:
-                        pos.peak_pnl = total_pnl_ltp
-                    if self._harvest_fill_viable(pos):
-                        logger.info(
-                            "IC %s HARVEST: LTP-based PnL %.2f >= Trigger %.2f " "(mid-based=%.2f confirms direction)",
-                            self.instrument,
-                            total_pnl_ltp,
-                            harvest_trigger,
-                            total_pnl,
-                        )
-                        return self.exit("PROFIT_HARVEST", total_pnl_ltp)
-                else:
-                    logger.info(
-                        "IC %s HARVEST DEFERRED: LTP-based PnL %.2f >= trigger %.2f "
-                        "but mid-based %.2f <= 0 — direction mismatch; re-checking next cycle",
-                        self.instrument,
-                        total_pnl_ltp,
-                        harvest_trigger,
-                        total_pnl,
-                    )
-            # One source disagrees or _harvest_fill_viable returned False — skip this cycle
+                return self.exit("PROFIT_HARVEST", total_pnl_ltp)
+            # _harvest_fill_viable logged its own DEFERRED reason — fall through
+        elif total_pnl_ltp is None and total_pnl >= harvest_trigger:
+            # Observability: mid signals trigger but fresh LTP unavailable.
+            # Useful for tuning IC_FRESH_LTP_MAX_AGE_SEC. Not a decision branch.
+            logger.info(
+                "IC %s HARVEST DEFERRED: LTP unavailable=%s stale=%s (mid=%.2f >= trigger %.2f)",
+                self.instrument,
+                ltp_missing,
+                [(k, f"{ltp_with_age[k][1]:.0f}s") for k in ltp_stale],
+                total_pnl,
+                harvest_trigger,
+            )
 
         # 3. Adjustment Logic (Breach + Profit)
         # Roll tested side OTM and safe side closer if overall position in profit
@@ -1539,6 +1530,8 @@ class IronCondorStrategy:
         payload: Dict[str, Any] = {}
         if self._position:
             payload["position"] = self._position.to_dict()
+            if self._leg_marks:
+                payload["leg_marks"] = self._leg_marks
         if has_counter_state:
             payload["entries_today_count"] = self._entries_today_count
             payload["entries_today_date"] = self._entries_today_date

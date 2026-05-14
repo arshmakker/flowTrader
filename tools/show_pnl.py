@@ -131,7 +131,7 @@ def load_open_positions() -> dict:
 
 
 def print_open_positions(open_pos: dict) -> None:
-    """Print a table of currently open positions."""
+    """Print a table of currently open positions, followed by per-leg marks."""
     if not open_pos:
         print("  No open positions.\n")
         return
@@ -149,6 +149,11 @@ def print_open_positions(open_pos: dict) -> None:
                     "max_profit": pos.get("max_profit", 0),
                     "lots": pos.get("lots", 0),
                     "expiry": pos.get("expiry_date", ""),
+                    "leg_marks": strat.get("leg_marks", {}),
+                    "sc_sym": pos.get("sc_sym", ""),
+                    "sp_sym": pos.get("sp_sym", ""),
+                    "lc_sym": pos.get("lc_sym", ""),
+                    "lp_sym": pos.get("lp_sym", ""),
                 }
             )
 
@@ -198,6 +203,59 @@ def print_open_positions(open_pos: dict) -> None:
     print(
         f"  └{'─' * (w1+2)}┴{'─' * (w2+2)}┴{'─' * (w3+2)}┴{'─' * (w4+2)}┴{'─' * (w5+2)}┴{'─' * (w6+2)}┴{'─' * (w7+2)}┘\n"
     )
+
+    print_leg_marks(active_positions)
+
+
+def print_leg_marks(active_positions: list[dict]) -> None:
+    """Per-leg LTP, bid/ask, and freshness for each open IC. Pulled from
+    monitor()'s last-cycle snapshot (data/open_positions.json -> leg_marks)."""
+    leg_order = ("sc", "sp", "lc", "lp")
+    leg_label = {"sc": "SC (short call)", "sp": "SP (short put)", "lc": "LC (long call)", "lp": "LP (long put)"}
+
+    rows = []
+    any_marks = False
+    for ap in active_positions:
+        marks = ap.get("leg_marks") or {}
+        if not marks:
+            continue
+        any_marks = True
+        # Walk legs in fixed order using the position's own symbol→leg mapping.
+        sym_to_leg = {ap[f"{lk}_sym"]: lk for lk in leg_order if ap.get(f"{lk}_sym")}
+        for sym, mark in marks.items():
+            leg = mark.get("leg") or sym_to_leg.get(sym, "?")
+            ltp = mark.get("ltp", 0.0)
+            age = mark.get("age_sec", 0.0)
+            bid = mark.get("bid", 0.0)
+            ask = mark.get("ask", 0.0)
+            tradable = mark.get("tradable", False)
+            age_str = f"{age:.0f}s" + (" STALE" if age > 10 else "")
+            book_str = f"{bid:.2f} / {ask:.2f}" if tradable else "—"
+            rows.append((ap["instrument"], leg_label.get(leg, leg), sym, f"₹{ltp:.2f}", age_str, book_str))
+
+    if not any_marks:
+        print("  No per-leg marks available (monitor() hasn't recorded yet).\n")
+        return
+
+    header = ("Instrument", "Leg", "Symbol", "LTP", "Age", "Bid / Ask")
+    w = tuple(max(len(r[i]) for r in rows + [header]) for i in range(6))
+
+    def _sep(l="├", m="┼", r="┤"):
+        return (
+            f"  {l}{'─' * (w[0]+2)}{m}{'─' * (w[1]+2)}{m}{'─' * (w[2]+2)}{m}"
+            f"{'─' * (w[3]+2)}{m}{'─' * (w[4]+2)}{m}{'─' * (w[5]+2)}{r}"
+        )
+
+    def _row(c0, c1, c2, c3, c4, c5):
+        return f"  │ {c0:<{w[0]}} │ {c1:<{w[1]}} │ {c2:<{w[2]}} │ " f"{c3:>{w[3]}} │ {c4:<{w[4]}} │ {c5:<{w[5]}} │"
+
+    print("\n  Leg marks (last monitor cycle):\n")
+    print(_sep("┌", "┬", "┐"))
+    print(_row(*header))
+    for row in rows:
+        print(_sep())
+        print(_row(*row))
+    print(_sep("└", "┴", "┘") + "\n")
 
 
 def print_daily_trades(trades: list[dict] | None = None) -> None:
