@@ -37,6 +37,8 @@ class QuoteBook:
     ask: float
     bid_qty: int
     ask_qty: int
+    volume: int = 0
+    oi: int = 0
 
     @property
     def mid(self) -> float:
@@ -252,6 +254,8 @@ class MarketData:
             ask = float(quote.get("sp1", 0) or 0)
             bid_qty = int(float(quote.get("bq1", 0) or 0))
             ask_qty = int(float(quote.get("sq1", 0) or 0))
+            volume = int(float(quote.get("v", 0) or 0))
+            oi = int(float(quote.get("oi", 0) or 0))
         except (TypeError, ValueError):
             logger.warning("get_quote_book: malformed fields for %s (quote=%s)", symbol_key, quote)
             return None
@@ -277,6 +281,8 @@ class MarketData:
             ask=ask,
             bid_qty=bid_qty,
             ask_qty=ask_qty,
+            volume=volume,
+            oi=oi,
         )
 
     def _resolve_token(self, exchange: str, name: str) -> str:

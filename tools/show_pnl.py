@@ -229,25 +229,36 @@ def print_leg_marks(active_positions: list[dict]) -> None:
             bid = mark.get("bid", 0.0)
             ask = mark.get("ask", 0.0)
             tradable = mark.get("tradable", False)
+            volume = mark.get("volume", 0)
+            oi = mark.get("oi", 0)
             age_str = f"{age:.0f}s" + (" STALE" if age > 10 else "")
             book_str = f"{bid:.2f} / {ask:.2f}" if tradable else "—"
-            rows.append((ap["instrument"], leg_label.get(leg, leg), sym, f"₹{ltp:.2f}", age_str, book_str))
+            vol_str = f"{volume:,}" if volume else "—"
+            oi_str = f"{oi:,}" if oi else "—"
+            rows.append(
+                (ap["instrument"], leg_label.get(leg, leg), sym, f"₹{ltp:.2f}", age_str, book_str, vol_str, oi_str)
+            )
 
     if not any_marks:
         print("  No per-leg marks available (monitor() hasn't recorded yet).\n")
         return
 
-    header = ("Instrument", "Leg", "Symbol", "LTP", "Age", "Bid / Ask")
-    w = tuple(max(len(r[i]) for r in rows + [header]) for i in range(6))
+    header = ("Instrument", "Leg", "Symbol", "LTP", "Age", "Bid / Ask", "Volume", "OI")
+    w = tuple(max(len(r[i]) for r in rows + [header]) for i in range(8))
 
     def _sep(l="├", m="┼", r="┤"):
         return (
             f"  {l}{'─' * (w[0]+2)}{m}{'─' * (w[1]+2)}{m}{'─' * (w[2]+2)}{m}"
-            f"{'─' * (w[3]+2)}{m}{'─' * (w[4]+2)}{m}{'─' * (w[5]+2)}{r}"
+            f"{'─' * (w[3]+2)}{m}{'─' * (w[4]+2)}{m}{'─' * (w[5]+2)}{m}"
+            f"{'─' * (w[6]+2)}{m}{'─' * (w[7]+2)}{r}"
         )
 
-    def _row(c0, c1, c2, c3, c4, c5):
-        return f"  │ {c0:<{w[0]}} │ {c1:<{w[1]}} │ {c2:<{w[2]}} │ " f"{c3:>{w[3]}} │ {c4:<{w[4]}} │ {c5:<{w[5]}} │"
+    def _row(c0, c1, c2, c3, c4, c5, c6, c7):
+        return (
+            f"  │ {c0:<{w[0]}} │ {c1:<{w[1]}} │ {c2:<{w[2]}} │ "
+            f"{c3:>{w[3]}} │ {c4:<{w[4]}} │ {c5:<{w[5]}} │ "
+            f"{c6:>{w[6]}} │ {c7:>{w[7]}} │"
+        )
 
     print("\n  Leg marks (last monitor cycle):\n")
     print(_sep("┌", "┬", "┐"))

@@ -106,6 +106,8 @@ def test_get_quote_book_parses_shoonya_response():
                 "sp1": "21.0",
                 "bq1": "1500",
                 "sq1": "1800",
+                "v": "250000",
+                "oi": "42000",
             }
 
     md = MarketData(MockAPI(), _FakeSymbolManager())
@@ -116,6 +118,8 @@ def test_get_quote_book_parses_shoonya_response():
     assert book.ask == 21.0
     assert book.bid_qty == 1500
     assert book.ask_qty == 1800
+    assert book.volume == 250000
+    assert book.oi == 42000
     assert book.mid == 20.5
     assert book.spread == 1.0
     assert book.is_tradable is True
@@ -174,6 +178,8 @@ def test_get_quote_book_tolerates_missing_qty_fields():
     assert book is not None
     assert book.bid_qty == 0
     assert book.ask_qty == 0
+    assert book.volume == 0
+    assert book.oi == 0
     assert book.is_tradable is False
 
 

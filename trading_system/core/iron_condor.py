@@ -1299,6 +1299,8 @@ class IronCondorStrategy:
                 "bid": round(book.bid, 2) if book else 0.0,
                 "ask": round(book.ask, 2) if book else 0.0,
                 "tradable": bool(book and book.is_tradable),
+                "volume": int(book.volume) if book else 0,
+                "oi": int(book.oi) if book else 0,
                 "ts": _mark_ts,
             }
 

@@ -97,8 +97,8 @@ def test_ic_strategy_harvest(mock_om, mock_md):
     # bid/ask: exit_premium=(8.5+8.5)-(0.4+0.4)=16.2, fill_gross=(20-16.2)*130=494>fees.
     def qb_side_effect(sym):
         if sym in ("SC", "SP"):
-            return QuoteBook(symbol=sym, bid=8.4, ask=8.5, bid_qty=100, ask_qty=100)
-        return QuoteBook(symbol=sym, bid=0.4, ask=0.6, bid_qty=100, ask_qty=100)
+            return QuoteBook(symbol=sym, bid=8.4, ask=8.5, bid_qty=100, ask_qty=100, volume=12345, oi=6789)
+        return QuoteBook(symbol=sym, bid=0.4, ask=0.6, bid_qty=100, ask_qty=100, volume=2222, oi=1111)
 
     mock_md.get_ltp.side_effect = ltp_side_effect
     mock_md.get_quote_book.side_effect = qb_side_effect
@@ -107,6 +107,16 @@ def test_ic_strategy_harvest(mock_om, mock_md):
     assert result is not None
     assert result["exit_reason"] == "PROFIT_HARVEST"
     assert s.is_active() is False
+
+    # leg_marks snapshot (consumed by show_pnl) must carry per-leg volume + OI
+    # so the operator can read strike liquidity from the same table.
+    assert s._leg_marks, "monitor() must populate _leg_marks even on exit"
+    sc_mark = s._leg_marks["SC"]
+    assert sc_mark["volume"] == 12345
+    assert sc_mark["oi"] == 6789
+    lc_mark = s._leg_marks["LC"]
+    assert lc_mark["volume"] == 2222
+    assert lc_mark["oi"] == 1111
 
 
 def test_ic_strategy_force_exit_pnl(mock_om, mock_md):
