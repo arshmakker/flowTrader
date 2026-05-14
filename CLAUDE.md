@@ -2,6 +2,10 @@
 
 ## On conversation start
 
+## Conversation type
+
+All conversations have to follow CAVEMAN language
+
 Every time this project is opened in Claude, do these two things in order.
 
 ### 1. Anchor the current date — required for all date-based planning
