@@ -253,24 +253,27 @@ class ShoonyaApiPy(NorenApi):
 
     def _oauth_post_json(self, route_key, values):
         """
-        Perform OAuth-authenticated POST and return (ok, data, error_msg).
-        Keeps broker/body errors visible instead of surfacing JSON decode only.
+        Perform OAuth-authenticated POST and return (ok, data, error_msg, transient).
+        `transient=True` iff no HTTP response was received (DNS / connect / read
+        timeout) — caller must NOT treat this as "session invalid". A real auth
+        rejection always comes back as an HTTP response (401 + body, or 200 +
+        stat!=Ok) and therefore has transient=False.
         """
         config = getattr(self, "_NorenApi__service_config", None) or getattr(
             NorenApi, "_NorenApi__service_config", None
         )
         if not config:
-            return False, None, "OAuth call failed: no service config"
+            return False, None, "OAuth call failed: no service config", False
         host = (config.get("host") or "").rstrip("/")
         routes = config.get("routes") or {}
         path = (routes.get(route_key) or "").lstrip("/")
         if not path:
-            return False, None, f"OAuth call failed: missing route '{route_key}'"
+            return False, None, f"OAuth call failed: missing route '{route_key}'", False
         url = f"{host}/{path}"
         payload = "jData=" + json.dumps(values or {})
         headers = getattr(self, "_NorenApi__OAuthHeaders", None)
         if not headers:
-            return False, None, "OAuth call failed: missing OAuth headers"
+            return False, None, "OAuth call failed: missing OAuth headers", False
         try:
             res = requests.post(url, data=payload, headers=headers, timeout=30)
             text = (res.text or "").strip()
@@ -300,28 +303,30 @@ class ShoonyaApiPy(NorenApi):
                 )
                 # endregion
                 if ok2:
-                    return True, data2, ""
+                    return True, data2, "", False
                 if err2:
-                    return False, data2, err2
+                    return False, data2, err2, False
             if not res.ok:
-                return False, None, f"{route_key} HTTP {res.status_code}: {text[:500] or 'empty body'}"
+                return False, None, f"{route_key} HTTP {res.status_code}: {text[:500] or 'empty body'}", False
             if not text:
-                return False, None, f"{route_key} returned empty body"
+                return False, None, f"{route_key} returned empty body", False
             try:
                 data = json.loads(text)
             except json.JSONDecodeError:
-                return False, None, f"{route_key} returned non-JSON body: {text[:500]}"
+                return False, None, f"{route_key} returned non-JSON body: {text[:500]}", False
             if isinstance(data, dict) and str(data.get("stat", "")).lower() == "ok":
-                return True, data, ""
+                return True, data, "", False
             emsg = data.get("emsg") if isinstance(data, dict) else str(data)
-            return False, data, f"{route_key} rejected: {emsg or data}"
+            return False, data, f"{route_key} rejected: {emsg or data}", False
+        except (requests.ConnectionError, requests.Timeout) as exc:
+            return False, None, f"{route_key} network unreachable: {exc}", True
         except requests.RequestException as exc:
             body = ""
             if getattr(exc, "response", None) is not None:
                 body = (exc.response.text or "")[:500]
-            return False, None, f"{route_key} request failed: {exc}" + (f" | body={body}" if body else "")
+            return False, None, f"{route_key} request failed: {exc}" + (f" | body={body}" if body else ""), False
         except Exception as exc:
-            return False, None, f"{route_key} unexpected failure: {exc}"
+            return False, None, f"{route_key} unexpected failure: {exc}", False
 
     def _oauth_post_with_jkey(self, url, values, route_key):
         session_key = getattr(self, "_NorenApi__susertoken", None)
@@ -623,21 +628,41 @@ class ShoonyaApiPy(NorenApi):
             ),
         ]
         last_error = ""
+        all_transient = True
         for route_key, values in checks:
-            ok, _data, err = self._oauth_post_json(route_key, values)
+            ok, _data, err, transient = self._oauth_post_json(route_key, values)
             # region agent log
             _agent_debug_log(
                 "H5",
                 "api_helper.py:validate_oauth_session:route_result",
                 "oauth_validate_route_result",
-                {"route_key": route_key, "ok": bool(ok), "error_sample": (err or "")[:160]},
+                {
+                    "route_key": route_key,
+                    "ok": bool(ok),
+                    "transient": bool(transient),
+                    "error_sample": (err or "")[:160],
+                },
             )
             # endregion
             if ok:
                 self._clear_last_broker_error()
                 return True
             last_error = err
+            if not transient:
+                all_transient = False
             logger.warning("OAuth session validation via %s failed: %s", route_key, err)
+        # Bug 2026-05-15: a DNS/connect failure on every probe means we could
+        # not REACH the broker — it is NOT evidence that the session is invalid.
+        # Treat as still-valid; the next real call will retry. Without this the
+        # caller escalates to mid-session reauth and a CRITICAL exit, which on
+        # 2026-05-15 force-flattened both ICs against stale marks (~₹30k swing).
+        if all_transient:
+            logger.warning(
+                "OAuth validation skipped: broker unreachable (transient network), "
+                "treating session as still valid. Last error: %s",
+                last_error,
+            )
+            return True
         if last_error:
             self._set_last_broker_error(last_error)
         else:
