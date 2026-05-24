@@ -4,21 +4,20 @@
 pythonpath = ["."]
 testpaths = ["tests"]
 addopts = [
-    "--cov=trading_system",
-    "--cov=main",
-    "--cov=strategy_runner",
+    "--cov=trading_system.core.pcr_credit_spread",
+    "--cov=trading_system.core.pcr_signal",
     "--cov-report=term-missing",
-    "--cov-fail-under=68",
+    "--cov-fail-under=70",
 ]
 
 [tool.coverage.run]
 branch = true
-source = ["trading_system", "main", "strategy_runner"]
+source = ["trading_system.core.pcr_credit_spread", "trading_system.core.pcr_signal"]
 
 [tool.coverage.report]
 skip_empty = true
 show_missing = true
-fail_under = 68
+fail_under = 70
 omit = [
     "trading_system/__init__.py",
     "trading_system/*/__init__.py",

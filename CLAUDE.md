@@ -1,4 +1,4 @@
-# CLAUDE.md — RegimeTrader
+# CLAUDE.md — PCR Trader
 
 ## On conversation start
 
@@ -74,9 +74,11 @@ This axiom governs every engineering and architectural decision in this repo. It
 
 ## What is this project
 
-RegimeTrader is a Python-based automated trading system for NIFTY derivatives (options/futures) on the Indian stock market. It classifies trading days by regime (ranging vs trending), applies VIX-based filters, and executes **Iron Condor** strategies in paper-trading mode via the **Shoonya (Noren) broker API**.
+PCR Trader is a Python-based automated trading system for NIFTY weekly options on the Indian stock market. It reads the Put-Call Ratio from the live Shoonya option chain and executes **PCR Contrarian Credit Spread** strategies in paper-trading mode via the **Shoonya (Noren) broker API**.
 
-The system is **paper-trade only** — live order execution is not implemented. All fills, costs, and P&L are simulated with realistic slippage and transaction costs.
+Backtest: 93.9% win rate, 33 trades over 28 months, ₹1,10,188 gross P&L per lot.
+
+The system is **paper-trade only** — live order execution requires explicit operator sign-off. All fills, costs, and P&L are simulated with realistic slippage and transaction costs.
 
 ## Architecture overview
 
@@ -84,43 +86,34 @@ The system is **paper-trade only** — live order execution is not implemented. 
 main.py (orchestrator)
   ├── api_helper.py         — Shoonya API wrapper (OAuth + legacy 2FA, rate limiting)
   ├── symbol_manager.py     — NFO/NSE/BSE symbol master loading + token resolution
-  ├── data_collector.py     — Background tick collection thread (5s cycle)
-  ├── strategy_runner.py    — Market-hours helpers, expiry/VIX utilities
+  ├── strategy_runner.py    — Market-hours helpers, trading-day guard
   │
   └── trading_system/
       ├── config/settings.py        — All tunable parameters (single file)
       ├── core/
-      │   ├── day_classifier.py     — RANGING vs TRENDING classification (locks at 10:30)
-      │   ├── regime_filter.py      — VIX monitoring + entry gate (VIX<30, stable 45min)
-      │   ├── iron_condor.py        — 4-leg IC strategy (entry, monitor, harvest, exit)
-      │   ├── signal_engine.py      — VWAP, RSI, PCR, Max Pain signals
-      │   ├── risk_manager.py       — 3x stop-loss + recovery exception logic
-      │   ├── expiry_manager.py     — 3 DTE rolling rule
-      │   ├── sr_manager.py         — 20-day high/low S/R with 50-point buffer
-      │   ├── trade_logger.py       — CSV trade log + signal log
+      │   ├── pcr_credit_spread.py  — 2-leg PCR spread strategy (entry, monitor, exit)
+      │   ├── pcr_signal.py         — Live PCR via Shoonya get_option_chain (5-min cache)
+      │   ├── risk_manager.py       — Daily loss cap + rollback-failure halt
+      │   ├── expiry_manager.py     — Nearest active weekly expiry lookup
+      │   ├── trade_logger.py       — CSV trade log
       │   └── position_persistence.py — JSON state save/restore
       ├── existing/
-      │   └── market_data.py        — MarketData adapter (LTP caching, OHLCV, option validation)
-      ├── paper/
-      │   ├── paper_order_manager.py    — Simulated fills with slippage + costs
-      │   ├── paper_position_tracker.py — In-memory position management
-      │   ├── paper_pnl_engine.py       — Cumulative + daily P&L tracking
-      │   └── go_live_evaluator.py      — Readiness thresholds for live migration
-      └── dashboard/
-          ├── web_dashboard.py      — Flask dashboard (port 5050)
-          └── terminal_dashboard.py — Rich terminal display
+      │   └── market_data.py        — MarketData adapter (LTP caching, OHLCV)
+      └── paper/
+          ├── paper_order_manager.py    — Simulated fills with slippage + costs
+          ├── paper_position_tracker.py — In-memory position management
+          └── paper_pnl_engine.py       — Cumulative + daily P&L tracking
 ```
 
 ## Key execution flow
 
 1. **Auth** — Dual-mode: OAuth (preferred, token-cached in `cred.yml`) or legacy 2FA
-2. **Data collection** — Background thread collects ticks from 09:15
-3. **Classification** — Day type locked at 10:30 (RANGING/TRENDING)
-4. **Entry gate** — Only enters on RANGING days with VIX < 30 and stable for 45 min
-5. **IC strategy** — VIX-adaptive strikes, S/R buffered, 4-leg atomic entry
-6. **Monitoring** — 1% harvest cycles (close + re-enter), breach adjustments
-7. **Hard close** — Expiring positions closed at 15:00; all others at 15:10; system shutdown by 15:30
-8. **Persistence** — State saved to `data/open_positions.json` after every cycle
+2. **Entry gate** — Mon or Tue 09:20–10:00 IST only; PCR outside 0.7–1.3 neutral band
+3. **PCR signal** — `get_option_chain` → nearest weekly expiry OI → pe_oi / ce_oi
+4. **Spread entry** — SELL ATM±100, BUY ATM±300 (LMT both legs, atomic rollback on failure)
+5. **Monitoring** — Stop if MTM loss > 2× credit; expiry-day exit at 14:45
+6. **Hard close** — Expiring at 15:00; all others at 15:10; shutdown by 15:30
+7. **Persistence** — State saved to `data/open_positions.json` after every change
 
 ## Common commands
 
@@ -128,11 +121,14 @@ main.py (orchestrator)
 # Run the system (OAuth login is in-process; no wrapper script)
 python main.py
 
-# Run tests (fast unit tests only by default)
+# Run PCR strategy tests (no API required)
+pytest tests/test_pcr_credit_spread.py -v
+
+# Run full suite
 pytest
 
-# Run specific test file
-pytest tests/test_paper_trading.py
+# Backtest (historical NSE bhavcopy)
+python tools/backtest_pcr_spread.py --start 2023-10-01 --end 2026-01-31
 
 # Install dependencies
 pip install -r requirements.txt
@@ -140,39 +136,35 @@ pip install -r requirements.txt
 
 ## Watch loop — paste during market hours
 
-Session-bound monitoring + auto-restart. Paste this after opening Claude on a trading morning; fires every 10 min, reports only deltas, self-stops at 15:35 IST.
+Session-bound monitoring + auto-restart. Fires every 10 min, self-stops at 15:35 IST.
 
 ```
-/loop 10m Trading day system-watch. Each tick: (1) CHECK PROCESS: pgrep -f "python main.py". If dead AND IST 09:15–15:20: (a) tail last 100 lines of logs/ic_system_$(TZ=Asia/Kolkata date +%Y%m%d).log for root cause; (b) read data/open_positions.json — if risk_state.halted=true, clear it: python -c "import json; f='data/open_positions.json'; d=json.load(open(f)); d.get('risk_state',{}).update({'halted':False,'stop_hit_at':None,'rollback_failures':[]}); json.dump(d,open(f,'w'),indent=2)"; (c) restart: python main.py > logs/restart_$(TZ=Asia/Kolkata date +%Y%m%d_%H%M%S).log 2>&1 & — report PID and root cause. (2) SCAN LOGS: grep new ERROR|HALT|BREACH|HARD_STOP|FORCE_EXIT|Phase-5b|suspended lines since last tick — quote + diagnose. (3) PnL: data/pnl_snapshot.json — delta vs prior tick. (4) POSITIONS: data/open_positions.json — changes, flag halted/suspended state. (5) FILLS: tail data/paper_trades.csv last 5 rows — new entries. Report ONLY deltas (silent if nothing changed). Stop loop at IST >= 15:35.
+/loop 10m Trading day system-watch. Each tick: (1) CHECK PROCESS: pgrep -f "python main.py". If dead AND IST 09:15–15:20: (a) tail last 100 lines of logs/pcs_$(TZ=Asia/Kolkata date +%Y%m%d).log for root cause; (b) read data/open_positions.json — if risk_state.halted=true, clear it: python -c "import json; f='data/open_positions.json'; d=json.load(open(f)); d.get('risk_state',{}).update({'halted':False,'stop_hit_at':None,'rollback_failures':[]}); json.dump(d,open(f,'w'),indent=2)"; (c) restart: python main.py > logs/restart_$(TZ=Asia/Kolkata date +%Y%m%d_%H%M%S).log 2>&1 & — report PID and root cause. (2) SCAN LOGS: grep new ERROR|HALT|FORCE_EXIT lines since last tick — quote + diagnose. (3) PnL: data/pnl_snapshot.json — delta vs prior tick. (4) POSITIONS: data/open_positions.json — changes, flag halted state. (5) FILLS: tail data/paper_trades.csv last 5 rows — new entries. Report ONLY deltas (silent if nothing changed). Stop loop at IST >= 15:35.
 ```
-
-Loop is session-bound — closing this terminal stops it. For a durable cloud-resident equivalent that runs every weekday automatically, use `/schedule` instead.
 
 ## Testing
 
 Tests live in `tests/`. Fast offline unit tests run by default; integration tests requiring broker credentials are excluded via `conftest.py`.
 
 Key test files:
-- `test_paper_trading.py` — Paper order manager + tracker
-- `test_ic_strategy.py` — Iron Condor strike calculation, entry/exit
-- `test_day_classifier.py` — Day classification logic
-- `test_ic_logic.py` — IC-specific logic
-- `test_operational_safety.py` — Safety checks
+- `test_pcr_credit_spread.py` — PCR strategy: entry, stop, expiry exit, rollback, state round-trip
 - `test_market_data.py` — MarketData adapter
+- `test_paper_order_persistence.py` — Paper order state
+- `test_oauth_*.py` — OAuth flow and preflight validation
 
 ## Configuration
 
 All tunable parameters are in `trading_system/config/settings.py`. Key ones:
 
-- `PAPER_TRADE_MODE` — Always True (live not implemented)
-- `IC_LOT_SIZE` — Lots per entry (default 10)
-- `IC_VIX_MAX` — Max VIX for entry (30.0)
-- `IC_MIN_CREDIT` — Min per-lot credit to accept (18)
-- `IC_STOP_LOSS_MULT` — Hard stop at 3x max profit
-- `IC_HARVEST_PCT` — Close at 1% of max profit
-- `IC_DTE_THRESHOLD` — Roll if DTE < 3
-- `IC_SR_BUFFER` — Min 50-point distance from 20-day H/L
-- `NIFTY_LOT_SIZE` / `BANKNIFTY_LOT_SIZE` — 65 / 30
+- `PAPER_TRADE_MODE` — True (paper only until explicitly signed off)
+- `PCS_LOT_SIZE` — Lots per entry (default 1, scale after paper validation)
+- `PCS_PCR_BEAR` / `PCS_PCR_BULL` — Entry thresholds (0.7 / 1.3)
+- `PCS_SHORT_OTM_PTS` / `PCS_LONG_OTM_PTS` — Strike distances (100 / 300 pts)
+- `PCS_MIN_CREDIT` — Min net credit to accept entry (20.0 pts)
+- `PCS_STOP_MULT` — Stop if MTM loss > N× credit (2.0)
+- `PCS_ENTRY_DAYS` — [0, 1] = Mon, Tue
+- `DAILY_MAX_LOSS` — Session halt threshold (−₹50,000)
+- `NIFTY_LOT_SIZE` — 65
 
 Credentials go in `cred.yml` (git-ignored). See `cred.yml.template` for schema.
 

@@ -615,6 +615,61 @@ class ShoonyaApiPy(NorenApi):
             logger.error(msg, exc_info=True)
             return None
 
+    def get_option_chain(self, exchange, tradingsymbol, strikeprice, count=2):
+        """
+        Override SDK's get_option_chain to prefer jKey auth over Bearer.
+        The Shoonya market-data endpoints reject OAuth Bearer; the SDK's
+        updated default (Bearer-only, jKey commented out) breaks option chain
+        calls for OAuth sessions that also carry a susertoken.
+        """
+        config = getattr(NorenApi, "_NorenApi__service_config", None)
+        if not config:
+            logger.error("get_option_chain: no service config")
+            return None
+        url = f"{config['host']}{config['routes']['optionchain']}"
+        uid = getattr(self, "_NorenApi__username", None)
+        session_key = getattr(self, "_NorenApi__susertoken", None)
+        oauth_headers = getattr(self, "_NorenApi__OAuthHeaders", None)
+        values = {
+            "uid": uid,
+            "exch": exchange,
+            "tsym": urllib.parse.quote_plus(tradingsymbol),
+            "strprc": str(strikeprice),
+            "cnt": str(count),
+        }
+        # Try jKey first (market data endpoints require it on Shoonya OAuth sessions).
+        if session_key:
+            payload = "jData=" + json.dumps(values) + "&jKey=" + str(session_key)
+            try:
+                res = requests.post(url, data=payload, timeout=15)
+                if res.ok and res.text:
+                    d = json.loads(res.text)
+                    if d.get("stat") == "Ok":
+                        return d
+                    logger.warning(
+                        "get_option_chain jKey attempt rejected: %s",
+                        d.get("emsg") or d.get("rejreason") or res.text[:200],
+                    )
+            except Exception as exc:
+                logger.warning("get_option_chain jKey attempt failed: %s", exc)
+        # Fallback: Bearer token (may work on some broker configurations).
+        if oauth_headers:
+            payload = "jData=" + json.dumps(values)
+            try:
+                res = requests.post(url, data=payload, headers=oauth_headers, timeout=15)
+                if res.ok and res.text:
+                    d = json.loads(res.text)
+                    if d.get("stat") == "Ok":
+                        return d
+                    logger.warning(
+                        "get_option_chain Bearer attempt rejected: %s",
+                        d.get("emsg") or d.get("rejreason") or res.text[:200],
+                    )
+            except Exception as exc:
+                logger.warning("get_option_chain Bearer attempt failed: %s", exc)
+        logger.error("get_option_chain: all auth attempts failed for %s %s", exchange, tradingsymbol)
+        return None
+
     def validate_oauth_session(self):
         """Check whether current OAuth token can access account APIs."""
         checks = [

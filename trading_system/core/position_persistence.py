@@ -1,9 +1,9 @@
 """
 Position persistence — survives restarts.
 
-Saves active strategy positions + paper position tracker state to a JSON
-file after every monitoring cycle.  On startup the orchestrator calls
-``load()`` to restore any open positions that were interrupted by a restart.
+Saves strategy positions, tracker state, P&L engine, and risk manager to a JSON
+file after every monitoring cycle. On startup the orchestrator calls load() to
+restore any open positions interrupted by a restart.
 """
 
 import json
@@ -60,8 +60,6 @@ def save(
     position_tracker: Any,
     pnl_engine: Any = None,
     risk_manager: Any = None,
-    daily_target: Any = None,
-    regime_filter: Any = None,
     *,
     session_status: str = SESSION_ACTIVE,
     trading_date: Optional[str] = None,
@@ -83,8 +81,6 @@ def save(
         "tracker_positions": {},
         "pnl_state": {},
         "risk_state": {},
-        "target_state": {},
-        "regime_state": {},
     }
 
     for key, strat in strategies.items():
@@ -99,10 +95,6 @@ def save(
         payload["pnl_state"] = pnl_engine.save_state()
     if risk_manager is not None and hasattr(risk_manager, "save_state"):
         payload["risk_state"] = risk_manager.save_state()
-    if daily_target is not None and hasattr(daily_target, "save_state"):
-        payload["target_state"] = daily_target.save_state()
-    if regime_filter is not None and hasattr(regime_filter, "save_state"):
-        payload["regime_state"] = regime_filter.save_state()
 
     tmp = STATE_FILE + ".tmp"
     try:
@@ -118,8 +110,6 @@ def load(
     position_tracker: Any,
     pnl_engine: Any = None,
     risk_manager: Any = None,
-    daily_target: Any = None,
-    regime_filter: Any = None,
 ) -> Dict[str, Any]:
     """
     Restore positions + P&L from disk.  Returns the number of strategies restored.
@@ -169,11 +159,6 @@ def load(
             risk_data = payload.get("risk_state", {})
             if risk_data and risk_manager is not None and hasattr(risk_manager, "restore_state"):
                 risk_manager.restore_state(risk_data, reset_daily=False)
-            target_data = payload.get("target_state", {})
-            if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
-                daily_target.restore_state(target_data, reset_hit=False)
-            # Entry counters (e.g. SHAKEDOWN cap) live inside strategy state and must
-            # survive flat restarts — a flat session means no open legs, not no entries.
             for key, state in payload.get("strategies", {}).items():
                 strat = strategies.get(key)
                 if strat is None:
@@ -221,14 +206,6 @@ def load(
     risk_data = payload.get("risk_state", {})
     if risk_data and risk_manager is not None and hasattr(risk_manager, "restore_state"):
         risk_manager.restore_state(risk_data, reset_daily=is_stale_trading_day)
-
-    target_data = payload.get("target_state", {})
-    if target_data and daily_target is not None and hasattr(daily_target, "restore_state"):
-        daily_target.restore_state(target_data, reset_hit=is_stale_trading_day)
-
-    regime_data = payload.get("regime_state", {})
-    if regime_filter is not None and hasattr(regime_filter, "restore_state"):
-        regime_filter.restore_state(regime_data, reset_daily=is_stale_trading_day)
 
     return {
         "restored_strategies": restored,
