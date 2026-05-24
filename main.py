@@ -17,6 +17,8 @@ import pytz
 import yaml
 
 from api_helper import ShoonyaApiPy
+
+sys.path.insert(0, os.path.expanduser("~/git/shoonya-auth"))
 from broker_client import BrokerClient
 from strategy_runner import is_trading_day_ist
 from symbol_manager import SymbolManager
@@ -93,12 +95,16 @@ def _acquire_pid_lock() -> None:
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
 
-def _load_creds(path="cred.yml"):
+_SHARED_CRED = os.path.expanduser("~/.shoonya/cred.yml")
+
+
+def _load_creds(path=_SHARED_CRED):
     with open(path) as f:
         return yaml.safe_load(f) or {}
 
 
-def _save_creds(creds, path="cred.yml"):
+def _save_creds(creds, path=_SHARED_CRED):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), mode=0o700, exist_ok=True)
     with open(path, "w") as f:
         yaml.safe_dump(creds, f, sort_keys=False)
     os.chmod(path, 0o600)
