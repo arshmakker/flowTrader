@@ -4,6 +4,7 @@ All broker API calls are mocked — no live connection required.
 """
 
 import time
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,13 +14,31 @@ from trading_system.core.pcr_signal import _resolve_weekly_tsym, get_weekly_pcr
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+_MONTH_ABBR = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+
+
+def _today_tsym(instrument: str = "NIFTY", atm: int = 24000) -> str:
+    """Return the tsym that _resolve_weekly_tsym would find first — today's date.
+
+    _resolve_weekly_tsym scans forward from date.today(), so using today's date
+    means the mock matches on the very first iteration, regardless of which
+    calendar day the test runs.
+    """
+    d = date.today()
+    mon = _MONTH_ABBR[d.month - 1]
+    yr = str(d.year)[-2:]
+    return f"{instrument}{d.day:02d}{mon}{yr}C{atm}"
+
 
 def _make_api(
-    searchscrip_tsym="NIFTY26MAY26C24000",
+    searchscrip_tsym=None,
     chain_rows=None,
     quotes_oi=None,
 ):
     """Return a mock api with sensible defaults for PCR tests."""
+    if searchscrip_tsym is None:
+        searchscrip_tsym = _today_tsym()
+
     api = MagicMock()
 
     # searchscrip — returns a single matching OPTIDX result
@@ -28,13 +47,18 @@ def _make_api(
         "values": [{"tsym": searchscrip_tsym, "instname": "OPTIDX"}],
     }
 
-    # get_option_chain — returns CE + PE rows for the weekly expiry
+    # get_option_chain — returns CE + PE rows for the weekly expiry.
+    # Derive the date tag from the resolved tsym (e.g. "27MAY26") so the
+    # expiry_tag filter in get_weekly_pcr always finds these rows.
     if chain_rows is None:
+        # tag = everything between the instrument name and the option type letter
+        # e.g. "NIFTY27MAY26C24000" → tag "27MAY26"
+        tag = searchscrip_tsym[len("NIFTY") : len("NIFTY") + 7]
         chain_rows = [
-            {"tsym": "NIFTY26MAY26C24000", "token": "1001", "optt": "CE", "strprc": "24000"},
-            {"tsym": "NIFTY26MAY26C24050", "token": "1003", "optt": "CE", "strprc": "24050"},
-            {"tsym": "NIFTY26MAY26P24000", "token": "1002", "optt": "PE", "strprc": "24000"},
-            {"tsym": "NIFTY26MAY26P24050", "token": "1004", "optt": "PE", "strprc": "24050"},
+            {"tsym": f"NIFTY{tag}C24000", "token": "1001", "optt": "CE", "strprc": "24000"},
+            {"tsym": f"NIFTY{tag}C24050", "token": "1003", "optt": "CE", "strprc": "24050"},
+            {"tsym": f"NIFTY{tag}P24000", "token": "1002", "optt": "PE", "strprc": "24000"},
+            {"tsym": f"NIFTY{tag}P24050", "token": "1004", "optt": "PE", "strprc": "24050"},
         ]
     api.get_option_chain.return_value = {"stat": "Ok", "values": chain_rows}
 
@@ -64,12 +88,13 @@ class TestResolveWeeklyTsym:
         _clear_caches()
 
     def test_returns_valid_tsym(self):
-        api = _make_api(searchscrip_tsym="NIFTY26MAY26C24000")
+        expected = _today_tsym()
+        api = _make_api(searchscrip_tsym=expected)
         result = _resolve_weekly_tsym(api, "NIFTY", 24000)
-        assert result == "NIFTY26MAY26C24000"
+        assert result == expected
 
     def test_cached_on_second_call(self):
-        api = _make_api(searchscrip_tsym="NIFTY26MAY26C24000")
+        api = _make_api(searchscrip_tsym=_today_tsym())
         _resolve_weekly_tsym(api, "NIFTY", 24000)
         count_after_first = api.searchscrip.call_count
         assert count_after_first >= 1  # at least one call to find the match
@@ -87,7 +112,7 @@ class TestResolveWeeklyTsym:
         api = MagicMock()
         api.searchscrip.return_value = {
             "stat": "Ok",
-            "values": [{"tsym": "NIFTY26MAY26C24000", "instname": "EQ"}],
+            "values": [{"tsym": _today_tsym(), "instname": "EQ"}],
         }
         result = _resolve_weekly_tsym(api, "NIFTY", 24000)
         assert result is None
@@ -148,12 +173,14 @@ class TestGetWeeklyPcr:
         assert api.get_option_chain.call_count == 2
 
     def test_instrument_param(self):
-        api = _make_api(searchscrip_tsym="BANKNIFTY26MAY26C52000")
+        bnf_tsym = _today_tsym("BANKNIFTY", 52000)
+        bnf_tag = bnf_tsym[len("BANKNIFTY") : len("BANKNIFTY") + 7]
+        api = _make_api(searchscrip_tsym=bnf_tsym)
         api.get_option_chain.return_value = {
             "stat": "Ok",
             "values": [
-                {"tsym": "BANKNIFTY26MAY26C52000", "token": "2001", "optt": "CE", "strprc": "52000"},
-                {"tsym": "BANKNIFTY26MAY26P52000", "token": "2002", "optt": "PE", "strprc": "52000"},
+                {"tsym": f"BANKNIFTY{bnf_tag}C52000", "token": "2001", "optt": "CE", "strprc": "52000"},
+                {"tsym": f"BANKNIFTY{bnf_tag}P52000", "token": "2002", "optt": "PE", "strprc": "52000"},
             ],
         }
         api.get_quotes.side_effect = lambda exchange, token: {

@@ -476,7 +476,7 @@ def run() -> None:
         _time.sleep(_LOOP_SLEEP)
 
     log.info("pcrTrader session complete")
-    pnl_engine.print_summary()
+    pnl_engine._write_summary()
 
 
 if __name__ == "__main__":
