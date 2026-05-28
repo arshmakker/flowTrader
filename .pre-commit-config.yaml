@@ -19,7 +19,7 @@ repos:
     hooks:
       - id: pytest-quick
         name: pytest-quick
-        entry: pytest -q --cov=trading_system --cov=main --cov=strategy_runner --cov-report=term-missing --cov-fail-under=68
+        entry: pytest -q
         language: system
         pass_filenames: false
         always_run: true

@@ -14,11 +14,22 @@ Methodology (approximations documented inline):
   - Stop trigger: MTM loss > entry_credit × STOP_MULT
   - Expiry day detection: dynamic — handles NSE shift from Thursday→Tuesday (Sep 2025)
 
+Optional filters (experimental — validate before deploying live):
+  --ema-gate        Block entry when price action contradicts PCR signal.
+                    BULL_PUT: skip if spot < 5-day EMA (downtrend).
+                    BEAR_CALL: skip if spot > 5-day EMA (uptrend).
+                    EMA computed from 5 trading days strictly before signal day.
+  --consec-loss-pause
+                    After a losing week, tighten PCR thresholds by 0.1
+                    (BULL_PUT requires PCR > 1.4, BEAR_CALL requires PCR < 0.6)
+                    for the immediately following week only.
+
 Usage:
     source venv/bin/activate
     python tools/backtest_pcr_spread.py --start 2024-01-01 --end 2026-05-16
     python tools/backtest_pcr_spread.py --symbol BANKNIFTY --lot-size 30 --strike-step 100
     python tools/backtest_pcr_spread.py --start 2024-01-01 --end 2026-05-16 --out results.csv
+    python tools/backtest_pcr_spread.py --ema-gate --consec-loss-pause --start 2024-01-01 --end 2026-05-16
 """
 
 import argparse
@@ -170,6 +181,36 @@ def _find_weekly_expiry(bhav: pd.DataFrame, signal_day: date) -> Optional[date]:
     return candidates[0] if candidates else None
 
 
+def _fetch_prior_spots(signal_day: date, n: int = 5) -> list[float]:
+    """Return spot prices for the n trading days strictly before signal_day (oldest first)."""
+    spots: list[float] = []
+    d = signal_day - timedelta(days=1)
+    attempts = 0
+    while len(spots) < n and attempts < n + 10:
+        attempts += 1
+        if d.weekday() >= 5:
+            d -= timedelta(days=1)
+            continue
+        bhav = _fetch_bhav(d)
+        if bhav is not None:
+            spot = _get_spot(bhav)
+            if spot is not None:
+                spots.append(spot)
+        d -= timedelta(days=1)
+    return list(reversed(spots))  # oldest first
+
+
+def _ema(prices: list[float], n: int = 5) -> Optional[float]:
+    """Exponential moving average of prices list (standard alpha = 2/(n+1))."""
+    if len(prices) < 2:
+        return None
+    alpha = 2.0 / (n + 1)
+    val = prices[0]
+    for p in prices[1:]:
+        val = alpha * p + (1 - alpha) * val
+    return val
+
+
 @dataclass
 class WeekResult:
     week_start: date
@@ -185,10 +226,15 @@ class WeekResult:
     stopped: bool = False
     pnl_per_lot: Optional[float] = None
     pnl_total: Optional[float] = None
+    ema_val: Optional[float] = None
     note: str = ""
 
 
-def _simulate_week(monday: date) -> WeekResult:
+def _simulate_week(
+    monday: date,
+    ema_gate: bool = False,
+    pcr_tighten: float = 0.0,
+) -> WeekResult:
     nan = float("nan")
     _sentinel = date(1970, 1, 1)  # placeholder before expiry is known
 
@@ -210,18 +256,60 @@ def _simulate_week(monday: date) -> WeekResult:
     if pcr is None:
         return WeekResult(monday, expiry, nan, "SKIP", None, None, None, None, None, None, note="no_weekly_chain")
 
-    if pcr > PCR_BULL:
+    # Consecutive-loss pause: tighten thresholds for the week after a loss
+    bull_thresh = PCR_BULL + pcr_tighten
+    bear_thresh = PCR_BEAR - pcr_tighten
+
+    if pcr > bull_thresh:
         signal = "BULL_PUT"
         opt_type = "PE"
-    elif pcr < PCR_BEAR:
+    elif pcr < bear_thresh:
         signal = "BEAR_CALL"
         opt_type = "CE"
     else:
-        return WeekResult(monday, expiry, pcr, "SKIP", None, None, None, None, None, None)
+        skip_note = "consec_loss_filter" if pcr_tighten > 0 and (PCR_BEAR <= pcr <= PCR_BULL) is False else ""
+        return WeekResult(monday, expiry, pcr, "SKIP", None, None, None, None, None, None, note=skip_note)
 
     spot = _get_spot(bhav_sig)
     if spot is None:
         return WeekResult(monday, expiry, pcr, signal, None, None, None, None, None, None, note="no_spot")
+
+    # EMA gate: block entry when price trend contradicts PCR signal
+    ema_val: Optional[float] = None
+    if ema_gate:
+        prior_spots = _fetch_prior_spots(signal_day)
+        ema_val = _ema(prior_spots)
+        if ema_val is not None:
+            if signal == "BULL_PUT" and spot < ema_val:
+                return WeekResult(
+                    monday,
+                    expiry,
+                    pcr,
+                    "SKIP",
+                    spot,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    ema_val=ema_val,
+                    note="ema_gate",
+                )
+            elif signal == "BEAR_CALL" and spot > ema_val:
+                return WeekResult(
+                    monday,
+                    expiry,
+                    pcr,
+                    "SKIP",
+                    spot,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                    ema_val=ema_val,
+                    note="ema_gate",
+                )
 
     atm = _round_strike(spot)
     if signal == "BULL_PUT":
@@ -326,6 +414,16 @@ def main():
         "--short-otm", type=int, default=100, help="Short leg distance from ATM in points (default: 100)"
     )
     parser.add_argument("--long-otm", type=int, default=300, help="Long leg distance from ATM in points (default: 300)")
+    parser.add_argument(
+        "--ema-gate",
+        action="store_true",
+        help="Skip entry when price action contradicts PCR signal (spot vs 5-day EMA)",
+    )
+    parser.add_argument(
+        "--consec-loss-pause",
+        action="store_true",
+        help="After a losing week, tighten PCR thresholds by 0.1 for the following week",
+    )
     parser.add_argument("--out", default=None, help="Save results CSV")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
@@ -344,13 +442,20 @@ def main():
     SHORT_OTM_PTS = args.short_otm
     LONG_OTM_PTS = args.long_otm
 
+    filters = []
+    if args.ema_gate:
+        filters.append("ema-gate")
+    if args.consec_loss_pause:
+        filters.append("consec-loss-pause")
+
     log.info(
-        "Symbol=%s  LotSize=%d  StrikeStep=%d  Short=%dpts  Long=%dpts",
+        "Symbol=%s  LotSize=%d  StrikeStep=%d  Short=%dpts  Long=%dpts  Filters=[%s]",
         SYMBOL,
         LOT_SIZE,
         STRIKE_STEP,
         SHORT_OTM_PTS,
         LONG_OTM_PTS,
+        ",".join(filters) if filters else "none",
     )
 
     start = date.fromisoformat(args.start)
@@ -368,9 +473,23 @@ def main():
     n_weeks = len(mondays)
 
     results: list[WeekResult] = []
+    last_traded: Optional[WeekResult] = None  # most recent week with a real trade outcome
+
     for i, mon in enumerate(mondays):
         log.info("[%d/%d] %s", i + 1, n_weeks, mon)
-        results.append(_simulate_week(mon))
+
+        # Consecutive-loss pause: tighten thresholds for one week after a loss
+        pcr_tighten = 0.0
+        if args.consec_loss_pause and last_traded is not None and last_traded.pnl_total is not None:
+            if last_traded.pnl_total < 0:
+                pcr_tighten = 0.1
+
+        r = _simulate_week(mon, ema_gate=args.ema_gate, pcr_tighten=pcr_tighten)
+        results.append(r)
+
+        # Update last_traded only on weeks with an actual P&L outcome
+        if r.pnl_total is not None:
+            last_traded = r
 
     # ── Table ───────────────────────────────────────────────────────────
     rows = []
@@ -382,6 +501,7 @@ def main():
                 "pcr": f"{r.pcr:.2f}" if r.pcr == r.pcr else "—",
                 "signal": r.signal,
                 "spot": f"{r.spot:.0f}" if r.spot else "—",
+                "ema": f"{r.ema_val:.0f}" if r.ema_val is not None else "—",
                 "atm": r.atm or "—",
                 "short": r.short_strike or "—",
                 "long": r.long_strike or "—",
@@ -399,7 +519,9 @@ def main():
 
     # ── Summary ─────────────────────────────────────────────────────────
     traded = [r for r in results if r.signal != "SKIP" and r.pnl_total is not None]
-    skipped = [r for r in results if r.signal == "SKIP"]
+    skipped_neutral = [r for r in results if r.signal == "SKIP" and r.note not in ("ema_gate", "consec_loss_filter")]
+    filtered_ema = [r for r in results if r.note == "ema_gate"]
+    filtered_consec = [r for r in results if r.note == "consec_loss_filter"]
     no_data = [r for r in results if r.signal != "SKIP" and r.pnl_total is None]
     stops = [r for r in traded if r.stopped]
     wins = [r for r in traded if r.pnl_total > 0]
@@ -422,14 +544,14 @@ def main():
             max_dd = dd
 
     print("\n" + "=" * 65)
-    print(f"SUMMARY — {SYMBOL}")
+    print(f"SUMMARY — {SYMBOL}  [filters: {','.join(filters) if filters else 'none'}]")
     print("=" * 65)
     print(f"Period               : {start} → {end}")
     print(f"Total weeks          : {n_weeks}")
     print(f"Traded               : {len(traded)}")
     print(f"  Bull Put Spread    : {len(bull_trades)}")
     print(f"  Bear Call Spread   : {len(bear_trades)}")
-    print(f"Skipped (neutral PCR): {len(skipped)}")
+    print(f"Skipped (neutral PCR): {len(skipped_neutral)}")
     print(f"No price data        : {len(no_data)}")
     print(f"Stop-loss exits      : {len(stops)}")
     print(f"Win rate             : {len(wins)}/{len(traded)} = {len(wins)/max(len(traded),1)*100:.1f}%")
@@ -437,12 +559,33 @@ def main():
     print(f"Total P&L (1 lot)    : ₹{total_pnl:+,.0f}")
     print(f"Avg P&L per trade    : ₹{total_pnl/max(len(traded),1):+,.0f}")
     print(f"Max drawdown (1 lot) : ₹{max_dd:,.0f}")
+
+    # ── Filter precision report (only shown when filters are active) ─────
+    # To get would-be outcomes for filtered weeks, run the baseline (no flags)
+    # and compare — P&L is not available for skipped weeks in this run.
+    if filtered_ema or filtered_consec:
+        print()
+        print("Filter precision (re-run without flags to see would-be outcomes):")
+        if filtered_ema:
+            print(f"  EMA gate filtered  : {len(filtered_ema)} weeks")
+            for r in filtered_ema:
+                spot_str = f"spot={r.spot:.0f}" if r.spot else "spot=—"
+                ema_str = f"ema={r.ema_val:.0f}" if r.ema_val else "ema=—"
+                orig_signal = "BULL_PUT" if r.pcr > PCR_BULL else "BEAR_CALL"
+                print(f"    {r.week_start}  {orig_signal:<10}  pcr={r.pcr:.2f}  {spot_str}  {ema_str}")
+        if filtered_consec:
+            print(f"  Consec-loss filter : {len(filtered_consec)} weeks")
+            for r in filtered_consec:
+                print(f"    {r.week_start}  pcr={r.pcr:.2f} (in neutral band after tightening)")
+
     print()
     print("Caveats:")
     print("  - Entry/exit = Monday/Thursday EOD settle (not intraday 9:20/14:45)")
     print("  - Stop checked at Wednesday EOD only (not intraday)")
     print("  - Slippage + transaction costs not deducted (~₹200/leg/lot round trip)")
     print("  - 1 lot = 65 shares; multiply P&L for your lot count")
+    if args.ema_gate:
+        print("  - EMA gate: 5-day EMA computed from prior trading days' F&O bhavcopy spot")
 
     if args.out:
         df.to_csv(args.out, index=False)
