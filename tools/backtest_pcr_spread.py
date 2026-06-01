@@ -675,6 +675,12 @@ def main():
     parser.add_argument(
         "--pcr-bull", type=float, default=None, help="Bull trigger: enter BULL_PUT when PCR > this (default: 1.3)"
     )
+    parser.add_argument(
+        "--stop-mult",
+        type=float,
+        default=None,
+        help="Stop multiplier: exit if MTM loss > N × entry credit (default: 2.0)",
+    )
     parser.add_argument("--out", default=None, help="Save results CSV")
     parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
@@ -683,12 +689,14 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Set module-level config from args
-    global SYMBOL, LOT_SIZE, STRIKE_STEP, SHORT_OTM_PTS, LONG_OTM_PTS, PCR_BEAR, PCR_BULL
+    global SYMBOL, LOT_SIZE, STRIKE_STEP, SHORT_OTM_PTS, LONG_OTM_PTS, PCR_BEAR, PCR_BULL, STOP_MULT
     SYMBOL = args.symbol
     if args.pcr_bear is not None:
         PCR_BEAR = args.pcr_bear
     if args.pcr_bull is not None:
         PCR_BULL = args.pcr_bull
+    if args.stop_mult is not None:
+        STOP_MULT = args.stop_mult
 
     defaults = {"NIFTY": (65, 50), "BANKNIFTY": (30, 100)}
     default_lot, default_step = defaults[SYMBOL]

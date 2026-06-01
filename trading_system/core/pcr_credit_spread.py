@@ -58,7 +58,11 @@ class PCRCreditSpreadStrategy:
             log.info("[%s] PCR unavailable — skipping entry", self.instrument)
             return False
 
-        if pcr < settings.PCS_PCR_BEAR:
+        if settings.PCS_NO_PCR_FILTER:
+            signal = "BEAR_CALL"
+            opt_type = "CE"
+            log.info("[%s] PCR %.3f (no-filter mode) — BEAR_CALL", self.instrument, pcr)
+        elif pcr < settings.PCS_PCR_BEAR:
             signal = "BEAR_CALL"
             opt_type = "CE"
         elif pcr > settings.PCS_PCR_BULL:

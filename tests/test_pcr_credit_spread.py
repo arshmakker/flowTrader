@@ -57,8 +57,13 @@ class TestEnterBearCall:
 
 class TestEnterSkipsNeutralPCR:
     def test_no_entry_on_neutral(self):
-        strat = _make_strat()
-        entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
+        with patch("trading_system.core.pcr_credit_spread.settings") as s:
+            s.PCS_NO_PCR_FILTER = False
+            s.PCS_PCR_BEAR = 0.85
+            s.PCS_PCR_BULL = 999
+            s.PCS_MIN_CREDIT = 20.0
+            strat = _make_strat()
+            entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
         assert not entered
         assert strat.pos is None
         strat.om.place_order.assert_not_called()
@@ -67,6 +72,21 @@ class TestEnterSkipsNeutralPCR:
         strat = _make_strat()
         entered = strat.enter(spot=25000.0, pcr=None, expiry=date(2025, 5, 20), lots=1)
         assert not entered
+
+
+class TestEnterNoPCRFilter:
+    def test_neutral_pcr_enters_bear_call(self):
+        """With PCS_NO_PCR_FILTER=True, neutral PCR still triggers BEAR_CALL."""
+        with patch("trading_system.core.pcr_credit_spread.settings") as s:
+            s.PCS_NO_PCR_FILTER = True
+            s.PCS_MIN_CREDIT = 20.0
+            s.PCS_SHORT_OTM_PTS = 100
+            s.PCS_LONG_OTM_PTS = 300
+            strat = _make_strat()
+            entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
+        assert entered
+        assert strat.pos.signal == "BEAR_CALL"
+        assert strat.pos.opt_type == "CE"
 
 
 class TestEnterSkipsLowCredit:
