@@ -35,10 +35,12 @@ Usage:
 import argparse
 import io
 import logging
+import os
 import time
 import zipfile
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -50,8 +52,8 @@ log = logging.getLogger("backtest")
 # Defaults for NIFTY — overridden from args in main()
 SYMBOL = "NIFTY"
 LOT_SIZE = 65
-SHORT_OTM_PTS = 100
-LONG_OTM_PTS = 300
+SHORT_OTM_PTS = 200
+LONG_OTM_PTS = 400
 STOP_MULT = 2.0
 PCR_BULL = 1.3
 PCR_BEAR = 0.7
@@ -71,6 +73,7 @@ _session.headers.update(
 )
 _cookie_warmed = False
 _bhav_cache: dict[str, Optional[pd.DataFrame]] = {}
+_raw_bhav_cache_dir = Path(os.environ.get("NSE_FO_BHAV_CACHE_DIR", ".cache/nse_fo_bhavcopy"))
 
 
 def _warm_cookie():
@@ -85,44 +88,57 @@ def _round_strike(price: float) -> int:
     return int(round(price / STRIKE_STEP) * STRIKE_STEP)
 
 
+def _parse_bhav_zip(raw_zip: bytes) -> Optional[pd.DataFrame]:
+    """Parse raw NSE F&O bhavcopy ZIP bytes for the active symbol."""
+    with zipfile.ZipFile(io.BytesIO(raw_zip)) as zf:
+        with zf.open(zf.namelist()[0]) as f:
+            raw = pd.read_csv(f)
+
+    # New NSE column names (2019+ format):
+    #   TckrSymb, FinInstrmTp (IDO=index opt), XpryDt, StrkPric,
+    #   OptnTp (CE/PE), OpnIntrst, SttlmPric, ClsPric, UndrlygPric
+    opts = raw[raw["TckrSymb"].str.strip() == SYMBOL].copy()
+    # Drop futures (NaN OptnTp)
+    opts = opts[opts["OptnTp"].notna()]
+    if opts.empty:
+        return None
+
+    nifty = opts  # keep var name for brevity; holds whichever symbol was requested
+    nifty["XpryDt"] = pd.to_datetime(nifty["XpryDt"], errors="coerce")
+    nifty["StrkPric"] = pd.to_numeric(nifty["StrkPric"], errors="coerce")
+    nifty["OpnIntrst"] = pd.to_numeric(nifty["OpnIntrst"], errors="coerce").fillna(0)
+    nifty["SttlmPric"] = pd.to_numeric(nifty["SttlmPric"], errors="coerce")
+    nifty["ClsPric"] = pd.to_numeric(nifty["ClsPric"], errors="coerce")
+    nifty["UndrlygPric"] = pd.to_numeric(nifty["UndrlygPric"], errors="coerce")
+    nifty["OptnTp"] = nifty["OptnTp"].str.strip().str.upper()
+    return nifty
+
+
 def _fetch_bhav(dt: date) -> Optional[pd.DataFrame]:
-    """Download NSE F&O bhavcopy, parse to standard DataFrame, cache result."""
+    """Fetch NSE F&O bhavcopy, parse to standard DataFrame, and cache result."""
     key = dt.isoformat()
     if key in _bhav_cache:
         return _bhav_cache[key]
 
-    _warm_cookie()
-    url = f"https://nsearchives.nseindia.com/content/fo/BhavCopy_NSE_FO_0_0_0_{dt.strftime('%Y%m%d')}_F_0000.csv.zip"
+    filename = f"BhavCopy_NSE_FO_0_0_0_{dt.strftime('%Y%m%d')}_F_0000.csv.zip"
+    cache_path = _raw_bhav_cache_dir / filename
     try:
+        if cache_path.exists():
+            nifty = _parse_bhav_zip(cache_path.read_bytes())
+            _bhav_cache[key] = nifty
+            return nifty
+
+        _warm_cookie()
+        url = f"https://nsearchives.nseindia.com/content/fo/{filename}"
         resp = _session.get(url, timeout=20)
         if resp.status_code != 200:
             log.debug("No bhavcopy for %s (status %d — likely holiday)", dt, resp.status_code)
             _bhav_cache[key] = None
             return None
 
-        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-            with zf.open(zf.namelist()[0]) as f:
-                raw = pd.read_csv(f)
-
-        # New NSE column names (2019+ format):
-        #   TckrSymb, FinInstrmTp (IDO=index opt), XpryDt, StrkPric,
-        #   OptnTp (CE/PE), OpnIntrst, SttlmPric, ClsPric, UndrlygPric
-        opts = raw[raw["TckrSymb"].str.strip() == SYMBOL].copy()
-        # Drop futures (NaN OptnTp)
-        opts = opts[opts["OptnTp"].notna()]
-        if opts.empty:
-            _bhav_cache[key] = None
-            return None
-
-        nifty = opts  # keep var name for brevity; holds whichever symbol was requested
-        nifty["XpryDt"] = pd.to_datetime(nifty["XpryDt"], errors="coerce")
-        nifty["StrkPric"] = pd.to_numeric(nifty["StrkPric"], errors="coerce")
-        nifty["OpnIntrst"] = pd.to_numeric(nifty["OpnIntrst"], errors="coerce").fillna(0)
-        nifty["SttlmPric"] = pd.to_numeric(nifty["SttlmPric"], errors="coerce")
-        nifty["ClsPric"] = pd.to_numeric(nifty["ClsPric"], errors="coerce")
-        nifty["UndrlygPric"] = pd.to_numeric(nifty["UndrlygPric"], errors="coerce")
-        nifty["OptnTp"] = nifty["OptnTp"].str.strip().str.upper()
-
+        _raw_bhav_cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(resp.content)
+        nifty = _parse_bhav_zip(resp.content)
         _bhav_cache[key] = nifty
         time.sleep(0.35)
         return nifty
