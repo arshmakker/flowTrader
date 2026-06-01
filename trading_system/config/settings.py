@@ -24,8 +24,8 @@ PCS_SHORT_OTM_PTS = 100  # short leg distance from ATM (pts)
 PCS_LONG_OTM_PTS = 300  # long leg distance from ATM (pts)
 PCS_MIN_CREDIT = 20.0  # minimum net credit (pts) required to enter
 PCS_STOP_MULT = 2.0  # exit if MTM loss > PCS_STOP_MULT × entry credit
-PCS_PCR_BULL = 1.3  # PCR above this → BULL_PUT
-PCS_PCR_BEAR = 0.7  # PCR below this → BEAR_CALL
+PCS_PCR_BULL = 999  # bull side disabled — PCR never reaches this on NIFTY; bear-only strategy
+PCS_PCR_BEAR = 0.85  # PCR below this → BEAR_CALL (backtest: 67 trades, 97% win rate, ₹2.52L)
 PCS_ENTRY_DAYS = [0, 1]  # weekday indices: 0=Mon, 1=Tue
 PCS_ENTRY_START = "09:20"  # IST entry window open
 PCS_ENTRY_END = "10:00"  # IST entry window close

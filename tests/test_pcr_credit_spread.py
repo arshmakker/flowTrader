@@ -55,28 +55,6 @@ class TestEnterBearCall:
         assert sell_call.kwargs["buy_or_sell"] == "S"
 
 
-class TestEnterBullPut:
-    def test_success(self):
-        om = MagicMock()
-        md = MagicMock()
-        om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
-        md.get_ltp.side_effect = lambda sym: 70.0 if "24900" in sym else 25.0
-        md.get_lot_size.return_value = 65
-        sell_result = {"status": "COMPLETE", "fill_price": 69.0}
-        buy_result = {"status": "COMPLETE", "fill_price": 24.0}
-        om.place_order.side_effect = [sell_result, buy_result]
-
-        strat = PCRCreditSpreadStrategy(om, md, "NIFTY")
-        entered = strat.enter(spot=25000.0, pcr=1.45, expiry=date(2025, 5, 20), lots=1)
-
-        assert entered
-        assert strat.pos.signal == "BULL_PUT"
-        assert strat.pos.opt_type == "PE"
-        assert strat.pos.short_strike == 24900  # ATM=25000 − 100
-        assert strat.pos.long_strike == 24700  # ATM=25000 − 300
-        assert strat.pos.entry_credit == pytest.approx(45.0)
-
-
 class TestEnterSkipsNeutralPCR:
     def test_no_entry_on_neutral(self):
         strat = _make_strat()
@@ -176,10 +154,10 @@ class TestMonitorExpiryForceExit:
         today = date.today()
         strat.pos = PCS_Position(
             instrument="NIFTY",
-            signal="BULL_PUT",
-            short_strike=24900,
-            long_strike=24700,
-            opt_type="PE",
+            signal="BEAR_CALL",
+            short_strike=25100,
+            long_strike=25300,
+            opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
             entry_credit=40.0,
@@ -187,7 +165,7 @@ class TestMonitorExpiryForceExit:
             lot_size=65,
             expiry=today.isoformat(),
             entry_time=datetime.now().isoformat(),
-            entry_pcr=1.45,
+            entry_pcr=0.65,
         )
 
         import pytz
