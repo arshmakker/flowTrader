@@ -431,21 +431,36 @@ def run() -> None:
                     trade_logger.log_trade(record)
                 position_persistence.save(strats_map, pos_mgr, pnl_engine, risk)
 
-        # EOD flat by 15:10
+        # EOD at 15:10 — exit only if expiring today, otherwise carry overnight
         if strat.is_active() and _past_eod():
-            log.info("EOD force-exit at %s", now_ist.strftime("%H:%M"))
-            record = strat.force_exit("EOD")
-            if record:
-                pnl_engine.record_trade("NIFTY", record["gross_pnl"], record)
-                trade_logger.log_trade(record)
-            position_persistence.save(
-                strats_map,
-                pos_mgr,
-                pnl_engine,
-                risk,
-                session_status=position_persistence.SESSION_FLAT,
-                shutdown_reason="eod",
-            )
+            pos = strat.pos
+            if pos and pos.expiry == now_ist.date().isoformat():
+                log.info("EOD force-exit at %s (expiry day)", now_ist.strftime("%H:%M"))
+                record = strat.force_exit("EOD")
+                if record:
+                    pnl_engine.record_trade("NIFTY", record["gross_pnl"], record)
+                    trade_logger.log_trade(record)
+                position_persistence.save(
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    session_status=position_persistence.SESSION_FLAT,
+                    shutdown_reason="eod",
+                )
+            else:
+                log.info(
+                    "EOD carry — holding overnight (expiry %s)",
+                    pos.expiry if pos else "unknown",
+                )
+                position_persistence.save(
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    session_status="active",
+                    shutdown_reason="eod_carry",
+                )
 
         # Monitor open position
         if strat.is_active():
