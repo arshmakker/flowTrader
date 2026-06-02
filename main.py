@@ -463,13 +463,18 @@ def run() -> None:
             spot = md.get_ltp(settings.NIFTY_SPOT_KEY)
             if spot and spot > 0:
                 pcr = get_weekly_pcr(api, spot)
-                expiry = expiry_mgr.get_expiry("NIFTY")
-                if expiry:
-                    entered = strat.enter(spot, pcr, expiry, settings.PCS_LOT_SIZE)
+                expiries = expiry_mgr.get_expiries("NIFTY", count=3)
+                if expiries:
+                    entered = False
+                    for expiry in expiries:
+                        log.info("Trying entry on expiry %s", expiry.isoformat())
+                        entered = strat.enter(spot, pcr, expiry, settings.PCS_LOT_SIZE)
+                        if entered:
+                            break
                     if entered:
                         position_persistence.save(strats_map, pos_mgr, pnl_engine, risk)
                 else:
-                    log.warning("Could not determine nearest expiry — skipping entry")
+                    log.warning("Could not determine any expiry — skipping entry")
             else:
                 log.warning("NIFTY spot LTP unavailable — skipping entry tick")
 

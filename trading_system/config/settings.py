@@ -27,7 +27,7 @@ PCS_STOP_MULT = 2.0  # exit if MTM loss > PCS_STOP_MULT × entry credit
 PCS_NO_PCR_FILTER = True  # trade every Mon/Tue regardless of PCR; backtest: 124 trades, 98.4% win rate, ₹4.58L
 PCS_PCR_BULL = 999  # bull side disabled — only used when PCS_NO_PCR_FILTER = False
 PCS_PCR_BEAR = 0.85  # bear trigger — only used when PCS_NO_PCR_FILTER = False
-PCS_ENTRY_DAYS = [0, 1]  # weekday indices: 0=Mon, 1=Tue
+PCS_ENTRY_DAYS = [0, 1, 2, 3]  # weekday indices: 0=Mon, 1=Tue, 2=Wed, 3=Thu
 PCS_ENTRY_START = "09:20"  # IST entry window open
 PCS_ENTRY_END = "10:00"  # IST entry window close
 PCS_EXIT_TIME = "14:45"  # force-exit IST time on expiry day
