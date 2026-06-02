@@ -29,7 +29,7 @@ PCS_PCR_BULL = 999  # bull side disabled — only used when PCS_NO_PCR_FILTER = 
 PCS_PCR_BEAR = 0.85  # bear trigger — only used when PCS_NO_PCR_FILTER = False
 PCS_ENTRY_DAYS = [0, 1, 2, 3]  # weekday indices: 0=Mon, 1=Tue, 2=Wed, 3=Thu
 PCS_ENTRY_START = "09:20"  # IST entry window open
-PCS_ENTRY_END = "10:00"  # IST entry window close
+PCS_ENTRY_END = "13:00"  # IST entry window close
 PCS_EXIT_TIME = "14:45"  # force-exit IST time on expiry day
 PCS_PCR_CHAIN_COUNT = 30  # strikes each side to fetch for PCR computation
 
