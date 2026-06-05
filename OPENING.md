@@ -1,52 +1,49 @@
- T-15 min before 09:15 IST
+# PCR Trader — Daily Startup
 
-  Step 1 — start regimetrader FIRST (it owns the OAuth refresh)
-  cd /Users/arshdeep/git/regimetrader
-  python main.py
-  Let it complete OAuth login and write the fresh Access_token to cred.yml. Watch for:
-  OAuth login successful
-  Then kill it (Ctrl-C) — you just needed it to refresh the token. Takes ~30 sec.
+## Single Command
 
-  Step 2 — start the proxy
-  cd /Users/arshdeep/git/flowTrader
-  python broker_proxy.py --cred-file ../regimetrader/cred.yml
-  Watch for:
-  Proxy ready — session valid uid=FA50394
-  If you see Access_token stale — go back to Step 1.
+```bash
+~/git/shoonya-auth/start.sh
+```
 
-  Step 3 — start regimetrader via proxy
-  cd /Users/arshdeep/git/regimetrader
-  BROKER_PROXY_URL=http://127.0.0.1:7890 python main.py
-  Watch for:
-  Using broker proxy at http://127.0.0.1:7890
+This launches a tmux session with 3 windows:
+- **Window 0 (proxy):** Broker session (auto-login if token is stale)
+- **Window 1 (regime):** RegimeTrader logs
+- **Window 2 (flow):** PCR Trader logs
 
-  Step 4 — start flowTrader via proxy
-  cd /Users/arshdeep/git/flowTrader
-  BROKER_PROXY_URL=http://127.0.0.1:7890 python main.py
-  Watch for:
-  Using broker proxy at http://127.0.0.1:7890
-  Then verify PCR flowing (no more get_option_chain returned non-Ok).
+## tmux Navigation
 
-  ---
-  What to watch for
+- `Ctrl-b 0` — proxy window (broker logs)
+- `Ctrl-b 1` — regime window (regimetrader logs)
+- `Ctrl-b 2` — flow window (PCR trader logs)
+- `Ctrl-b d` — detach (all processes keep running in background)
+- `Ctrl-b :kill-session -t trading` — kill entire session and all processes
 
-  ┌───────────────────────────────────────────────┬──────────────────────────────────────────────┬──────────────────────────────────────────────────────────────────────────────────┐
-  │                   Log line                    │                   Meaning                    │                                      Action                                      │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ Proxy ready — session valid                   │ Proxy up, token good                         │ Proceed                                                                          │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ Access_token stale                            │ Token expired overnight                      │ Re-run Step 1                                                                    │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ get_option_chain jKey attempt rejected: ...   │ jKey auth; log will show actual broker error │ Paste error here                                                                 │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ get_option_chain Bearer attempt rejected: ... │ Bearer also failing                          │ Paste error                                                                      │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ PCR for NIFTY...                              │ PCR working                                  │ All good                                                                         │
-  ├───────────────────────────────────────────────┼──────────────────────────────────────────────┼──────────────────────────────────────────────────────────────────────────────────┤
-  │ Broker proxy session expired (mid-session)    │ Proxy token expired intraday                 │ Restart proxy (Step 2 only — other systems keep running if token refreshes fast) │
-  └───────────────────────────────────────────────┴──────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────────┘
+## Mid-Session Token Expiry Recovery
 
-  ---
-  regimetrader open positions
+If either bot logs `broker proxy health check failed`:
 
-  NIFTY + BANKNIFTY ICs from today (trading_date: 2026-
+1. Press `Ctrl-b 0` to switch to proxy window
+2. Press `Ctrl-c` to stop the proxy
+3. `python ~/git/shoonya-auth/broker_proxy.py` — this auto re-logins, then restarts
+4. Both bots reconnect automatically on next health check cycle (usually within 30s)
+
+## What to Watch For
+
+| Log line | Meaning | Action |
+|----------|---------|--------|
+| `✅ Proxy ready` | Proxy up and OAuth token valid | Proceed; regimetrader + PCR Trader will auto-start |
+| `PCR for NIFTY` | PCR signal flowing live | Normal operation |
+| `broker proxy health check failed` | Token expired mid-session | Ctrl-b 0 → Ctrl-c → restart proxy manually (see recovery above) |
+| `MTM loss >2x credit` | Position hit stop loss | Automatic exit; monitor realized loss |
+| `FORCE_EXIT` | Forced close (expiry-day 14:45 or EOD 15:10) | Session ending or hard stop reached |
+
+---
+
+## Architecture
+
+- **shoonya-auth/** — Centralized OAuth + broker proxy (lives in `~/git/shoonya-auth/`)
+- **regimetrader/** — Iron Condor strategy (optional; can run solo)
+- **flowTrader/** — PCR Contrarian Credit Spread strategy (this repo)
+
+Both strategies read credentials from `~/.shoonya/cred.yml` (shared, never committed).

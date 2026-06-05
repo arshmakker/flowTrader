@@ -36,6 +36,7 @@ logs/
 *.log
 
 # Market Data (daily snapshots)
+.cache/
 market_data_*/
 market_data_iv/
 market_data_atr/

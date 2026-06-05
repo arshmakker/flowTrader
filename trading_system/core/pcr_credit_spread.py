@@ -58,7 +58,11 @@ class PCRCreditSpreadStrategy:
             log.info("[%s] PCR unavailable — skipping entry", self.instrument)
             return False
 
-        if pcr < settings.PCS_PCR_BEAR:
+        if settings.PCS_NO_PCR_FILTER:
+            signal = "BEAR_CALL"
+            opt_type = "CE"
+            log.info("[%s] PCR %.3f (no-filter mode) — BEAR_CALL", self.instrument, pcr)
+        elif pcr < settings.PCS_PCR_BEAR:
             signal = "BEAR_CALL"
             opt_type = "CE"
         elif pcr > settings.PCS_PCR_BULL:
@@ -240,13 +244,20 @@ class PCRCreditSpreadStrategy:
         pos = self.pos
         qty = pos.lots * pos.lot_size
 
+        # Pre-fetch LTPs so paper engine has a non-zero fallback price if the
+        # live LTP becomes 0/stale between now and order placement — otherwise
+        # the paper engine rejects the order and records fill_price=0, causing
+        # PnL to be computed as entry_credit × qty (wrong max-profit reading).
+        short_ltp = self.md.get_ltp(pos.short_sym) or 0.0
+        long_ltp = self.md.get_ltp(pos.long_sym) or 0.0
+
         # Buy back short (close the sold leg)
         close_short = self.om.place_order(
             tradingsymbol=pos.short_sym,
             buy_or_sell="B",
             quantity=qty,
             price_type="MKT",
-            price=0.0,
+            price=short_ltp,
         )
         # Sell the long hedge (close the bought leg)
         close_long = self.om.place_order(
@@ -254,7 +265,7 @@ class PCRCreditSpreadStrategy:
             buy_or_sell="S",
             quantity=qty,
             price_type="MKT",
-            price=0.0,
+            price=long_ltp,
         )
 
         exit_short_price = close_short.get("fill_price", 0.0)

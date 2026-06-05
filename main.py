@@ -17,7 +17,10 @@ import pytz
 import yaml
 
 from api_helper import ShoonyaApiPy
+
+sys.path.insert(0, os.path.expanduser("~/git/shoonya-auth"))
 from broker_client import BrokerClient
+
 from strategy_runner import is_trading_day_ist
 from symbol_manager import SymbolManager
 from trading_system.auth import shoonya_selenium_auth
@@ -93,12 +96,16 @@ def _acquire_pid_lock() -> None:
 # ── Auth ───────────────────────────────────────────────────────────────────────
 
 
-def _load_creds(path="cred.yml"):
+_SHARED_CRED = os.path.expanduser("~/.shoonya/cred.yml")
+
+
+def _load_creds(path=_SHARED_CRED):
     with open(path) as f:
         return yaml.safe_load(f) or {}
 
 
-def _save_creds(creds, path="cred.yml"):
+def _save_creds(creds, path=_SHARED_CRED):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), mode=0o700, exist_ok=True)
     with open(path, "w") as f:
         yaml.safe_dump(creds, f, sort_keys=False)
     os.chmod(path, 0o600)
@@ -424,21 +431,36 @@ def run() -> None:
                     trade_logger.log_trade(record)
                 position_persistence.save(strats_map, pos_mgr, pnl_engine, risk)
 
-        # EOD flat by 15:10
+        # EOD at 15:10 — exit only if expiring today, otherwise carry overnight
         if strat.is_active() and _past_eod():
-            log.info("EOD force-exit at %s", now_ist.strftime("%H:%M"))
-            record = strat.force_exit("EOD")
-            if record:
-                pnl_engine.record_trade("NIFTY", record["gross_pnl"], record)
-                trade_logger.log_trade(record)
-            position_persistence.save(
-                strats_map,
-                pos_mgr,
-                pnl_engine,
-                risk,
-                session_status=position_persistence.SESSION_FLAT,
-                shutdown_reason="eod",
-            )
+            pos = strat.pos
+            if pos and pos.expiry == now_ist.date().isoformat():
+                log.info("EOD force-exit at %s (expiry day)", now_ist.strftime("%H:%M"))
+                record = strat.force_exit("EOD")
+                if record:
+                    pnl_engine.record_trade("NIFTY", record["gross_pnl"], record)
+                    trade_logger.log_trade(record)
+                position_persistence.save(
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    session_status=position_persistence.SESSION_FLAT,
+                    shutdown_reason="eod",
+                )
+            else:
+                log.info(
+                    "EOD carry — holding overnight (expiry %s)",
+                    pos.expiry if pos else "unknown",
+                )
+                position_persistence.save(
+                    strats_map,
+                    pos_mgr,
+                    pnl_engine,
+                    risk,
+                    session_status="active",
+                    shutdown_reason="eod_carry",
+                )
 
         # Monitor open position
         if strat.is_active():
@@ -456,20 +478,25 @@ def run() -> None:
             spot = md.get_ltp(settings.NIFTY_SPOT_KEY)
             if spot and spot > 0:
                 pcr = get_weekly_pcr(api, spot)
-                expiry = expiry_mgr.get_expiry("NIFTY")
-                if expiry:
-                    entered = strat.enter(spot, pcr, expiry, settings.PCS_LOT_SIZE)
+                expiries = expiry_mgr.get_expiries("NIFTY", count=3)
+                if expiries:
+                    entered = False
+                    for expiry in expiries:
+                        log.info("Trying entry on expiry %s", expiry.isoformat())
+                        entered = strat.enter(spot, pcr, expiry, settings.PCS_LOT_SIZE)
+                        if entered:
+                            break
                     if entered:
                         position_persistence.save(strats_map, pos_mgr, pnl_engine, risk)
                 else:
-                    log.warning("Could not determine nearest expiry — skipping entry")
+                    log.warning("Could not determine any expiry — skipping entry")
             else:
                 log.warning("NIFTY spot LTP unavailable — skipping entry tick")
 
         _time.sleep(_LOOP_SLEEP)
 
     log.info("pcrTrader session complete")
-    pnl_engine.print_summary()
+    pnl_engine._write_summary()
 
 
 if __name__ == "__main__":

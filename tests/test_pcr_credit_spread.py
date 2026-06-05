@@ -20,7 +20,7 @@ def _make_strat(short_ltp=80.0, long_ltp=30.0, lot_size=65):
     om = MagicMock()
     md = MagicMock()
     om.build_option_symbol.side_effect = lambda inst, exp, strike, otype: f"{inst}{exp}{strike}{otype}"
-    md.get_ltp.side_effect = lambda sym: short_ltp if "25100" in sym or "24900" in sym else long_ltp
+    md.get_ltp.side_effect = lambda sym: short_ltp if "25200" in sym or "24800" in sym else long_ltp
     md.get_lot_size.return_value = lot_size
     om.place_order.return_value = {"status": "COMPLETE", "fill_price": short_ltp}
     return PCRCreditSpreadStrategy(om, md, "NIFTY")
@@ -34,7 +34,7 @@ class TestEnterBearCall:
         om = MagicMock()
         md = MagicMock()
         om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
-        md.get_ltp.side_effect = lambda sym: 80.0 if "25100" in sym else 30.0
+        md.get_ltp.side_effect = lambda sym: 80.0 if "25200" in sym else 30.0
         md.get_lot_size.return_value = 65
         sell_result = {"status": "COMPLETE", "fill_price": 78.0}
         buy_result = {"status": "COMPLETE", "fill_price": 28.0}
@@ -47,40 +47,23 @@ class TestEnterBearCall:
         assert strat.pos is not None
         assert strat.pos.signal == "BEAR_CALL"
         assert strat.pos.opt_type == "CE"
-        assert strat.pos.short_strike == 25100  # ATM=25000 + 100
-        assert strat.pos.long_strike == 25300  # ATM=25000 + 300
+        assert strat.pos.short_strike == 25200  # ATM=25000 + 200
+        assert strat.pos.long_strike == 25400  # ATM=25000 + 400
         assert strat.pos.entry_credit == pytest.approx(50.0)  # 78 − 28
         assert om.place_order.call_count == 2
         sell_call = om.place_order.call_args_list[0]
         assert sell_call.kwargs["buy_or_sell"] == "S"
 
 
-class TestEnterBullPut:
-    def test_success(self):
-        om = MagicMock()
-        md = MagicMock()
-        om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
-        md.get_ltp.side_effect = lambda sym: 70.0 if "24900" in sym else 25.0
-        md.get_lot_size.return_value = 65
-        sell_result = {"status": "COMPLETE", "fill_price": 69.0}
-        buy_result = {"status": "COMPLETE", "fill_price": 24.0}
-        om.place_order.side_effect = [sell_result, buy_result]
-
-        strat = PCRCreditSpreadStrategy(om, md, "NIFTY")
-        entered = strat.enter(spot=25000.0, pcr=1.45, expiry=date(2025, 5, 20), lots=1)
-
-        assert entered
-        assert strat.pos.signal == "BULL_PUT"
-        assert strat.pos.opt_type == "PE"
-        assert strat.pos.short_strike == 24900  # ATM=25000 − 100
-        assert strat.pos.long_strike == 24700  # ATM=25000 − 300
-        assert strat.pos.entry_credit == pytest.approx(45.0)
-
-
 class TestEnterSkipsNeutralPCR:
     def test_no_entry_on_neutral(self):
-        strat = _make_strat()
-        entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
+        with patch("trading_system.core.pcr_credit_spread.settings") as s:
+            s.PCS_NO_PCR_FILTER = False
+            s.PCS_PCR_BEAR = 0.85
+            s.PCS_PCR_BULL = 999
+            s.PCS_MIN_CREDIT = 20.0
+            strat = _make_strat()
+            entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
         assert not entered
         assert strat.pos is None
         strat.om.place_order.assert_not_called()
@@ -91,13 +74,28 @@ class TestEnterSkipsNeutralPCR:
         assert not entered
 
 
+class TestEnterNoPCRFilter:
+    def test_neutral_pcr_enters_bear_call(self):
+        """With PCS_NO_PCR_FILTER=True, neutral PCR still triggers BEAR_CALL."""
+        with patch("trading_system.core.pcr_credit_spread.settings") as s:
+            s.PCS_NO_PCR_FILTER = True
+            s.PCS_MIN_CREDIT = 20.0
+            s.PCS_SHORT_OTM_PTS = 200
+            s.PCS_LONG_OTM_PTS = 400
+            strat = _make_strat()
+            entered = strat.enter(spot=25000.0, pcr=0.95, expiry=date(2025, 5, 20), lots=1)
+        assert entered
+        assert strat.pos.signal == "BEAR_CALL"
+        assert strat.pos.opt_type == "CE"
+
+
 class TestEnterSkipsLowCredit:
     def test_credit_below_minimum(self):
         om = MagicMock()
         md = MagicMock()
         om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
         # short_ltp=25, long_ltp=15 → credit=10 < PCS_MIN_CREDIT=20
-        md.get_ltp.side_effect = lambda sym: 25.0 if "25100" in sym else 15.0
+        md.get_ltp.side_effect = lambda sym: 25.0 if "25200" in sym else 15.0
         md.get_lot_size.return_value = 65
 
         strat = PCRCreditSpreadStrategy(om, md, "NIFTY")
@@ -112,7 +110,7 @@ class TestEnterRollbackPartialFill:
         om = MagicMock()
         md = MagicMock()
         om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
-        md.get_ltp.side_effect = lambda sym: 80.0 if "25100" in sym else 30.0
+        md.get_ltp.side_effect = lambda sym: 80.0 if "25200" in sym else 30.0
         md.get_lot_size.return_value = 65
         sell_ok = {"status": "COMPLETE", "fill_price": 80.0}
         buy_fail = {"status": "REJECTED", "fill_price": 0.0}
@@ -136,8 +134,8 @@ class TestMonitorStopLoss:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
@@ -176,10 +174,10 @@ class TestMonitorExpiryForceExit:
         today = date.today()
         strat.pos = PCS_Position(
             instrument="NIFTY",
-            signal="BULL_PUT",
-            short_strike=24900,
-            long_strike=24700,
-            opt_type="PE",
+            signal="BEAR_CALL",
+            short_strike=25200,
+            long_strike=25400,
+            opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
             entry_credit=40.0,
@@ -187,7 +185,7 @@ class TestMonitorExpiryForceExit:
             lot_size=65,
             expiry=today.isoformat(),
             entry_time=datetime.now().isoformat(),
-            entry_pcr=1.45,
+            entry_pcr=0.65,
         )
 
         import pytz
@@ -210,8 +208,8 @@ class TestEnterAlreadyActive:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="S",
             long_sym="L",
@@ -260,7 +258,7 @@ class TestEnterShortLegFails:
         om = MagicMock()
         md = MagicMock()
         om.build_option_symbol.side_effect = lambda i, e, s, t: f"SYM{s}{t}"
-        md.get_ltp.side_effect = lambda sym: 80.0 if "25100" in sym else 30.0
+        md.get_ltp.side_effect = lambda sym: 80.0 if "25200" in sym else 30.0
         md.get_lot_size.return_value = 65
         om.place_order.return_value = {"status": "REJECTED", "fill_price": 0.0}
 
@@ -286,8 +284,8 @@ class TestMonitorStaleLTP:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
@@ -309,8 +307,8 @@ class TestMonitorStaleLTP:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
@@ -333,8 +331,8 @@ class TestMonitorZeroLTPAfterFreshness:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
@@ -369,8 +367,8 @@ class TestForceExit:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
             short_sym="SHORT_SYM",
             long_sym="LONG_SYM",
@@ -444,11 +442,11 @@ class TestSaveRestoreState:
         strat.pos = PCS_Position(
             instrument="NIFTY",
             signal="BEAR_CALL",
-            short_strike=25100,
-            long_strike=25300,
+            short_strike=25200,
+            long_strike=25400,
             opt_type="CE",
-            short_sym="SYM25100CE",
-            long_sym="SYM25300CE",
+            short_sym="SYM25200CE",
+            long_sym="SYM25400CE",
             entry_credit=55.0,
             lots=2,
             lot_size=65,

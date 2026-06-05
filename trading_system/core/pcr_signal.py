@@ -1,82 +1,74 @@
 """
-Live PCR computation via Shoonya get_option_chain API.
+Live PCR computation via Shoonya API.
 
-Single public function: get_weekly_pcr(api, spot, instrument) -> Optional[float]
+Strategy:
+  1. Resolve a valid weekly NFO option tsym via searchscrip (cached per session).
+  2. Call get_option_chain to get CE/PE token list for that expiry (no OI in response).
+  3. Call get_quotes per token to read the 'oi' field — the only way Shoonya exposes OI.
+  4. Sum CE OI and PE OI, return pe_oi / ce_oi.
 
-Calls Shoonya once, filters to the nearest weekly expiry, returns pe_oi / ce_oi.
-Result is cached on the api object for 5 minutes to avoid rate-limiter pressure
-(PCR doesn't change meaningfully faster than that intraday).
+We fetch 10 strikes each side (20 tokens total) — enough for a reliable sentiment ratio
+without burning rate-limit budget. Result is cached for 5 minutes.
 """
 
 import logging
-from datetime import date
+import time
+from datetime import date, timedelta
 from typing import Optional
-
-from trading_system.config import settings
 
 log = logging.getLogger(__name__)
 
 _CACHE_TTL_SEC = 300  # 5 minutes
+_PCR_OI_COUNT = 10  # strikes each side for OI aggregation (20 get_quotes calls)
+_pcr_cache: dict = {}  # instrument -> (pcr_val, timestamp)
+_tsym_cache: dict = {}  # (instrument, atm) -> resolved NFO weekly option tsym
+
+_MONTH_ABBR = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
 
 
-def _nearest_weekly_expiry(tsym_list: list[str], today: date) -> Optional[date]:
+def _resolve_weekly_tsym(api, instrument: str, atm: int) -> Optional[str]:
     """
-    Detect the nearest weekly expiry from a list of option tsym strings.
-    NSE shifted NIFTY weekly expiry from Thursday to Tuesday in Sep 2025 — we
-    detect dynamically rather than hardcoding a day-of-week.
+    Find a valid NFO weekly-expiry option tsym for get_option_chain.
+    Shoonya's GetOptionChain requires a real contract symbol like NIFTY26MAY26C23950,
+    not the bare index name "NIFTY".
 
-    Each tsym encodes the expiry in Shoonya format, e.g. 'NIFTY14MAY25C25000'.
-    We parse the date portion and return the earliest expiry that is at least
-    today and at most 8 calendar days away (weekly, not monthly).
+    Scans the next 8 days for a valid tsym via searchscrip. Cached for the session
+    (expiry only changes weekly).
     """
-    import re
+    cache_key = (instrument, atm)
+    if cache_key in _tsym_cache:
+        return _tsym_cache[cache_key]
 
-    month_map = {
-        "JAN": 1,
-        "FEB": 2,
-        "MAR": 3,
-        "APR": 4,
-        "MAY": 5,
-        "JUN": 6,
-        "JUL": 7,
-        "AUG": 8,
-        "SEP": 9,
-        "OCT": 10,
-        "NOV": 11,
-        "DEC": 12,
-    }
-    candidates: set[date] = set()
-    for tsym in tsym_list:
-        # Pattern: SYMBOL + DD + MMM + YY + (C|P) + STRIKE
-        m = re.search(r"(\d{2})([A-Z]{3})(\d{2})[CP]", tsym)
-        if not m:
-            continue
+    today = date.today()
+    for delta in range(0, 9):
+        d = today + timedelta(days=delta)
+        mon = _MONTH_ABBR[d.month - 1]
+        yr = str(d.year)[-2:]
+        tsym = f"{instrument}{d.day:02d}{mon}{yr}C{atm}"
         try:
-            day = int(m.group(1))
-            mon = month_map.get(m.group(2))
-            year = 2000 + int(m.group(3))
-            if mon is None:
-                continue
-            exp = date(year, mon, day)
-        except (ValueError, TypeError):
+            result = api.searchscrip(exchange="NFO", searchtext=tsym)
+        except Exception as exc:
+            log.debug("searchscrip failed for %s: %s", tsym, exc)
             continue
-        delta = (exp - today).days
-        if 0 <= delta <= 8:
-            candidates.add(exp)
+        if not result or result.get("stat") != "Ok":
+            continue
+        for v in result.get("values") or []:
+            if v.get("tsym") == tsym and v.get("instname") == "OPTIDX":
+                log.info("Resolved weekly tsym for %s ATM=%d: %s", instrument, atm, tsym)
+                _tsym_cache[cache_key] = tsym
+                return tsym
 
-    return min(candidates) if candidates else None
+    log.warning("Could not resolve weekly tsym for %s ATM=%d (searched %d days)", instrument, atm, 9)
+    return None
 
 
 def get_weekly_pcr(api, spot: float, instrument: str = "NIFTY") -> Optional[float]:
     """
     Return PCR = pe_oi / ce_oi for the nearest weekly expiry.
-    Uses a 5-minute session cache keyed on the api object.
-    Returns None on any failure — caller must treat this as 'skip entry'.
+    Uses a 5-minute module-level cache. Returns None on failure — caller skips entry.
     """
-    import time
-
-    cache_key = f"_pcr_cache_{instrument}"
-    cached = getattr(api, cache_key, None)
+    cache_key = instrument
+    cached = _pcr_cache.get(cache_key)
     if cached is not None:
         pcr_val, ts = cached
         if time.time() - ts < _CACHE_TTL_SEC:
@@ -84,58 +76,84 @@ def get_weekly_pcr(api, spot: float, instrument: str = "NIFTY") -> Optional[floa
             return pcr_val
 
     atm = int(round(spot / 50) * 50)
+
+    # Step 1 — resolve a real weekly option tsym for this ATM strike
+    tsym = _resolve_weekly_tsym(api, instrument, atm)
+    if not tsym:
+        return None
+
+    # Step 2 — get CE/PE token list for this weekly expiry
     try:
-        result = api.get_option_chain(
+        chain = api.get_option_chain(
             exchange="NFO",
-            tradingsymbol=instrument,
+            tradingsymbol=tsym,
             strikeprice=str(atm),
-            count=settings.PCS_PCR_CHAIN_COUNT,
+            count=_PCR_OI_COUNT,
         )
     except Exception as exc:
         log.warning("get_option_chain failed for %s: %s", instrument, exc)
         return None
 
-    if not result or result.get("stat") != "Ok":
-        emsg = (result or {}).get("emsg") or (result or {}).get("rejreason") or repr(result)
-        log.warning("get_option_chain returned non-Ok for %s: %s", instrument, emsg)
+    if not chain or chain.get("stat") != "Ok":
+        emsg = (chain or {}).get("emsg") or (chain or {}).get("rejreason") or repr(chain)
+        log.warning("get_option_chain non-Ok for %s: %s", instrument, emsg)
         return None
 
-    values = result.get("values") or []
-    if not values:
+    rows = chain.get("values") or []
+    if not rows:
         log.warning("get_option_chain returned empty values for %s", instrument)
         return None
 
-    today = date.today()
-    tsym_list = [v.get("tsym", "") for v in values if v.get("tsym")]
-    expiry = _nearest_weekly_expiry(tsym_list, today)
-
-    if expiry is None:
-        log.warning("Could not detect weekly expiry from option chain for %s", instrument)
+    # Filter to only the resolved weekly expiry (tsym contains the date tag e.g. "26MAY26")
+    expiry_tag = tsym[len(instrument) : len(instrument) + 7]  # e.g. "26MAY26"
+    weekly_rows = [r for r in rows if expiry_tag in r.get("tsym", "")]
+    if not weekly_rows:
+        log.warning("No rows matching expiry %s in option chain for %s", expiry_tag, instrument)
         return None
 
-    # Filter to near-weekly expiry by matching the date in tsym
-    expiry_tag = expiry.strftime("%d%b%y").upper()  # e.g. "14MAY25"
+    # Step 3 — get_quotes per token to read OI (get_option_chain does not carry OI)
     ce_oi = 0
     pe_oi = 0
-    for row in values:
-        tsym = row.get("tsym", "")
-        if expiry_tag not in tsym:
-            continue
+    failed = 0
+    for row in weekly_rows:
+        token = row.get("token")
         opt_type = row.get("optt", "").upper()
+        if not token or opt_type not in ("CE", "PE"):
+            continue
         try:
-            oi = int(row.get("oi") or 0)
+            q = api.get_quotes(exchange="NFO", token=token)
+        except Exception as exc:
+            log.debug("get_quotes failed for token %s: %s", token, exc)
+            failed += 1
+            continue
+        if not q or q.get("stat") != "Ok":
+            failed += 1
+            continue
+        try:
+            oi = int(q.get("oi") or 0)
         except (ValueError, TypeError):
             oi = 0
         if opt_type == "CE":
             ce_oi += oi
-        elif opt_type == "PE":
+        else:
             pe_oi += oi
 
+    if failed:
+        log.debug("PCR: %d get_quotes calls failed (out of %d)", failed, len(weekly_rows))
+
     if ce_oi == 0:
-        log.warning("CE OI is zero for %s expiry %s — cannot compute PCR", instrument, expiry)
+        log.warning("CE OI is zero for %s expiry %s — cannot compute PCR", instrument, expiry_tag)
         return None
 
     pcr = pe_oi / ce_oi
-    setattr(api, cache_key, (pcr, time.time()))
-    log.info("PCR for %s (expiry %s): %.3f  [PE_OI=%d  CE_OI=%d]", instrument, expiry, pcr, pe_oi, ce_oi)
+    _pcr_cache[cache_key] = (pcr, time.time())
+    log.info(
+        "PCR for %s (expiry %s): %.3f  [PE_OI=%d  CE_OI=%d  rows=%d]",
+        instrument,
+        expiry_tag,
+        pcr,
+        pe_oi,
+        ce_oi,
+        len(weekly_rows),
+    )
     return pcr
