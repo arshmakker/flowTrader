@@ -32,7 +32,8 @@ from trading_system.core.pcr_signal import get_weekly_pcr
 from trading_system.core.risk_manager import RiskManager
 from trading_system.core.trade_logger import TradeLogger
 from trading_system.existing.market_data import MarketData
-from trading_system.ops.alerts import AlertChannel, NullAlertChannel, build_channel
+from trading_system.ops.alerts import Alert, AlertChannel, NullAlertChannel, build_channel
+from trading_system.ops.startup_reconcile import reconcile_startup_positions
 from trading_system.paper.paper_order_manager import PaperOrderManager
 from trading_system.paper.paper_pnl_engine import PaperPnLEngine
 from trading_system.paper.paper_position_tracker import PaperPositionTracker
@@ -360,6 +361,49 @@ def run() -> None:
             meta.get("tracker_positions", 0),
             meta.get("saved_at"),
         )
+
+    # LIVE-07: broker is authoritative for open exposure in live mode.
+    # Reconcile engine state against get_positions() before entering the loop;
+    # any divergence halts startup until the operator clears it manually.
+    # Skipped in paper mode — no broker counterpart to compare against.
+    if not settings.PAPER_TRADE_MODE:
+        try:
+            broker_positions = api.get_positions() or []
+        except Exception:
+            log.exception("HALTED at startup: get_positions() call failed; cannot verify broker state")
+            if alerts is not None:
+                alerts.send(
+                    Alert(
+                        event="startup_reconcile_failed",
+                        severity="critical",
+                        title="FlowTrader startup halted - broker query failed",
+                        body="get_positions() raised; engine cannot verify broker state. Inspect and clear.",
+                    )
+                )
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
+
+        engine_positions = getattr(pos_mgr, "_positions", {}) or {}
+        report = reconcile_startup_positions(engine_positions, broker_positions)
+        log.info(report.summary())
+        if not report.consistent:
+            log.error(
+                "HALTED at startup: engine and broker positions diverge. %s",
+                report.summary(),
+            )
+            if alerts is not None:
+                alerts.send(
+                    Alert(
+                        event="startup_reconcile_divergent",
+                        severity="critical",
+                        title="FlowTrader startup halted - broker/engine divergence",
+                        body=report.summary(),
+                    )
+                )
+            risk.halted = True
+            risk.stop_hit_at = datetime.now()
+            return
 
     reauth_state = {"attempted": False}
     last_auth_check = _time.time()
